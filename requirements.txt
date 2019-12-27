@@ -1,0 +1,6 @@
+numpy
+torch
+ray
+gym[all]
+psutil
+setproctitle
