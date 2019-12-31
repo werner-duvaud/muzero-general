@@ -1,6 +1,8 @@
 numpy
 torch
 ray
-gym[all]
+gym
+box2d-py
 psutil
 setproctitle
+tensorboard

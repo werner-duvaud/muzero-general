@@ -4,43 +4,106 @@ import numpy
 import ray
 import torch
 
+import models
 
-@ray.remote  # (num_gpus=1) #  Uncoomment num_gpus and model.to(config.device) to self-play on GPU
-def run_selfplay(Game, config, shared_storage, replay_buffer, model, seed):
+
+@ray.remote
+class SelfPlay:
     """
-    Function which run simultaneously in multiple threads and is continuously playing games and saving them to the replay-buffer.
+    Class which run in a dedicated thread to play games and save them to the replay-buffer.
     """
-    # model.to(config.device) # Uncoomment this line and num_gpus from the decorator to self-play on GPU
-    with torch.no_grad():
-        while True:
-            # Initialize a self-play
-            model.load_state_dict(ray.get(shared_storage.get_weights.remote()))
-            game = Game(seed)
-            done = False
-            game_history = GameHistory(config.discount)
+    def __init__(self, initial_weights, game, config, device):
+        self.config = config
+        self.game = game
 
-            # Self-play with actions based on the Monte Carlo tree search at each moves
-            observation = game.reset()
-            game_history.observation_history.append(observation)
-            while not done and len(game_history.history) < config.max_moves:
-                root = MCTS(config).run(model, observation, True)
+        # Initialize the network
+        self.model = models.MuZeroNetwork(
+            self.config.observation_shape,
+            len(self.config.action_space),
+            self.config.encoding_size,
+            self.config.hidden_size,
+        )
+        self.model.set_weights(initial_weights)
+        self.model.to(torch.device(device))
 
-                temperature = config.visit_softmax_temperature_fn(
-                    num_moves=len(game_history.history),
-                    trained_steps=ray.get(shared_storage.get_training_step.remote()),
+    def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):        
+        with torch.no_grad():
+            while True:
+                self.model.set_weights(ray.get(shared_storage.get_weights.remote()))
+
+                # Take the best action (no exploration) in test mode
+                temperature = (
+                    0
+                    if test_mode
+                    else self.config.visit_softmax_temperature_fn(
+                        trained_steps=ray.get(shared_storage.get_infos.remote())[
+                            "training_step"
+                        ]
+                    )
                 )
-                action = select_action(root, temperature)
 
-                observation, reward, done = game.step(action)
+                game_history = self.self_play(temperature, False)
 
-                game_history.observation_history.append(observation)
-                game_history.rewards.append(reward)
-                game_history.history.append(action)
-                game_history.store_search_statistics(root, config.action_space)
+                # Save to the shared storage
+                if test_mode:
+                    shared_storage.set_infos.remote(
+                        "total_reward", sum(game_history.rewards)
+                    )
+                if not test_mode:
+                    replay_buffer.save_game.remote(game_history)
 
-            game.close()
-            # Save the game history
-            replay_buffer.save_game.remote(game_history)
+    def self_play(self, temperature, render):
+        """
+        Play one game with actions based on the Monte Carlo tree search at each moves.
+        """
+        game_history = GameHistory(self.config.discount)
+        observation = self.game.reset()
+        game_history.observation_history.append(observation)
+        done = False
+        while not done and len(game_history.history) < self.config.max_moves:
+            root = MCTS(self.config).run(self.model, observation, True)
+
+            action = select_action(root, temperature)
+
+            observation, reward, done = self.game.step(action)
+
+            if render:
+                self.game.render()
+                print("Press enter to step")
+
+            game_history.observation_history.append(observation)
+            game_history.rewards.append(reward)
+            game_history.history.append(action)
+            game_history.store_search_statistics(root, self.config.action_space)
+
+        self.game.close()
+        return game_history
+
+
+def select_action(node, temperature):
+    """
+    Select action according to the vivist count distribution and the temperature.
+    The temperature is changed dynamically with the visit_softmax_temperature function in the config.
+    """
+    visit_counts = numpy.array(
+        [[child.visit_count, action] for action, child in node.children.items()]
+    ).T
+    if temperature == 0:
+        action_pos = numpy.argmax(visit_counts[0])
+    else:
+        # See paper Data Generation appendix
+        visit_count_distribution = visit_counts[0] ** (1 / temperature)
+        visit_count_distribution = visit_count_distribution / sum(
+            visit_count_distribution
+        )
+        action_pos = numpy.random.choice(
+            len(visit_counts[1]), p=visit_count_distribution
+        )
+
+    if temperature == float("inf"):
+        action_pos = numpy.random.choice(len(visit_counts[1]))
+
+    return visit_counts[1][action_pos]
 
 
 # Game independant
@@ -62,7 +125,10 @@ class MCTS:
         """
         root = Node(0)
         observation = (
-            torch.from_numpy(observation).to(self.config.device).float().unsqueeze(0)
+            torch.from_numpy(observation)
+            .float()
+            .unsqueeze(0)
+            .to(next(model.parameters()).device)
         )
         _, expected_reward, policy_logits, hidden_state = model.initial_inference(
             observation
@@ -76,9 +142,7 @@ class MCTS:
                 exploration_fraction=self.config.root_exploration_fraction,
             )
 
-        min_max_stats = MinMaxStats(
-            self.config.min_known_bound, self.config.max_known_bound
-        )
+        min_max_stats = MinMaxStats()
 
         for _ in range(self.config.num_simulations):
             node = root
@@ -139,32 +203,6 @@ class MCTS:
             min_max_stats.update(node.value())
 
             value = node.reward + self.config.discount * value
-
-
-def select_action(node, temperature, random=False):
-    """
-    Select action according to the vivist count distribution and the temperature.
-    The temperature is changed dynamically with the visit_softmax_temperature function in the config.
-    """
-    visit_counts = numpy.array(
-        [[child.visit_count, action] for action, child in node.children.items()]
-    ).T
-    if temperature == 0:
-        action_pos = numpy.argmax(visit_counts[0])
-    else:
-        # See paper Data Generation appendix
-        visit_count_distribution = visit_counts[0] ** (1 / temperature)
-        visit_count_distribution = visit_count_distribution / sum(
-            visit_count_distribution
-        )
-        action_pos = numpy.random.choice(
-            len(visit_counts[1]), p=visit_count_distribution
-        )
-
-    if random:
-        action_pos = numpy.random.choice(len(visit_counts[1]))
-
-    return visit_counts[1][action_pos]
 
 
 class Node:
@@ -231,105 +269,14 @@ class GameHistory:
         self.root_values.append(root.value())
 
 
-@ray.remote
-class ReplayBuffer:
-    # Store list of game history and generate batch
-    def __init__(self, config):
-        self.window_size = config.window_size
-        self.batch_size = config.batch_size
-        self.buffer = []
-
-    def save_game(self, game_history):
-        if len(self.buffer) > self.window_size:
-            self.buffer.pop(0)
-        self.buffer.append(game_history)
-
-    def sample_batch(self, num_unroll_steps, td_steps):
-        observation_batch, action_batch, reward_batch, value_batch, policy_batch = (
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
-        for _ in range(self.batch_size):
-            game_history = self.sample_game()
-            game_pos = self.sample_position(game_history)
-            actions = game_history.history[game_pos : game_pos + num_unroll_steps]
-            # Repeat precedent action to make "actions" of length "num_unroll_steps"
-            actions.extend(
-                [actions[-1] for _ in range(num_unroll_steps - len(actions) + 1)]
-            )
-            observation_batch.append(game_history.observation_history[game_pos])
-            action_batch.append(actions)
-            value, reward, policy = self.make_target(
-                game_history, game_pos, num_unroll_steps, td_steps
-            )
-            reward_batch.append(reward)
-            value_batch.append(value)
-            policy_batch.append(policy)
-
-        return observation_batch, action_batch, reward_batch, value_batch, policy_batch
-
-    def sample_game(self):
-        """
-        Sample game from buffer either uniformly or according to some priority.
-        """
-        # TODO: sample with probability link to the highest difference between real and predicted value (see paper appendix Training)
-        return self.buffer[numpy.random.choice(range(len(self.buffer)))]
-
-    def sample_position(self, game):
-        """
-        Sample position from game either uniformly or according to some priority.
-        """
-        # TODO: according to some priority
-        return numpy.random.choice(range(len(game.rewards)))
-
-    def make_target(self, game, state_index, num_unroll_steps, td_steps):
-        """
-        The value target is the discounted root value of the search tree td_steps into the future, plus the discounted sum of all rewards until then.
-        """
-        target_values, target_rewards, target_policies = [], [], []
-        for current_index in range(state_index, state_index + num_unroll_steps + 1):
-            bootstrap_index = current_index + td_steps
-            if bootstrap_index < len(game.root_values):
-                value = game.root_values[bootstrap_index] * game.discount ** td_steps
-            else:
-                value = 0
-
-            for i, reward in enumerate(game.rewards[current_index:bootstrap_index]):
-                value += reward * game.discount ** i
-
-            if current_index < len(game.root_values):
-                target_values.append(value)
-                target_rewards.append(game.rewards[current_index])
-                target_policies.append(game.child_visits[current_index])
-            else:
-                # States past the end of games are treated as absorbing states
-                target_values.append(0)
-                target_rewards.append(0)
-                # Uniform policy to give the tensor a valid dimension
-                target_policies.append(
-                    [
-                        1 / len(game.child_visits[0])
-                        for _ in range(len(game.child_visits[0]))
-                    ]
-                )
-
-        return target_values, target_rewards, target_policies
-
-    def length(self):
-        return len(self.buffer)
-
-
 class MinMaxStats:
     """
     A class that holds the min-max values of the tree.
     """
 
-    def __init__(self, min_value_bound, max_value_bound):
-        self.maximum = min_value_bound if min_value_bound else -float("inf")
-        self.minimum = max_value_bound if max_value_bound else float("inf")
+    def __init__(self):
+        self.maximum = -float("inf")
+        self.minimum = float("inf")
 
     def update(self, value):
         self.maximum = max(self.maximum, value)

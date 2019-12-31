@@ -1,6 +1,5 @@
 import gym
 import numpy
-import torch
 
 
 class MuZeroConfig:
@@ -31,20 +30,18 @@ class MuZeroConfig:
         self.max_known_bound = None
 
         ### Network
-        self.encoding_size = 32
-        self.hidden_size = 64
+        self.encoding_size = 64
+        self.hidden_size = 32
 
         # Training
         self.results_path = "./pretrained"  # Path to store the model weights
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Automatically use GPU instead of CPU if available
-        self.training_steps = 400  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 1000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
-        self.test_interval = 20  # Number of training steps before evaluating the network on the game to track the performance
         self.test_episodes = 2  # Number of game played to evaluate the network
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
-        self.window_size = 1000  # Number of self-play games to keep in memory (in the replay buffer)
-        self.td_steps = 10 # Number of steps in the futur to take into account for calculating the target value
+        self.window_size = 1000  # Number of self-play games to keep in the replay buffer
+        self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
 
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
@@ -54,7 +51,7 @@ class MuZeroConfig:
         self.lr_decay_rate = 0.1
         self.lr_decay_steps = 3500
 
-    def visit_softmax_temperature_fn(self, num_moves, trained_steps):
+    def visit_softmax_temperature_fn(self, trained_steps):
         """
         Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
         The smaller it is, the more likely the best action (ie with the highest visit count) is chosen.

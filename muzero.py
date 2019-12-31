@@ -1,3 +1,5 @@
+import copy
+import datetime
 import importlib
 import os
 import time
@@ -5,9 +7,13 @@ import time
 import numpy
 import ray
 import torch
+from torch.utils.tensorboard import SummaryWriter
 
-import network
+import models
+import replay_buffer
 import self_play
+import shared_storage
+import trainer
 
 
 class MuZero:
@@ -44,144 +50,123 @@ class MuZero:
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
-        self.best_model = network.Network(
+        # Used to initialize components when continuing a former training
+        self.muzero_weights = models.MuZeroNetwork(
             self.config.observation_shape,
             len(self.config.action_space),
             self.config.encoding_size,
             self.config.hidden_size,
-        )
+        ).get_weights()
+        self.training_steps = 0
 
     def train(self):
-        # Initialize and launch components that work simultaneously
         ray.init()
-        model = self.best_model
-        model.train()
-        storage = network.SharedStorage.remote(model)
-        replay_buffer = self_play.ReplayBuffer.remote(self.config)
-        for seed in range(self.config.num_actors):
-            self_play.run_selfplay.remote(
-                self.Game,
-                self.config,
-                storage,
-                replay_buffer,
-                model,
-                self.config.seed + seed,
-            )
-
-        # Initialize network for training
-        model = model.to(self.config.device)
-        optimizer = torch.optim.SGD(
-            model.parameters(),
-            lr=self.config.lr_init,
-            momentum=self.config.momentum,
-            weight_decay=self.config.weight_decay,
+        writer = SummaryWriter(
+            os.path.join(self.config.results_path, self.game_name + "_summary")
         )
 
-        # Wait for replay buffer to be non-empty
-        while ray.get(replay_buffer.length.remote()) == 0:
-            time.sleep(0.1)
-
-        # Training loop
-        best_test_rewards = None
-        for training_step in range(self.config.training_steps):
-            model.train()
-            storage.set_training_step.remote(training_step)
-
-            # Make the model available for self-play
-            if training_step % self.config.checkpoint_interval == 0:
-                storage.set_weights.remote(model.state_dict())
-
-            # Update learning rate
-            lr = self.config.lr_init * self.config.lr_decay_rate ** (
-                training_step / self.config.lr_decay_steps
+        # Initialize workers
+        training_worker = trainer.Trainer.remote(
+            copy.deepcopy(self.muzero_weights),
+            self.training_steps,
+            self.config,
+            # Train on GPU if available
+            "cuda" if torch.cuda.is_available() else "cpu",
+        )
+        shared_storage_worker = shared_storage.SharedStorage.remote(
+            copy.deepcopy(self.muzero_weights),
+            self.training_steps,
+            self.game_name,
+            self.config,
+        )
+        replay_buffer_worker = replay_buffer.ReplayBuffer.remote(self.config)
+        self_play_workers = [
+            self_play.SelfPlay.remote(
+                copy.deepcopy(self.muzero_weights),
+                self.Game(self.config.seed + seed),
+                self.config,
+                "cpu",
             )
-            for param_group in optimizer.param_groups:
-                param_group["lr"] = lr
+            for seed in range(self.config.num_actors)
+        ]
+        test_worker = self_play.SelfPlay.remote(
+            copy.deepcopy(self.muzero_weights), self.Game(), self.config, "cpu",
+        )
 
-            # Train on a batch.
-            batch = ray.get(
-                replay_buffer.sample_batch.remote(
-                    self.config.num_unroll_steps, self.config.td_steps
-                )
+        # Launch workers
+        [
+            self_play_worker.continuous_self_play.remote(
+                shared_storage_worker, replay_buffer_worker
             )
-            loss = network.update_weights(optimizer, model, batch, self.config)
+            for self_play_worker in self_play_workers
+        ]
+        test_worker.continuous_self_play.remote(shared_storage_worker, None, True)
+        training_worker.continuous_update_weights.remote(
+            replay_buffer_worker, shared_storage_worker
+        )
 
-            # Test the current model and save it on disk if it is the best
-            if training_step % self.config.test_interval == 0:
-                total_test_rewards = self.test(model=model, render=False)
-                if best_test_rewards is None or sum(total_test_rewards) >= sum(
-                    best_test_rewards
-                ):
-                    self.best_model = model
-                    best_test_rewards = total_test_rewards
-                    self.save_model()
-
-            print(
-                "Training step: {}\nBuffer Size: {}\nLearning rate: {}\nLoss: {}\nLast test score: {}\nBest sest score: {}\n".format(
-                    training_step,
-                    ray.get(replay_buffer.length.remote()),
-                    lr,
-                    loss,
-                    str(total_test_rewards),
-                    str(best_test_rewards),
-                )
+        # Loop for monitoring in real time the workers
+        print(
+            "Run tensorboard --logdir ./ and go to http://localhost:6006/ to track the training performance"
+        )
+        counter = 0
+        infos = ray.get(shared_storage_worker.get_infos.remote())
+        while infos["training_step"] < self.config.training_steps:
+            # Get and save real time performance
+            infos = ray.get(shared_storage_worker.get_infos.remote())
+            writer.add_scalar(
+                "1.Total reward/Total reward", infos["total_reward"], counter
             )
-
-        # Finally, save the latest network in the shared storage and end the self-play
-        storage.set_weights.remote(model.state_dict())
+            writer.add_scalar(
+                "2.Workers/Self played games",
+                ray.get(replay_buffer_worker.get_self_play_count.remote()),
+                counter,
+            )
+            writer.add_scalar(
+                "2.Workers/Training steps", infos["training_step"], counter
+            )
+            writer.add_scalar("3.Loss/1.Total loss", infos["total_loss"], counter)
+            writer.add_scalar("3.Loss details/Value loss", infos["value_loss"], counter)
+            writer.add_scalar(
+                "3.Loss details/Reward loss", infos["reward_loss"], counter
+            )
+            writer.add_scalar(
+                "3.Loss details/Policy loss", infos["policy_loss"], counter
+            )
+            counter += 1
+            time.sleep(1)
+        self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
         ray.shutdown()
 
-    def test(self, model=None, render=True):
-        if not model:
-            model = self.best_model
-
-        model.to(self.config.device)
+    def test(self, render=True):
+        """
+        Test the model in a dedicated thread.
+        """
+        ray.init()
+        self_play_workers = self_play.SelfPlay.remote(
+            copy.deepcopy(self.muzero_weights), self.Game(), self.config, "cpu",
+        )
         test_rewards = []
-        game = self.Game()
-
-        model.eval()
         with torch.no_grad():
             for _ in range(self.config.test_episodes):
-                observation = game.reset()
-                done = False
-                total_reward = 0
-                while not done:
-                    if render:
-                        game.render()
-                    root = self_play.MCTS(self.config).run(model, observation, False)
-                    action = self_play.select_action(root, temperature=0)
-                    observation, reward, done = game.step(action)
-                    total_reward += reward
-                test_rewards.append(total_reward)
-
+                history = ray.get(self_play_workers.self_play.remote(0, render))
+                test_rewards.append(sum(history.rewards))
+        ray.shutdown()
         return test_rewards
 
-    def save_model(self, model=None, path=None):
-        if not model:
-            model = self.best_model
+    def load_model(self, path=None, training_step=0):
+        # TODO: why pretrained model is degradated during the new train
         if not path:
             path = os.path.join(self.config.results_path, self.game_name)
-
-        torch.save(model.state_dict(), path)
-
-    def load_model(self, path=None):
-        if not path:
-            path = os.path.join(self.config.results_path, self.game_name)
-        self.best_model = network.Network(
-            self.config.observation_shape,
-            len(self.config.action_space),
-            self.config.encoding_size,
-            self.config.hidden_size,
-        )
         try:
-            self.best_model.load_state_dict(torch.load(path))
+            self.muzero_weights = torch.load(path)
+            self.training_step = training_step
         except FileNotFoundError:
             print("There is no model saved in {}.".format(path))
 
 
 if __name__ == "__main__":
-    # Load the game and the parameters from ./games/file_name.py
     muzero = MuZero("cartpole")
-    muzero.load_model()
     muzero.train()
+    # muzero.load_model()
     muzero.test()
