@@ -19,14 +19,14 @@ Those components are launched and managed from the MuZero class in muzero.py and
 
 All performances are tracked and displayed in real time in tensorboard.
 
-![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/tree/master/pretrained/pretrained/cartpole_training_summary.png)
+![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/pretrained/cartpole_training_summary.png)
 
 
 ## Games already implemented with pretrained network available
 * Lunar Lander
 * Cartpole
 
-![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/tree/master/games/lunarlander_training_preview.png)
+![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/games/lunarlander_training_preview.png)
 
 ## Getting started
 ### Installation
