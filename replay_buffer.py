@@ -62,7 +62,8 @@ def sample_game(buffer):
     """
     Sample game from buffer either uniformly or according to some priority.
     """
-    # TODO: sample with probability link to the highest difference between real and predicted value (see paper appendix Training)
+    # TODO: sample with probability link to the highest difference between real and
+    # predicted value (see paper appendix Training)
     return numpy.random.choice(buffer)
 
 
@@ -76,7 +77,8 @@ def sample_position(game_history):
 
 def make_target(game_history, state_index, num_unroll_steps, td_steps):
     """
-    The value target is the discounted root value of the search tree td_steps into the future, plus the discounted sum of all rewards until then.
+    The value target is the discounted root value of the search tree td_steps into the
+    future, plus the discounted sum of all rewards until then.
     """
     target_values, target_rewards, target_policies = [], [], []
     for current_index in range(state_index, state_index + num_unroll_steps + 1):

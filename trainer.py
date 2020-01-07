@@ -10,11 +10,13 @@ import models
 @ray.remote(num_gpus=1)
 class Trainer:
     """
-    Class which run in a dedicated thread to train a neural network and save it in the shared storage.
+    Class which run in a dedicated thread to train a neural network and save it
+    in the shared storage.
     """
-    def __init__(self, initial_weights, initial_training_step, config, device):
+
+    def __init__(self, initial_weights, config, device):
         self.config = config
-        self.training_step = initial_training_step
+        self.training_step = 0
 
         # Initialize the network
         self.model = models.MuZeroNetwork(
@@ -38,7 +40,7 @@ class Trainer:
         # Wait for the replay buffer to be filled
         while ray.get(replay_buffer.get_self_play_count.remote()) < 1:
             time.sleep(0.1)
-        
+
         # Training loop
         while True:
             batch = ray.get(replay_buffer.get_batch.remote())
@@ -55,6 +57,9 @@ class Trainer:
             shared_storage_worker.set_infos.remote("reward_loss", reward_loss)
             shared_storage_worker.set_infos.remote("policy_loss", policy_loss)
 
+            if self.config.training_delay:
+                time.sleep(self.config.training_delay)
+
     def update_weights(self, batch):
         """
         Perform one training step.
@@ -65,7 +70,6 @@ class Trainer:
         )
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
-
 
         (
             observation_batch,

@@ -1,5 +1,6 @@
 import torch
 
+
 class FullyConnectedNetwork(torch.nn.Module):
     def __init__(
         self, input_size, layers_sizes, output_size, activation=torch.nn.Tanh()
@@ -24,6 +25,7 @@ class FullyConnectedNetwork(torch.nn.Module):
         for layer in self.layers:
             x = layer(x)
         return x
+
 
 # TODO: unified residual network
 class MuZeroNetwork(torch.nn.Module):

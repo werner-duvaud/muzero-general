@@ -1,5 +1,4 @@
 import copy
-import datetime
 import importlib
 import os
 import time
@@ -21,7 +20,8 @@ class MuZero:
     Main class to manage MuZero.
 
     Args:
-        game_name (str): Name of the game module, it should match the name of a .py file in the "./games" directory.
+        game_name (str): Name of the game module, it should match the name of a .py file
+        in the "./games" directory.
 
     Example:
         >>> muzero = MuZero("cartpole")
@@ -46,18 +46,16 @@ class MuZero:
             raise err
 
         # Fix random generator seed for reproductibility
-        # TODO: check if results do not change from one run to another
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
-        # Used to initialize components when continuing a former training
+        # Initial weights used to initialize components
         self.muzero_weights = models.MuZeroNetwork(
             self.config.observation_shape,
             len(self.config.action_space),
             self.config.encoding_size,
             self.config.hidden_size,
         ).get_weights()
-        self.training_steps = 0
 
     def train(self):
         ray.init()
@@ -68,16 +66,12 @@ class MuZero:
         # Initialize workers
         training_worker = trainer.Trainer.remote(
             copy.deepcopy(self.muzero_weights),
-            self.training_steps,
             self.config,
             # Train on GPU if available
             "cuda" if torch.cuda.is_available() else "cpu",
         )
         shared_storage_worker = shared_storage.SharedStorage.remote(
-            copy.deepcopy(self.muzero_weights),
-            self.training_steps,
-            self.game_name,
-            self.config,
+            copy.deepcopy(self.muzero_weights), self.game_name, self.config,
         )
         replay_buffer_worker = replay_buffer.ReplayBuffer.remote(self.config)
         self_play_workers = [
@@ -107,7 +101,7 @@ class MuZero:
 
         # Loop for monitoring in real time the workers
         print(
-            "Run tensorboard --logdir ./ and go to http://localhost:6006/ to track the training performance"
+            "\nTraining...\nRun tensorboard --logdir ./ and go to http://localhost:6006/ to see in real time the training performance.\n"
         )
         counter = 0
         infos = ray.get(shared_storage_worker.get_infos.remote())
@@ -126,15 +120,21 @@ class MuZero:
                 "2.Workers/Training steps", infos["training_step"], counter
             )
             writer.add_scalar("3.Loss/1.Total loss", infos["total_loss"], counter)
-            writer.add_scalar("3.Loss details/Value loss", infos["value_loss"], counter)
-            writer.add_scalar(
-                "3.Loss details/Reward loss", infos["reward_loss"], counter
-            )
-            writer.add_scalar(
-                "3.Loss details/Policy loss", infos["policy_loss"], counter
+            writer.add_scalar("3.Loss/Value loss", infos["value_loss"], counter)
+            writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
+            writer.add_scalar("3.Loss/Policy loss", infos["policy_loss"], counter)
+            print(
+                "Last test reward: {0:.2f}. Training step: {1}/{2}. Played games: {3}. Loss: {4:.2f}".format(
+                    infos["total_reward"],
+                    infos["training_step"],
+                    self.config.training_steps,
+                    ray.get(replay_buffer_worker.get_self_play_count.remote()),
+                    infos["total_loss"],
+                ),
+                end="\r",
             )
             counter += 1
-            time.sleep(1)
+            time.sleep(3)
         self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
         ray.shutdown()
 
@@ -142,6 +142,7 @@ class MuZero:
         """
         Test the model in a dedicated thread.
         """
+        print("Testing...")
         ray.init()
         self_play_workers = self_play.SelfPlay.remote(
             copy.deepcopy(self.muzero_weights), self.Game(), self.config, "cpu",
@@ -149,18 +150,17 @@ class MuZero:
         test_rewards = []
         with torch.no_grad():
             for _ in range(self.config.test_episodes):
-                history = ray.get(self_play_workers.self_play.remote(0, render))
+                history = ray.get(self_play_workers.play_game.remote(0, render))
                 test_rewards.append(sum(history.rewards))
         ray.shutdown()
         return test_rewards
 
-    def load_model(self, path=None, training_step=0):
-        # TODO: why pretrained model is degradated during the new train
+    def load_model(self, path=None):
         if not path:
             path = os.path.join(self.config.results_path, self.game_name)
         try:
             self.muzero_weights = torch.load(path)
-            self.training_step = training_step
+            print("Using weights from {}".format(path))
         except FileNotFoundError:
             print("There is no model saved in {}.".format(path))
 
@@ -168,5 +168,6 @@ class MuZero:
 if __name__ == "__main__":
     muzero = MuZero("cartpole")
     muzero.train()
-    # muzero.load_model()
+
+    muzero.load_model()
     muzero.test()

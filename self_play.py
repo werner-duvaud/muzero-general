@@ -1,5 +1,6 @@
 import math
-
+import time
+import copy
 import numpy
 import ray
 import torch
@@ -12,6 +13,7 @@ class SelfPlay:
     """
     Class which run in a dedicated thread to play games and save them to the replay-buffer.
     """
+
     def __init__(self, initial_weights, game, config, device):
         self.config = config
         self.game = game
@@ -25,11 +27,14 @@ class SelfPlay:
         )
         self.model.set_weights(initial_weights)
         self.model.to(torch.device(device))
+        self.model.eval()
 
-    def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):        
+    def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
         with torch.no_grad():
             while True:
-                self.model.set_weights(ray.get(shared_storage.get_weights.remote()))
+                self.model.set_weights(
+                    copy.deepcopy(ray.get(shared_storage.get_weights.remote()))
+                )
 
                 # Take the best action (no exploration) in test mode
                 temperature = (
@@ -41,8 +46,7 @@ class SelfPlay:
                         ]
                     )
                 )
-
-                game_history = self.self_play(temperature, False)
+                game_history = self.play_game(temperature, False)
 
                 # Save to the shared storage
                 if test_mode:
@@ -52,7 +56,10 @@ class SelfPlay:
                 if not test_mode:
                     replay_buffer.save_game.remote(game_history)
 
-    def self_play(self, temperature, render):
+                if not test_mode and self.config.self_play_delay:
+                    time.sleep(self.config.self_play_delay)
+
+    def play_game(self, temperature, render):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
         """
@@ -83,7 +90,8 @@ class SelfPlay:
 def select_action(node, temperature):
     """
     Select action according to the vivist count distribution and the temperature.
-    The temperature is changed dynamically with the visit_softmax_temperature function in the config.
+    The temperature is changed dynamically with the visit_softmax_temperature function 
+    in the config.
     """
     visit_counts = numpy.array(
         [[child.visit_count, action] for action, child in node.children.items()]
@@ -120,8 +128,10 @@ class MCTS:
 
     def run(self, model, observation, add_exploration_noise):
         """
-        At the root of the search tree we use the representation function to obtain a hidden state given the current observation.
-        We then run a Monte Carlo Tree Search using only action sequences and the model learned by the network.
+        At the root of the search tree we use the representation function to obtain a
+        hidden state given the current observation.
+        We then run a Monte Carlo Tree Search using only action sequences and the model
+        learned by the network.
         """
         root = Node(0)
         observation = (
@@ -153,7 +163,8 @@ class MCTS:
                 last_action = action
                 search_path.append(node)
 
-            # Inside the search tree we use the dynamics function to obtain the next hidden state given an action and the previous hidden state
+            # Inside the search tree we use the dynamics function to obtain the next hidden
+            # state given an action and the previous hidden state
             parent = search_path[-2]
             value, reward, policy_logits, hidden_state = model.recurrent_inference(
                 parent.hidden_state,
@@ -194,10 +205,12 @@ class MCTS:
 
     def backpropagate(self, search_path, value, min_max_stats):
         """
-        At the end of a simulation, we propagate the evaluation all the way up the tree to the root.
+        At the end of a simulation, we propagate the evaluation all the way up the tree
+        to the root.
         """
         for node in search_path:
-            # Always the same player, the other players minds should be modeled in network because environment do not act always in the best way to make you lose
+            # Always the same player, the other players minds should be modeled in network
+            # because environment do not act always in the best way to make you lose
             node.value_sum += value  # if node.to_play == to_play else -value
             node.visit_count += 1
             min_max_stats.update(node.value())
@@ -225,7 +238,8 @@ class Node:
 
     def expand(self, actions, reward, policy_logits, hidden_state):
         """
-        We expand a node using the value, reward and policy prediction obtained from the neural network.
+        We expand a node using the value, reward and policy prediction obtained from the
+        neural network.
         """
         self.reward = reward
         self.hidden_state = hidden_state
@@ -236,7 +250,8 @@ class Node:
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
-        At the start of each search, we add dirichlet noise to the prior of the root to encourage the search to explore new actions.
+        At the start of each search, we add dirichlet noise to the prior of the root to
+        encourage the search to explore new actions.
         """
         actions = list(self.children.keys())
         noise = numpy.random.dirichlet([dirichlet_alpha] * len(actions))
