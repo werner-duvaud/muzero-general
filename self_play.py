@@ -68,7 +68,7 @@ class SelfPlay:
         game_history.observation_history.append(observation)
         done = False
         while not done and len(game_history.history) < self.config.max_moves:
-            root = MCTS(self.config).run(self.model, observation, True)
+            root = MCTS(self.config).run(self.model, observation, True if temperature else False)
 
             action = select_action(root, temperature)
 
@@ -76,7 +76,6 @@ class SelfPlay:
 
             if render:
                 self.game.render()
-                print("Press enter to step")
 
             game_history.observation_history.append(observation)
             game_history.rewards.append(reward)
@@ -209,8 +208,6 @@ class MCTS:
         to the root.
         """
         for node in search_path:
-            # Always the same player, the other players minds should be modeled in network
-            # because environment do not act always in the best way to make you lose
             node.value_sum += value  # if node.to_play == to_play else -value
             node.visit_count += 1
             min_max_stats.update(node.value())

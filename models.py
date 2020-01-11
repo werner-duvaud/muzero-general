@@ -40,6 +40,10 @@ class MuZeroNetwork(torch.nn.Module):
         self.dynamics_encoded_state_network = FullyConnectedNetwork(
             encoding_size + self.action_space_size, [hidden_size], encoding_size
         )
+        # Gradient scaling (See paper appendix Training)
+        self.dynamics_encoded_state_network.register_backward_hook(
+            lambda module, grad_i, grad_o: (grad_i[0] * 0.5,)
+        )
         self.dynamics_reward_network = FullyConnectedNetwork(
             encoding_size + self.action_space_size, [hidden_size], 1
         )
@@ -60,20 +64,25 @@ class MuZeroNetwork(torch.nn.Module):
         return self.representation_network(observation)
 
     def dynamics(self, encoded_state, action):
+        # Stack encoded_state with one hot action (See paper appendix  Network Architecture)
         action_one_hot = (
             torch.zeros((action.shape[0], self.action_space_size))
             .to(action.device)
             .float()
         )
         action_one_hot.scatter_(1, action.long(), 1.0)
-
         x = torch.cat((encoded_state, action_one_hot), dim=1)
+
         next_encoded_state = self.dynamics_encoded_state_network(x)
         reward = self.dynamics_reward_network(x)
         return next_encoded_state, reward
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
+        # Scale encoded state between [0, 1] (See paper Training appendix)
+        encoded_state = (encoded_state - torch.min(encoded_state)) / (
+            torch.max(encoded_state) - torch.min(encoded_state)
+        )
         policy_logit, value = self.prediction(encoded_state)
         return (
             value,
@@ -84,6 +93,10 @@ class MuZeroNetwork(torch.nn.Module):
 
     def recurrent_inference(self, encoded_state, action):
         next_encoded_state, reward = self.dynamics(encoded_state, action)
+        # Scale encoded state between [0, 1] (See paper Training appendix)
+        next_encoded_state = (next_encoded_state - torch.min(next_encoded_state)) / (
+            torch.max(next_encoded_state) - torch.min(next_encoded_state)
+        )
         policy_logit, value = self.prediction(next_encoded_state)
         return value, reward, policy_logit, next_encoded_state
 

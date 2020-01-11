@@ -116,10 +116,12 @@ class Trainer:
             reward_loss += current_reward_loss
             policy_loss += current_policy_loss
 
-        # Scale gradient by number of unroll steps (See paper Training appendix)
         loss = (
             value_loss + reward_loss + policy_loss
-        ).mean() / self.config.num_unroll_steps
+        ).mean()
+
+        # Scale gradient by number of unroll steps (See paper Training appendix)
+        loss.register_hook(lambda grad: grad * 1 / self.config.num_unroll_steps)
 
         # Optimize
         self.optimizer.zero_grad()
@@ -139,7 +141,7 @@ def loss_function(
     value, reward, policy_logits, target_value, target_reward, target_policy
 ):
     # TODO: paper promotes cross entropy instead of MSE
-    value_loss = torch.nn.MSELoss(reduction="none")(value, target_value)
-    reward_loss = torch.nn.MSELoss(reduction="none")(reward, target_reward)
-    policy_loss = -(torch.log_softmax(policy_logits, dim=1) * target_policy).sum(1)
+    value_loss = torch.nn.MSELoss()(value, target_value)
+    reward_loss = torch.nn.MSELoss()(reward, target_reward)
+    policy_loss = torch.mean(torch.sum(-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits), 1))
     return value_loss, reward_loss, policy_loss

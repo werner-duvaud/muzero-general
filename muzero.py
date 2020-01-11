@@ -169,5 +169,5 @@ if __name__ == "__main__":
     muzero = MuZero("cartpole")
     muzero.train()
 
-    muzero.load_model()
+    # muzero.load_model()
     muzero.test()

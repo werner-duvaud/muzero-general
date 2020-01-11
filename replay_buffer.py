@@ -36,7 +36,7 @@ class ReplayBuffer:
             actions = game_history.history[
                 game_pos : game_pos + self.config.num_unroll_steps
             ]
-            # Repeat precedent action to make "actions" of length "num_unroll_steps"
+            # Repeat precedent action to make 'actions' of length 'num_unroll_steps'
             actions.extend(
                 [
                     actions[-1]
@@ -71,7 +71,7 @@ def sample_position(game_history):
     """
     Sample position from game either uniformly or according to some priority.
     """
-    # TODO: according to some priority
+    # TODO: sample according to some priority
     return numpy.random.choice(range(len(game_history.rewards)))
 
 
@@ -95,7 +95,7 @@ def make_target(game_history, state_index, num_unroll_steps, td_steps):
             value += reward * game_history.discount ** i
 
         if current_index < len(game_history.root_values):
-            target_values.append(value)
+            target_values.append(0.25 * value)
             target_rewards.append(game_history.rewards[current_index])
             target_policies.append(game_history.child_visits[current_index])
         else:
