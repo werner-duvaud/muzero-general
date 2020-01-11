@@ -64,7 +64,7 @@ class MuZeroNetwork(torch.nn.Module):
         return self.representation_network(observation)
 
     def dynamics(self, encoded_state, action):
-        # Stack encoded_state with one hot action (See paper appendix  Network Architecture)
+        # Stack encoded_state with one hot action (See paper appendix Network Architecture)
         action_one_hot = (
             torch.zeros((action.shape[0], self.action_space_size))
             .to(action.device)

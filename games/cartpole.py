@@ -9,7 +9,7 @@ class MuZeroConfig:
 
         ### Game
         self.observation_shape = 4  # Dimensions of the game observation
-        self.action_space = [i for i in range(2)]  # Fixed list of all possible actions (float between 0 and 1)
+        self.action_space = [i for i in range(2)]  # Fixed list of all possible actions
 
 
         ### Self-Play
@@ -41,7 +41,7 @@ class MuZeroConfig:
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
-        self.training_delay = 0 # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
+        self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
 
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
