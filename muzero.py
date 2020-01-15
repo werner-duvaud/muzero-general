@@ -44,6 +44,11 @@ class MuZero:
                 )
             )
             raise err
+        
+        try:
+            os.mkdir(os.path.join(self.config.results_path))
+        except FileExistsError:
+            pass
 
         # Fix random generator seed for reproductibility
         numpy.random.seed(self.config.seed)
@@ -65,10 +70,7 @@ class MuZero:
 
         # Initialize workers
         training_worker = trainer.Trainer.remote(
-            copy.deepcopy(self.muzero_weights),
-            self.config,
-            # Train on GPU if available
-            "cuda" if torch.cuda.is_available() else "cpu",
+            copy.deepcopy(self.muzero_weights), self.config
         )
         shared_storage_worker = shared_storage.SharedStorage.remote(
             copy.deepcopy(self.muzero_weights), self.game_name, self.config,
@@ -79,12 +81,11 @@ class MuZero:
                 copy.deepcopy(self.muzero_weights),
                 self.Game(self.config.seed + seed),
                 self.config,
-                "cpu",
             )
             for seed in range(self.config.num_actors)
         ]
         test_worker = self_play.SelfPlay.remote(
-            copy.deepcopy(self.muzero_weights), self.Game(), self.config, "cpu",
+            copy.deepcopy(self.muzero_weights), self.Game(), self.config
         )
 
         # Launch workers
@@ -145,7 +146,7 @@ class MuZero:
         print("Testing...")
         ray.init()
         self_play_workers = self_play.SelfPlay.remote(
-            copy.deepcopy(self.muzero_weights), self.Game(), self.config, "cpu",
+            copy.deepcopy(self.muzero_weights), self.Game(), self.config
         )
         test_rewards = []
         with torch.no_grad():
@@ -169,5 +170,5 @@ if __name__ == "__main__":
     muzero = MuZero("cartpole")
     muzero.train()
 
-    # muzero.load_model()
+    #muzero.load_model()
     muzero.test()

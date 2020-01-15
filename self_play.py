@@ -14,7 +14,7 @@ class SelfPlay:
     Class which run in a dedicated thread to play games and save them to the replay-buffer.
     """
 
-    def __init__(self, initial_weights, game, config, device):
+    def __init__(self, initial_weights, game, config):
         self.config = config
         self.game = game
 
@@ -26,7 +26,7 @@ class SelfPlay:
             self.config.hidden_size,
         )
         self.model.set_weights(initial_weights)
-        self.model.to(torch.device(device))
+        self.model.to(torch.device('cpu'))
         self.model.eval()
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
@@ -272,6 +272,7 @@ class GameHistory:
 
     def store_search_statistics(self, root, action_space):
         sum_visits = sum(child.visit_count for child in root.children.values())
+        # TODO: action could be of any type, not only integers
         self.child_visits.append(
             [
                 root.children[a].visit_count / sum_visits if a in root.children else 0

@@ -11,12 +11,7 @@ It is designed to be easily adaptable for every games or reinforcement learning 
 
 MuZero is a model based reinforcement learning algorithm, successor of AlphaZero. It learns to master games without knowing the rules. It only knows actions and then learn to play and master the game. It is at least more efficient than similar algorithms like [AlphaZero](https://arxiv.org/abs/1712.01815), [SimPLe](https://arxiv.org/abs/1903.00374) and [World Models](https://arxiv.org/abs/1803.10122).
 
-It uses [PyTorch](https://github.com/pytorch/pytorch) and [Ray](https://github.com/ray-project/ray) for running the different components simultaneously. There is a complete GPU support.
-
-There are four components which are classes that run simultaneously in a dedicated thread.
-The `shared storage` holds the latest neural network weights, the `self-play` uses those weights to generate self-play games and store them in the `replay buffer`. Finally, those played games are used to `train` a network and store the weights in the shared storage. The circle is complete. See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works)
-
-Those components are launched and managed from the MuZero class in `muzero.py` and the structure of the neural network is defined in `models.py`.
+It uses [PyTorch](https://github.com/pytorch/pytorch) and [Ray](https://github.com/ray-project/ray) for running the different components simultaneously. GPU training is supported. See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works)
 
 All performances are tracked and displayed in real time in tensorboard.
 

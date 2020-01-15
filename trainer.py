@@ -7,14 +7,14 @@ import torch
 import models
 
 
-@ray.remote(num_gpus=1)
+@ray.remote(num_gpus=1 if torch.cuda.is_available() else 0)
 class Trainer:
     """
     Class which run in a dedicated thread to train a neural network and save it
     in the shared storage.
     """
 
-    def __init__(self, initial_weights, config, device):
+    def __init__(self, initial_weights, config):
         self.config = config
         self.training_step = 0
 
@@ -26,7 +26,7 @@ class Trainer:
             self.config.hidden_size,
         )
         self.model.set_weights(initial_weights)
-        self.model.to(torch.device(device))
+        self.model.to(torch.device(config.training_device))
         self.model.train()
 
         self.optimizer = torch.optim.SGD(

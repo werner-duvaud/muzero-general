@@ -1,5 +1,6 @@
 import gym
 import numpy
+import torch
 
 
 class MuZeroConfig:
@@ -42,6 +43,7 @@ class MuZeroConfig:
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
         self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
+        self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
@@ -54,6 +56,7 @@ class MuZeroConfig:
 
         ### Test
         self.test_episodes = 2  # Number of game played to evaluate the network
+
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
