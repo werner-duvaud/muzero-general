@@ -96,7 +96,7 @@ class Game:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done, _ = self.env.step(action)
-        return numpy.array(observation).flatten(), reward/100, done
+        return numpy.array(observation).flatten(), reward, done
 
     def to_play(self):
         """
