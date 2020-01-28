@@ -44,11 +44,8 @@ class MuZero:
                 )
             )
             raise err
-        
-        try:
-            os.mkdir(os.path.join(self.config.results_path))
-        except FileExistsError:
-            pass
+
+        os.makedirs(os.path.join(self.config.results_path), exist_ok=True)
 
         # Fix random generator seed for reproductibility
         numpy.random.seed(self.config.seed)
@@ -69,9 +66,9 @@ class MuZero:
         )
 
         # Initialize workers
-        training_worker = trainer.Trainer.remote(
-            copy.deepcopy(self.muzero_weights), self.config
-        )
+        training_worker = trainer.Trainer.options(
+            num_gpus=1 if "cuda" in self.config.training_device else 0
+        ).remote(copy.deepcopy(self.muzero_weights), self.config)
         shared_storage_worker = shared_storage.SharedStorage.remote(
             copy.deepcopy(self.muzero_weights), self.game_name, self.config,
         )
@@ -106,36 +103,39 @@ class MuZero:
         )
         counter = 0
         infos = ray.get(shared_storage_worker.get_infos.remote())
-        while infos["training_step"] < self.config.training_steps:
-            # Get and save real time performance
-            infos = ray.get(shared_storage_worker.get_infos.remote())
-            writer.add_scalar(
-                "1.Total reward/Total reward", infos["total_reward"], counter
-            )
-            writer.add_scalar(
-                "2.Workers/Self played games",
-                ray.get(replay_buffer_worker.get_self_play_count.remote()),
-                counter,
-            )
-            writer.add_scalar(
-                "2.Workers/Training steps", infos["training_step"], counter
-            )
-            writer.add_scalar("3.Loss/1.Total loss", infos["total_loss"], counter)
-            writer.add_scalar("3.Loss/Value loss", infos["value_loss"], counter)
-            writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
-            writer.add_scalar("3.Loss/Policy loss", infos["policy_loss"], counter)
-            print(
-                "Last test reward: {0:.2f}. Training step: {1}/{2}. Played games: {3}. Loss: {4:.2f}".format(
-                    infos["total_reward"],
-                    infos["training_step"],
-                    self.config.training_steps,
+        try:
+            while infos["training_step"] < self.config.training_steps:
+                # Get and save real time performance
+                infos = ray.get(shared_storage_worker.get_infos.remote())
+                writer.add_scalar(
+                    "1.Total reward/Total reward", infos["total_reward"], counter
+                )
+                writer.add_scalar(
+                    "2.Workers/Self played games",
                     ray.get(replay_buffer_worker.get_self_play_count.remote()),
-                    infos["total_loss"],
-                ),
-                end="\r",
-            )
-            counter += 1
-            time.sleep(3)
+                    counter,
+                )
+                writer.add_scalar(
+                    "2.Workers/Training steps", infos["training_step"], counter
+                )
+                writer.add_scalar("3.Loss/1.Total loss", infos["total_loss"], counter)
+                writer.add_scalar("3.Loss/Value loss", infos["value_loss"], counter)
+                writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
+                writer.add_scalar("3.Loss/Policy loss", infos["policy_loss"], counter)
+                print(
+                    "Last test reward: {0:.2f}. Training step: {1}/{2}. Played games: {3}. Loss: {4:.2f}".format(
+                        infos["total_reward"],
+                        infos["training_step"],
+                        self.config.training_steps,
+                        ray.get(replay_buffer_worker.get_self_play_count.remote()),
+                        infos["total_loss"],
+                    ),
+                    end="\r",
+                )
+                counter += 1
+                time.sleep(3)
+        except KeyboardInterrupt:
+            pass
         self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
         ray.shutdown()
 
@@ -149,10 +149,9 @@ class MuZero:
             copy.deepcopy(self.muzero_weights), self.Game(), self.config
         )
         test_rewards = []
-        with torch.no_grad():
-            for _ in range(self.config.test_episodes):
-                history = ray.get(self_play_workers.play_game.remote(0, render))
-                test_rewards.append(sum(history.rewards))
+        for _ in range(self.config.test_episodes):
+            history = ray.get(self_play_workers.play_game.remote(0, render))
+            test_rewards.append(sum(history.rewards))
         ray.shutdown()
         return test_rewards
 
@@ -170,5 +169,5 @@ if __name__ == "__main__":
     muzero = MuZero("cartpole")
     muzero.train()
 
-    #muzero.load_model()
+    muzero.load_model()
     muzero.test()

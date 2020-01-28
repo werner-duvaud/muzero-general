@@ -6,31 +6,52 @@
 
 # MuZero General
 
-A flexible, commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) implementation of MuZero based on the Google DeepMind [paper](https://arxiv.org/abs/1911.08265) and the associated [pseudocode](https://arxiv.org/src/1911.08265v1/anc/pseudocode.py).
-It is designed to be easily adaptable for every games or reinforcement learning environments (like [gym](https://github.com/openai/gym)). You only need to edit the [game file](https://github.com/werner-duvaud/muzero-general/tree/master/games) with the parameters and the game class. Please refer to the documentation and the [example](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py).
+A commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) implementation of MuZero based on the Google DeepMind [paper](https://arxiv.org/abs/1911.08265) and the associated [pseudocode](https://arxiv.org/src/1911.08265v1/anc/pseudocode.py).
+It is designed to be easily adaptable for every games or reinforcement learning environments (like [gym](https://github.com/openai/gym)). You only need to edit the [game file](https://github.com/werner-duvaud/muzero-general/tree/master/games) with the parameters and the game class. Please refer to the [documentation](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) and the [example](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py).
 
-MuZero is a model based reinforcement learning algorithm, successor of AlphaZero. It learns to master games without knowing the rules. It only knows actions and then learn to play and master the game. It is at least more efficient than similar algorithms like [AlphaZero](https://arxiv.org/abs/1712.01815), [SimPLe](https://arxiv.org/abs/1903.00374) and [World Models](https://arxiv.org/abs/1803.10122).
+MuZero is a model based reinforcement learning algorithm, successor of AlphaZero. It learns to master games without knowing the rules. It only knows actions and then learn to play and master the game. It is at least more efficient than similar algorithms like [AlphaZero](https://arxiv.org/abs/1712.01815), [SimPLe](https://arxiv.org/abs/1903.00374) and [World Models](https://arxiv.org/abs/1803.10122). See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works)
 
-It uses [PyTorch](https://github.com/pytorch/pytorch) and [Ray](https://github.com/ray-project/ray) for running the different components simultaneously. GPU training is supported. See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works)
+## Features
 
-All performances are tracked and displayed in real time in tensorboard.
+* [x] Fully connected network in [PyTorch](https://github.com/pytorch/pytorch)
+* [x] Multi-Threaded with [Ray](https://github.com/ray-project/ray)
+* [x] CPU/GPU support
+* [x] TensorBoard real-time monitoring
+* [x] Single and multiplayer mode
+* [x] Commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation)
+* [x] Easily adaptable for new games
+* [x] [Examples](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py) of board and Gym games (See [list below](https://github.com/werner-duvaud/muzero-general#games-already-implemented-with-pretrained-network-available))
+* [x] [Pretrained weights](https://github.com/werner-duvaud/muzero-general/tree/master/pretrained) available
+* [ ] Play against MuZero mode with policy and value tracking 
+* [ ] Residual Network
+* [ ] Atari games
+
+## Games already implemented with pretrained network available
+
+* Cartpole
+* Lunar Lander
+* Connect4
+
+## Demo
+
+All performances are tracked and displayed in real time in tensorboard :
 
 ![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/cartpole_training_summary.png)
 
-## Games already implemented with pretrained network available
-* Lunar Lander
-* Cartpole
+Testing Lunar Lander :
 
 ![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/lunarlander_training_preview.png)
 
 ## Getting started
 ### Installation
+
 ```bash
 cd muzero-general
 pip install -r requirements.txt
 ```
 
 ### Training
+
 Edit the end of muzero.py:
 ```python
 muzero = Muzero("cartpole")
@@ -40,12 +61,13 @@ Then run:
 ```bash
 python muzero.py
 ```
-To visualize the training results, run in a new bash:
+To visualize the training results, run in a new terminal:
 ```bash
 tensorboard --logdir ./
 ```
 
 ### Testing
+
 Edit the end of muzero.py:
 ```python
 muzero = Muzero("cartpole")
@@ -57,14 +79,8 @@ Then run:
 python muzero.py
 ```
 
-## Coming soon
-* [ ] Atari mode with residual network
-* [ ] Live test policy & value tracking 
-* [ ] [Open spiel](https://github.com/deepmind/open_spiel) integration
-* [ ] Checkers game
-* [ ] TensorFlow mode
-
 ## Authors
+
 * Werner Duvaud
 * Aurèle Hainaut
 * Paul Lenoir

@@ -7,7 +7,7 @@ import torch
 import models
 
 
-@ray.remote(num_gpus=1 if torch.cuda.is_available() else 0)
+@ray.remote
 class Trainer:
     """
     Class which run in a dedicated thread to train a neural network and save it
@@ -64,12 +64,7 @@ class Trainer:
         """
         Perform one training step.
         """
-        # Update learning rate
-        lr = self.config.lr_init * self.config.lr_decay_rate ** (
-            self.training_step / self.config.lr_decay_steps
-        )
-        for param_group in self.optimizer.param_groups:
-            param_group["lr"] = lr
+        self.update_lr()
 
         (
             observation_batch,
@@ -116,9 +111,7 @@ class Trainer:
             reward_loss += current_reward_loss
             policy_loss += current_policy_loss
 
-        loss = (
-            value_loss + reward_loss + policy_loss
-        ).mean()
+        loss = (value_loss + reward_loss + policy_loss).mean()
 
         # Scale gradient by number of unroll steps (See paper Training appendix)
         loss.register_hook(lambda grad: grad * 1 / self.config.num_unroll_steps)
@@ -136,6 +129,16 @@ class Trainer:
             policy_loss.mean().item(),
         )
 
+    def update_lr(self):
+        """
+        Update learning rate
+        """
+        lr = self.config.lr_init * self.config.lr_decay_rate ** (
+            self.training_step / self.config.lr_decay_steps
+        )
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
 
 def loss_function(
     value, reward, policy_logits, target_value, target_reward, target_policy
@@ -143,5 +146,7 @@ def loss_function(
     # TODO: paper promotes cross entropy instead of MSE
     value_loss = torch.nn.MSELoss()(value, target_value)
     reward_loss = torch.nn.MSELoss()(reward, target_reward)
-    policy_loss = torch.mean(torch.sum(-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits), 1))
+    policy_loss = torch.mean(
+        torch.sum(-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits), 1)
+    )
     return value_loss, reward_loss, policy_loss

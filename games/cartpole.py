@@ -11,6 +11,7 @@ class MuZeroConfig:
         ### Game
         self.observation_shape = 4  # Dimensions of the game observation
         self.action_space = [i for i in range(2)]  # Fixed list of all possible actions
+        self.players = [i for i in range(1)]  # List of players
 
 
         ### Self-Play
@@ -95,7 +96,16 @@ class Game:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done, _ = self.env.step(action)
-        return numpy.array(observation).flatten(), reward, done
+        return observation, reward, done
+
+    def to_play(self):
+        """
+        Return the current player.
+
+        Returns:
+            The current player, it should be an element of the players list in the config. 
+        """
+        return 0
 
     def reset(self):
         """

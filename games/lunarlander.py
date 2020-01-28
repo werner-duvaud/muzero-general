@@ -11,12 +11,13 @@ class MuZeroConfig:
         ### Game
         self.observation_shape = 8  # Dimensions of the game observation
         self.action_space = [i for i in range(4)]  # Fixed list of all possible actions
+        self.players = [i for i in range(1)]  # List of players
 
 
         ### Self-Play
         self.num_actors = 10  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 500  # Maximum number of moves if game is not finished before
-        self.num_simulations = 80  # Number of futur moves self-simulated
+        self.max_moves = 200  # Maximum number of moves if game is not finished before
+        self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.self_play_delay = 0 # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
@@ -95,7 +96,16 @@ class Game:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done, _ = self.env.step(action)
-        return numpy.array(observation).flatten(), reward, done
+        return numpy.array(observation).flatten(), reward/100, done
+
+    def to_play(self):
+        """
+        Return the current player.
+
+        Returns:
+            The current player, it should be an element of the players list in the config. 
+        """
+        return 0
 
     def reset(self):
         """
