@@ -135,6 +135,8 @@ class MuZero:
                 counter += 1
                 time.sleep(3)
         except KeyboardInterrupt:
+            # Comment the line below to be able to stop the training but keep running
+            raise KeyboardInterrupt
             pass
         self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
         ray.shutdown()
@@ -143,7 +145,7 @@ class MuZero:
         """
         Test the model in a dedicated thread.
         """
-        print("Testing...")
+        print("\nTesting...")
         ray.init()
         self_play_workers = self_play.SelfPlay.remote(
             copy.deepcopy(self.muzero_weights), self.Game(), self.config
