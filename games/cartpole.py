@@ -37,12 +37,12 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = "./pretrained"  # Path to store the model weights
-        self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 5000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
+        self.td_steps = 30  # Number of steps in the futur to take into account for calculating the target value
         self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -51,7 +51,7 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.008  # Initial learning rate
-        self.lr_decay_rate = 0.01
+        self.lr_decay_rate = 1
         self.lr_decay_steps = 10000
 
 

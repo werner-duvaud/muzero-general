@@ -45,7 +45,7 @@ class MuZeroNetwork(torch.nn.Module):
             lambda module, grad_i, grad_o: (grad_i[0] * 0.5,)
         )
         self.dynamics_reward_network = FullyConnectedNetwork(
-            encoding_size + self.action_space_size, [hidden_size], 1
+            encoding_size + self.action_space_size, [hidden_size], 1, activation=None
         )
 
         self.prediction_policy_network = FullyConnectedNetwork(

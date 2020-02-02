@@ -16,10 +16,10 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_actors = 10  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 200  # Maximum number of moves if game is not finished before
+        self.max_moves = 1000  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
-        self.self_play_delay = 0 # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
+        self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
@@ -31,28 +31,28 @@ class MuZeroConfig:
 
 
         ### Network
-        self.encoding_size = 32
-        self.hidden_size = 64
+        self.encoding_size = 64
+        self.hidden_size = 128
 
 
         ### Training
         self.results_path = "./pretrained"  # Path to store the model weights
-        self.training_steps = 20000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 3000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
-        self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
-        self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
+        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
+        self.checkpoint_interval = 3  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
-        self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
+        self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.01  # Initial learning rate
-        self.lr_decay_rate = 0.001
-        self.lr_decay_steps = 10000
+        self.lr_init = 0.00005  # Initial learning rate
+        self.lr_decay_rate = 1
+        self.lr_decay_steps = 100000
 
 
         ### Test
@@ -67,12 +67,16 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
-        if trained_steps < 0.5 * self.training_steps:
-            return 1.0
-        elif trained_steps < 0.75 * self.training_steps:
-            return 0.5
-        else:
-            return 0.25
+        # if trained_steps < 0.2 * self.training_steps:
+        #     return float('inf')
+        # if trained_steps < 0.5 * self.training_steps:
+        #     return 0.8
+        # elif trained_steps < 0.75 * self.training_steps:
+        #     return 0.5
+        # else:
+        #     return 0.25
+
+        return 1
 
 
 class Game:

@@ -73,7 +73,7 @@ class SelfPlay:
                     self.model,
                     observation,
                     self.game.to_play(),
-                    True if temperature else False,
+                    False if temperature == 0 else True,
                 )
 
                 action = select_action(root, temperature)
@@ -103,6 +103,8 @@ def select_action(node, temperature):
     ).T
     if temperature == 0:
         action_pos = numpy.argmax(visit_counts[0])
+    elif temperature == float("inf"):
+        action_pos = numpy.random.choice(len(visit_counts[1]))
     else:
         # See paper appendix Data Generation
         visit_count_distribution = visit_counts[0] ** (1 / temperature)
@@ -112,9 +114,6 @@ def select_action(node, temperature):
         action_pos = numpy.random.choice(
             len(visit_counts[1]), p=visit_count_distribution
         )
-
-    if temperature == float("inf"):
-        action_pos = numpy.random.choice(len(visit_counts[1]))
 
     return visit_counts[1][action_pos]
 

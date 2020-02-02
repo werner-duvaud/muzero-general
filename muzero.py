@@ -134,9 +134,9 @@ class MuZero:
                 )
                 counter += 1
                 time.sleep(3)
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as err:
             # Comment the line below to be able to stop the training but keep running
-            raise KeyboardInterrupt
+            raise err
             pass
         self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
         ray.shutdown()

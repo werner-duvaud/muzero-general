@@ -51,7 +51,7 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.05  # Initial learning rate
-        self.lr_decay_rate = 0.01
+        self.lr_decay_rate = 1
         self.lr_decay_steps = 10000
 
 

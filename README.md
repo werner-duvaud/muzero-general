@@ -25,12 +25,7 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 * [ ] Play against MuZero mode with policy and value tracking 
 * [ ] Residual Network
 * [ ] Atari games
-
-## Games already implemented with pretrained network available
-
-* Cartpole
-* Lunar Lander
-* Connect4
+* [ ] Windows support ([workaround by ihexx](https://github.com/ihexx/muzero-general))
 
 ## Demo
 
@@ -41,6 +36,16 @@ All performances are tracked and displayed in real time in tensorboard :
 Testing Lunar Lander :
 
 ![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/lunarlander_training_preview.png)
+
+## Code structure
+
+![code structure](https://github.com/werner-duvaud/muzero-general/blob/master/docs/how-it-works-werner-duvaud.png)
+
+## Games already implemented with pretrained network available
+
+* Cartpole
+* Lunar Lander
+* Connect4
 
 ## Getting started
 ### Installation
