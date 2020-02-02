@@ -37,15 +37,15 @@ Testing Lunar Lander :
 
 ![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/lunarlander_training_preview.png)
 
-## Code structure
-
-![code structure](https://github.com/werner-duvaud/muzero-general/blob/master/docs/how-it-works-werner-duvaud.png)
-
 ## Games already implemented with pretrained network available
 
 * Cartpole
 * Lunar Lander
 * Connect4
+
+## Code structure
+
+![code structure](https://github.com/werner-duvaud/muzero-general/blob/master/docs/how-it-works-werner-duvaud.png)
 
 ## Getting started
 ### Installation
