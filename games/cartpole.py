@@ -17,7 +17,7 @@ class MuZeroConfig:
         ### Self-Play
         self.num_actors = 10  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 500  # Maximum number of moves if game is not finished before
-        self.num_simulations = 80  # Number of futur moves self-simulated
+        self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.self_play_delay = 0 # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
@@ -32,7 +32,8 @@ class MuZeroConfig:
 
         ### Network
         self.encoding_size = 32
-        self.hidden_size = 64
+        self.hidden_layers = [64]
+        self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
 
         ### Training
@@ -42,7 +43,7 @@ class MuZeroConfig:
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 30  # Number of steps in the futur to take into account for calculating the target value
+        self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
         self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -50,13 +51,14 @@ class MuZeroConfig:
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.008  # Initial learning rate
+        self.lr_init = 0.5  # Initial learning rate
         self.lr_decay_rate = 1
-        self.lr_decay_steps = 10000
+        self.lr_decay_steps = 1000
 
 
         ### Test
         self.test_episodes = 2  # Number of game played to evaluate the network
+
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
@@ -106,6 +108,19 @@ class Game:
             The current player, it should be an element of the players list in the config. 
         """
         return 0
+
+    def legal_actions(self):
+        """
+        Should return the legal actions at each turn, if it is not available, it can return
+        the whole action space. At each turn, the game have to be able to handle one of returned actions.
+        
+        For complexe game where calculating legal moves is too long, the idea is to define the legal actions
+        equal to the action space but to return a negative reward if the action is illegal.        
+
+        Returns:
+            An array of integers, subest of the action space.
+        """
+        return [i for i in range(2)]
 
     def reset(self):
         """

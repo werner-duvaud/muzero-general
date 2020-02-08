@@ -32,7 +32,8 @@ class MuZeroConfig:
 
         ### Network
         self.encoding_size = 32
-        self.hidden_size = 64
+        self.hidden_layers = [64]
+        self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
 
         ### Training
@@ -93,13 +94,7 @@ class Game:
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        if action not in self.env.legal_actions():
-            observation, reward, done = self.env.step(self.env.legal_actions()[0])
-            reward = -1
-            done = True
-        else:
-            observation, reward, done = self.env.step(action)
-
+        observation, reward, done = self.env.step(action)
         return numpy.array(observation).flatten(), reward, done
 
     def to_play(self):
@@ -110,6 +105,19 @@ class Game:
             The current player, it should be an element of the players list in the config. 
         """
         return self.env.to_play()
+
+    def legal_actions(self):
+        """
+        Should return the legal actions at each turn, if it is not available, it can return
+        the whole action space. At each turn, the game have to be able to handle one of returned actions.
+        
+        For complexe game where calculating legal moves is too long, the idea is to define the legal actions
+        equal to the action space but to return a negative reward if the action is illegal.        
+
+        Returns:
+            An array of integers, subest of the action space.
+        """
+        return self.env.legal_actions()
 
     def reset(self):
         """
@@ -155,8 +163,12 @@ class Connect4:
 
         done = self.is_finished()
 
+        reward = 1 if done and 0 < len(self.legal_actions()) else 0
+
         self.player *= -1
-        return self.get_observation(), 1 if done else 0, done
+
+
+        return self.get_observation(), reward, done
 
     def get_observation(self):
         if self.player == 1:
@@ -167,10 +179,8 @@ class Connect4:
     def legal_actions(self):
         legal = []
         for i in range(7):
-            for j in range(6):
-                if self.board[j][i] == 0:
-                    legal.append(i)
-                    break
+            if self.board[5][i] == 0:
+                legal.append(i)
         return legal
 
     def is_finished(self):
@@ -217,6 +227,9 @@ class Connect4:
                     and self.board[j - 3][i + 3] == self.player
                 ):
                     return True
+
+        if len(self.legal_actions()) == 0:
+            return True
 
         return False
 

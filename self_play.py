@@ -24,7 +24,8 @@ class SelfPlay:
             self.config.observation_shape,
             len(self.config.action_space),
             self.config.encoding_size,
-            self.config.hidden_size,
+            self.config.hidden_layers,
+            self.config.support_size,
         )
         self.model.set_weights(initial_weights)
         self.model.to(torch.device("cpu"))
@@ -46,7 +47,7 @@ class SelfPlay:
                     ]
                 )
             )
-            game_history = self.play_game(temperature, False)
+            game_history = self.play_game(temperature, False, None)
 
             # Save to the shared storage
             if test_mode:
@@ -59,7 +60,7 @@ class SelfPlay:
             if not test_mode and self.config.self_play_delay:
                 time.sleep(self.config.self_play_delay)
 
-    def play_game(self, temperature, render):
+    def play_game(self, temperature, render, play_against_human_player):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
         """
@@ -67,20 +68,32 @@ class SelfPlay:
         observation = self.game.reset()
         game_history.observation_history.append(observation)
         done = False
+
+        if render:
+            self.game.render()
+
         with torch.no_grad():
             while not done and len(game_history.action_history) < self.config.max_moves:
-                root = MCTS(self.config).run(
-                    self.model,
-                    observation,
-                    self.game.to_play(),
-                    False if temperature == 0 else True,
-                )
+                current_player = self.game.to_play()
+                if play_against_human_player is None or play_against_human_player == current_player:
+                    root = MCTS(self.config).run(
+                        self.model,
+                        observation,
+                        self.game.legal_actions(),
+                        current_player,
+                        False if temperature == 0 else True,
+                    )
 
-                action = select_action(root, temperature)
+                    action = self.select_action(root, temperature)
 
-                observation, reward, done = self.game.step(action)
+                    observation, reward, done = self.game.step(action)
+
+                if play_against_human_player is not None and current_player != play_against_human_player:
+                    action = int(input("Enter the action of player {} : ".format(current_player)))
+                    observation, reward, done = self.game.step(action)
 
                 if render:
+                    print("Action : {}".format(action))
                     self.game.render()
 
                 game_history.observation_history.append(observation)
@@ -91,31 +104,30 @@ class SelfPlay:
         self.game.close()
         return game_history
 
-
-def select_action(node, temperature):
-    """
-    Select action according to the vivist count distribution and the temperature.
-    The temperature is changed dynamically with the visit_softmax_temperature function 
-    in the config.
-    """
-    visit_counts = numpy.array(
-        [[child.visit_count, action] for action, child in node.children.items()]
-    ).T
-    if temperature == 0:
-        action_pos = numpy.argmax(visit_counts[0])
-    elif temperature == float("inf"):
-        action_pos = numpy.random.choice(len(visit_counts[1]))
-    else:
-        # See paper appendix Data Generation
-        visit_count_distribution = visit_counts[0] ** (1 / temperature)
-        visit_count_distribution = visit_count_distribution / sum(
-            visit_count_distribution
+    @staticmethod
+    def select_action(node, temperature):
+        """
+        Select action according to the vivist count distribution and the temperature.
+        The temperature is changed dynamically with the visit_softmax_temperature function 
+        in the config.
+        """
+        visit_counts = numpy.array(
+            [child.visit_count for child in node.children.values()]
         )
-        action_pos = numpy.random.choice(
-            len(visit_counts[1]), p=visit_count_distribution
-        )
+        actions = [action for action in node.children.keys()]
+        if temperature == 0:
+            action = actions[numpy.argmax(visit_counts)]
+        elif temperature == float("inf"):
+            action = numpy.random.choice(actions)
+        else:
+            # See paper appendix Data Generation
+            visit_count_distribution = visit_counts ** (1 / temperature)
+            visit_count_distribution = visit_count_distribution / sum(
+                visit_count_distribution
+            )
+            action = numpy.random.choice(actions, p=visit_count_distribution)
 
-    return visit_counts[1][action_pos]
+        return action
 
 
 # Game independant
@@ -130,7 +142,7 @@ class MCTS:
     def __init__(self, config):
         self.config = config
 
-    def run(self, model, observation, to_play, add_exploration_noise):
+    def run(self, model, observation, legal_actions, to_play, add_exploration_noise):
         """
         At the root of the search tree we use the representation function to obtain a
         hidden state given the current observation.
@@ -147,12 +159,11 @@ class MCTS:
         _, expected_reward, policy_logits, hidden_state = model.initial_inference(
             observation
         )
+        expected_reward = self.support_to_scalar(
+            expected_reward, self.config.support_size
+        )
         root.expand(
-            self.config.action_space,
-            to_play,
-            expected_reward,
-            policy_logits,
-            hidden_state,
+            legal_actions, to_play, expected_reward, policy_logits, hidden_state,
         )
         if add_exploration_noise:
             root.add_exploration_noise(
@@ -183,8 +194,10 @@ class MCTS:
             parent = search_path[-2]
             value, reward, policy_logits, hidden_state = model.recurrent_inference(
                 parent.hidden_state,
-                torch.tensor([[last_action]]).to(parent.hidden_state.device),
+                torch.tensor([last_action]).unsqueeze(1).to(parent.hidden_state.device),
             )
+            value = self.support_to_scalar(value, self.config.support_size)
+            reward = self.support_to_scalar(reward, self.config.support_size)
             node.expand(
                 self.config.action_space,
                 virtual_to_play,
@@ -235,6 +248,29 @@ class MCTS:
             min_max_stats.update(node.value())
 
             value = node.reward + self.config.discount * value
+
+    @staticmethod
+    def support_to_scalar(logits, support_size):
+        """
+        Transform a categorical representation to a scalar
+        See paper appendix Network Architecture
+        """
+        # Decode to a scalar
+        probs = torch.softmax(logits, dim=1)
+        support = (
+            torch.tensor([x for x in range(-support_size, support_size + 1)])
+            .expand(probs.shape)
+            .to(device=probs.device)
+        )
+        x = torch.sum(support * probs, dim=1, keepdim=True)
+
+        # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
+        x = torch.sign(x) * (
+            ((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))
+            ** 2
+            - 1
+        )
+        return x
 
 
 class Node:
@@ -294,7 +330,6 @@ class GameHistory:
 
     def store_search_statistics(self, root, action_space):
         sum_visits = sum(child.visit_count for child in root.children.values())
-        # TODO: action could be of any type, not only integers
         self.child_visits.append(
             [
                 root.children[a].visit_count / sum_visits if a in root.children else 0

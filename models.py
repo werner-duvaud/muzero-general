@@ -3,20 +3,21 @@ import torch
 
 class FullyConnectedNetwork(torch.nn.Module):
     def __init__(
-        self, input_size, layers_sizes, output_size, activation=torch.nn.Tanh()
+        self, input_size, layer_sizes, output_size, activation=torch.nn.Tanh()
     ):
         super(FullyConnectedNetwork, self).__init__()
-        layers_sizes.insert(0, input_size)
+        sizes_list = layer_sizes.copy()
+        sizes_list.insert(0, input_size)
         layers = []
-        if 1 < len(layers_sizes):
-            for i in range(len(layers_sizes) - 1):
+        if 1 < len(sizes_list):
+            for i in range(len(sizes_list) - 1):
                 layers.extend(
                     [
-                        torch.nn.Linear(layers_sizes[i], layers_sizes[i + 1]),
+                        torch.nn.Linear(sizes_list[i], sizes_list[i + 1]),
                         torch.nn.ReLU(),
                     ]
                 )
-        layers.append(torch.nn.Linear(layers_sizes[-1], output_size))
+        layers.append(torch.nn.Linear(sizes_list[-1], output_size))
         if activation:
             layers.append(activation)
         self.layers = torch.nn.ModuleList(layers)
@@ -27,32 +28,42 @@ class FullyConnectedNetwork(torch.nn.Module):
         return x
 
 
-# TODO: unified residual network
 class MuZeroNetwork(torch.nn.Module):
-    def __init__(self, observation_size, action_space_size, encoding_size, hidden_size):
+    def __init__(
+        self,
+        observation_size,
+        action_space_size,
+        encoding_size,
+        hidden_layers,
+        support_size,
+    ):
         super().__init__()
         self.action_space_size = action_space_size
+        self.full_support_size = 2 * support_size + 1
 
         self.representation_network = FullyConnectedNetwork(
             observation_size, [], encoding_size
         )
 
         self.dynamics_encoded_state_network = FullyConnectedNetwork(
-            encoding_size + self.action_space_size, [hidden_size], encoding_size
+            encoding_size + self.action_space_size, hidden_layers, encoding_size
         )
         # Gradient scaling (See paper appendix Training)
         self.dynamics_encoded_state_network.register_backward_hook(
             lambda module, grad_i, grad_o: (grad_i[0] * 0.5,)
         )
         self.dynamics_reward_network = FullyConnectedNetwork(
-            encoding_size + self.action_space_size, [hidden_size], 1, activation=None
+            encoding_size + self.action_space_size,
+            hidden_layers,
+            self.full_support_size,
+            activation=None,
         )
 
         self.prediction_policy_network = FullyConnectedNetwork(
             encoding_size, [], self.action_space_size, activation=None
         )
         self.prediction_value_network = FullyConnectedNetwork(
-            encoding_size, [], 1, activation=None
+            encoding_size, [], self.full_support_size, activation=None
         )
 
     def prediction(self, encoded_state):
@@ -93,7 +104,7 @@ class MuZeroNetwork(torch.nn.Module):
         policy_logit, value = self.prediction(encoded_state)
         return (
             value,
-            torch.zeros(len(observation)).to(observation.device),
+            torch.zeros(len(observation), self.full_support_size).to(observation.device),
             policy_logit,
             encoded_state,
         )

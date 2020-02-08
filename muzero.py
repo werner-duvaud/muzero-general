@@ -56,7 +56,8 @@ class MuZero:
             self.config.observation_shape,
             len(self.config.action_space),
             self.config.encoding_size,
-            self.config.hidden_size,
+            self.config.hidden_layers,
+            self.config.support_size
         ).get_weights()
 
     def train(self):
@@ -136,14 +137,20 @@ class MuZero:
                 time.sleep(3)
         except KeyboardInterrupt as err:
             # Comment the line below to be able to stop the training but keep running
-            raise err
+            # raise err
             pass
         self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
         ray.shutdown()
 
-    def test(self, render=True):
+    def test(self, render, muzero_player):
         """
         Test the model in a dedicated thread.
+
+        Args:
+            render : boolean to display or not the environment.
+
+            muzero_player : Integer with the player number of MuZero in case of multiplayer
+            games, None let MuZero play all players turn by turn.
         """
         print("\nTesting...")
         ray.init()
@@ -152,7 +159,7 @@ class MuZero:
         )
         test_rewards = []
         for _ in range(self.config.test_episodes):
-            history = ray.get(self_play_workers.play_game.remote(0, render))
+            history = ray.get(self_play_workers.play_game.remote(0, render, muzero_player))
             test_rewards.append(sum(history.rewards))
         ray.shutdown()
         return test_rewards
@@ -168,8 +175,15 @@ class MuZero:
 
 
 if __name__ == "__main__":
+    # Use the game and config from the ./games folder
     muzero = MuZero("cartpole")
+
+    ## Train
     muzero.train()
 
+    ## Test
     muzero.load_model()
-    muzero.test()
+    # Render some self-played games
+    muzero.test(render=True, muzero_player=None)
+    # Let user play against MuZero (MuZero is player 0 here)
+    # muzero.test(render=True, muzero_player=0)

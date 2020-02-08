@@ -32,17 +32,18 @@ class MuZeroConfig:
 
         ### Network
         self.encoding_size = 64
-        self.hidden_size = 128
+        self.hidden_layers = [128]
+        self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
 
         ### Training
         self.results_path = "./pretrained"  # Path to store the model weights
-        self.training_steps = 3000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 15000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
-        self.checkpoint_interval = 3  # Number of training steps before using the model for sef-playing
+        self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
+        self.td_steps = 20  # Number of steps in the futur to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -50,9 +51,9 @@ class MuZeroConfig:
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.00005  # Initial learning rate
-        self.lr_decay_rate = 1
-        self.lr_decay_steps = 100000
+        self.lr_init = 0.11  # Initial learning rate
+        self.lr_decay_rate = 0.8
+        self.lr_decay_steps = 1000
 
 
         ### Test
@@ -67,10 +68,8 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
-        if trained_steps < 0.2 * self.training_steps:
-            return float('inf')
         if trained_steps < 0.5 * self.training_steps:
-            return 0.8
+            return 1.0
         elif trained_steps < 0.75 * self.training_steps:
             return 0.5
         else:
@@ -98,7 +97,7 @@ class Game:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done, _ = self.env.step(action)
-        return numpy.array(observation).flatten(), reward, done
+        return numpy.array(observation).flatten(), reward/5, done
 
     def to_play(self):
         """
@@ -108,6 +107,19 @@ class Game:
             The current player, it should be an element of the players list in the config. 
         """
         return 0
+
+    def legal_actions(self):
+        """
+        Should return the legal actions at each turn, if it is not available, it can return
+        the whole action space. At each turn, the game have to be able to handle one of returned actions.
+        
+        For complexe game where calculating legal moves is too long, the idea is to define the legal actions
+        equal to the action space but to return a negative reward if the action is illegal.        
+
+        Returns:
+            An array of integers, subest of the action space.
+        """
+        return [i for i in range(4)]
 
     def reset(self):
         """

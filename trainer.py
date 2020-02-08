@@ -23,7 +23,8 @@ class Trainer:
             self.config.observation_shape,
             len(self.config.action_space),
             self.config.encoding_size,
-            self.config.hidden_size,
+            self.config.hidden_layers,
+            self.config.support_size
         )
         self.model.set_weights(initial_weights)
         self.model.to(torch.device(config.training_device))
@@ -81,6 +82,9 @@ class Trainer:
         target_reward = torch.tensor(target_reward).float().to(device)
         target_policy = torch.tensor(target_policy).float().to(device)
 
+        target_value = self.scalar_to_support(target_value, self.config.support_size)
+        target_reward = self.scalar_to_support(target_reward, self.config.support_size)
+
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
         )
@@ -99,13 +103,13 @@ class Trainer:
                 current_value_loss,
                 current_reward_loss,
                 current_policy_loss,
-            ) = loss_function(
+            ) = self.loss_function(
                 value.squeeze(-1),
                 reward.squeeze(-1),
                 policy_logits,
                 target_value[:, i],
                 target_reward[:, i],
-                target_policy[:, i, :],
+                target_policy[:, i],
             )
             value_loss += current_value_loss
             reward_loss += current_reward_loss
@@ -139,14 +143,35 @@ class Trainer:
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
+    @staticmethod
+    def scalar_to_support(x, support_size):
+        """
+        Transform a scalar to a categorical representation with (2 * support_size + 1) categories
+        See paper appendix Network Architecture
+        """
+        # Reduce the scale (defined in https://arxiv.org/abs/1805.11593)
+        x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1 + 0.001 * x)
 
-def loss_function(
-    value, reward, policy_logits, target_value, target_reward, target_policy
-):
-    # TODO: paper promotes cross entropy instead of MSE
-    value_loss = torch.nn.MSELoss()(value, target_value)
-    reward_loss = torch.nn.MSELoss()(reward, target_reward)
-    policy_loss = torch.mean(
-        torch.sum(-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits), 1)
-    )
-    return value_loss, reward_loss, policy_loss
+        # Encode on a vector
+        x = torch.clamp(x, -support_size, support_size)
+        floor = x.floor()
+        ceil = x.ceil()
+        prob = x - floor
+        logits = torch.zeros(x.shape[0], x.shape[1], 2 * support_size + 1).to(x.device)
+        logits.scatter_(
+            2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1)
+        )
+        logits.scatter_(
+            2, (ceil + support_size).long().unsqueeze(-1), prob.unsqueeze(-1)
+        )
+        return logits
+
+    @staticmethod
+    def loss_function(
+        value, reward, policy_logits, target_value, target_reward, target_policy
+    ):
+        # Cross-entropy had a better convergence than MSE 
+        value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1).mean()
+        reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1).mean()
+        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1).mean()
+        return value_loss, reward_loss, policy_loss
