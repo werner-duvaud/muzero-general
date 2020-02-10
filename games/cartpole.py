@@ -12,10 +12,11 @@ class MuZeroConfig:
         self.observation_shape = 4  # Dimensions of the game observation
         self.action_space = [i for i in range(2)]  # Fixed list of all possible actions
         self.players = [i for i in range(1)]  # List of players
+        self.stacked_observations = 3  # Number of previous observation to add to the current observation
 
 
         ### Self-Play
-        self.num_actors = 10  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_actors = 3  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 500  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward

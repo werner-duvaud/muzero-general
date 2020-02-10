@@ -22,6 +22,7 @@ class SelfPlay:
         # Initialize the network
         self.model = models.MuZeroNetwork(
             self.config.observation_shape,
+            self.config.stacked_observations,
             len(self.config.action_space),
             self.config.encoding_size,
             self.config.hidden_layers,
@@ -66,6 +67,9 @@ class SelfPlay:
         """
         game_history = GameHistory()
         observation = self.game.reset()
+        observation = self.stack_previous_observations(
+            observation, game_history, self.config.stacked_observations
+        )
         game_history.observation_history.append(observation)
         done = False
 
@@ -75,7 +79,10 @@ class SelfPlay:
         with torch.no_grad():
             while not done and len(game_history.action_history) < self.config.max_moves:
                 current_player = self.game.to_play()
-                if play_against_human_player is None or play_against_human_player == current_player:
+                if (
+                    play_against_human_player is None
+                    or play_against_human_player == current_player
+                ):
                     root = MCTS(self.config).run(
                         self.model,
                         observation,
@@ -88,9 +95,18 @@ class SelfPlay:
 
                     observation, reward, done = self.game.step(action)
 
-                if play_against_human_player is not None and current_player != play_against_human_player:
-                    action = int(input("Enter the action of player {} : ".format(current_player)))
+                if (
+                    play_against_human_player is not None
+                    and current_player != play_against_human_player
+                ):
+                    action = int(
+                        input("Enter the action of player {} : ".format(current_player))
+                    )
                     observation, reward, done = self.game.step(action)
+
+                observation = self.stack_previous_observations(
+                    observation, game_history, self.config.stacked_observations,
+                )
 
                 if render:
                     print("Action : {}".format(action))
@@ -103,6 +119,20 @@ class SelfPlay:
 
         self.game.close()
         return game_history
+
+    @staticmethod
+    def stack_previous_observations(
+        observation, game_history, num_stacked_observations
+    ):
+        stacked_observations = [observation]
+        for i in range(num_stacked_observations):
+            try:
+                stacked_observations.append(
+                    game_history.observation_history[-(i + 1)][0]
+                )
+            except IndexError:
+                stacked_observations.append(numpy.zeros_like(observation))
+        return stacked_observations
 
     @staticmethod
     def select_action(node, temperature):
@@ -151,7 +181,7 @@ class MCTS:
         """
         root = Node(0)
         observation = (
-            torch.from_numpy(observation)
+            torch.tensor(observation)
             .float()
             .unsqueeze(0)
             .to(next(model.parameters()).device)

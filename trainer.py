@@ -21,6 +21,7 @@ class Trainer:
         # Initialize the network
         self.model = models.MuZeroNetwork(
             self.config.observation_shape,
+            self.config.stacked_observations,
             len(self.config.action_space),
             self.config.encoding_size,
             self.config.hidden_layers,
@@ -118,7 +119,7 @@ class Trainer:
         loss = (value_loss + reward_loss + policy_loss).mean()
 
         # Scale gradient by number of unroll steps (See paper Training appendix)
-        loss.register_hook(lambda grad: grad * 1 / self.config.num_unroll_steps)
+        loss.register_hook(lambda grad: grad / self.config.num_unroll_steps)
 
         # Optimize
         self.optimizer.zero_grad()
@@ -160,20 +161,22 @@ class Trainer:
         logits.scatter_(
             2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1)
         )
-        indexes = (floor + support_size + 1)
+        indexes = floor + support_size + 1
         prob = prob.masked_fill_(2 * support_size < indexes, 0.0)
         indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
-        logits.scatter_(
-            2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1)
-        )
+        logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
         return logits
 
     @staticmethod
     def loss_function(
         value, reward, policy_logits, target_value, target_reward, target_policy
     ):
-        # Cross-entropy had a better convergence than MSE 
+        # Cross-entropy had a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1).mean()
-        reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1).mean()
-        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1).mean()
+        reward_loss = (
+            (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1).mean()
+        )
+        policy_loss = (
+            (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1).mean()
+        )
         return value_loss, reward_loss, policy_loss

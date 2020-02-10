@@ -1,8 +1,10 @@
 numpy
 torch
-ray
+tensorboard
 gym
 box2d-py
+ray
 psutil
 setproctitle
-tensorboard
+aiohttp
+grpcio

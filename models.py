@@ -2,9 +2,7 @@ import torch
 
 
 class FullyConnectedNetwork(torch.nn.Module):
-    def __init__(
-        self, input_size, layer_sizes, output_size, activation=torch.nn.Tanh()
-    ):
+    def __init__(self, input_size, layer_sizes, output_size, activation=None):
         super(FullyConnectedNetwork, self).__init__()
         sizes_list = layer_sizes.copy()
         sizes_list.insert(0, input_size)
@@ -32,6 +30,7 @@ class MuZeroNetwork(torch.nn.Module):
     def __init__(
         self,
         observation_size,
+        stacked_observations,
         action_space_size,
         encoding_size,
         hidden_layers,
@@ -42,28 +41,23 @@ class MuZeroNetwork(torch.nn.Module):
         self.full_support_size = 2 * support_size + 1
 
         self.representation_network = FullyConnectedNetwork(
-            observation_size, [], encoding_size
+            observation_size * (stacked_observations + 1), [], encoding_size
         )
 
         self.dynamics_encoded_state_network = FullyConnectedNetwork(
             encoding_size + self.action_space_size, hidden_layers, encoding_size
         )
-        # Gradient scaling (See paper appendix Training)
-        self.dynamics_encoded_state_network.register_backward_hook(
-            lambda module, grad_i, grad_o: (grad_i[0] * 0.5,)
-        )
         self.dynamics_reward_network = FullyConnectedNetwork(
             encoding_size + self.action_space_size,
             hidden_layers,
             self.full_support_size,
-            activation=None,
         )
 
         self.prediction_policy_network = FullyConnectedNetwork(
-            encoding_size, [], self.action_space_size, activation=None
+            encoding_size, [], self.action_space_size
         )
         self.prediction_value_network = FullyConnectedNetwork(
-            encoding_size, [], self.full_support_size, activation=None
+            encoding_size, [], self.full_support_size,
         )
 
     def prediction(self, encoded_state):
@@ -72,16 +66,18 @@ class MuZeroNetwork(torch.nn.Module):
         return policy_logit, value
 
     def representation(self, observation):
-        encoded_state = self.representation_network(observation)
-        # TODO: Try to remove tanh activation
+        encoded_state = self.representation_network(
+            observation.view(observation.shape[0], -1)
+        )
         # Scale encoded state between [0, 1] (See appendix paper Training)
-        encoded_state = (encoded_state - torch.min(encoded_state)) / (
-            torch.max(encoded_state) - torch.min(encoded_state)
+        encoded_state_diff = encoded_state - encoded_state.min(1, keepdim=True)[0]
+        encoded_state_normalized = (
+            encoded_state_diff / encoded_state_diff.max(1, keepdim=True)[0]
         )
         return encoded_state
 
     def dynamics(self, encoded_state, action):
-        # Stack encoded_state with one hot action (See paper appendix Network Architecture)
+        # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
         action_one_hot = (
             torch.zeros((action.shape[0], self.action_space_size))
             .to(action.device)
@@ -91,20 +87,26 @@ class MuZeroNetwork(torch.nn.Module):
         x = torch.cat((encoded_state, action_one_hot), dim=1)
 
         next_encoded_state = self.dynamics_encoded_state_network(x)
-        # TODO: Try to remove tanh activation
+
         # Scale encoded state between [0, 1] (See paper appendix Training)
-        next_encoded_state = (next_encoded_state - torch.min(next_encoded_state)) / (
-            torch.max(next_encoded_state) - torch.min(next_encoded_state)
+        next_encoded_state_diff = (
+            next_encoded_state - next_encoded_state.min(1, keepdim=True)[0]
         )
+        next_encoded_state_normalized = (
+            next_encoded_state_diff / next_encoded_state_diff.max(1, keepdim=True)[0]
+        )
+
         reward = self.dynamics_reward_network(x)
-        return next_encoded_state, reward
+        return next_encoded_state_normalized, reward
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
         policy_logit, value = self.prediction(encoded_state)
         return (
             value,
-            torch.zeros(len(observation), self.full_support_size).to(observation.device),
+            torch.zeros(len(observation), self.full_support_size).to(
+                observation.device
+            ),
             policy_logit,
             encoded_state,
         )
