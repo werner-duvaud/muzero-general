@@ -74,7 +74,7 @@ class MuZeroNetwork(torch.nn.Module):
         encoded_state_normalized = (
             encoded_state_diff / encoded_state_diff.max(1, keepdim=True)[0]
         )
-        return encoded_state
+        return encoded_state_normalized
 
     def dynamics(self, encoded_state, action):
         # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
