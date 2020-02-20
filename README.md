@@ -13,7 +13,7 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 
 ## Features
 
-* [x] Fully connected network in [PyTorch](https://github.com/pytorch/pytorch)
+* [x] Residual Network and Fully connected network in [PyTorch](https://github.com/pytorch/pytorch)
 * [x] Multi-Threaded with [Ray](https://github.com/ray-project/ray)
 * [x] CPU/GPU support
 * [x] TensorBoard real-time monitoring
@@ -23,7 +23,6 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 * [x] [Examples](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py) of board and Gym games (See [list below](https://github.com/werner-duvaud/muzero-general#games-already-implemented-with-pretrained-network-available))
 * [x] [Pretrained weights](https://github.com/werner-duvaud/muzero-general/tree/master/pretrained) available
 * [ ] Add human vs MuZero tracking in TensorBoard
-* [ ] Residual Network
 * [ ] Atari games
 * [ ] Appendix Reanalyse of the paper
 * [ ] Windows support ([workaround by ihexx](https://github.com/ihexx/muzero-general))

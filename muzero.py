@@ -52,14 +52,7 @@ class MuZero:
         torch.manual_seed(self.config.seed)
 
         # Initial weights used to initialize components
-        self.muzero_weights = models.MuZeroNetwork(
-            self.config.observation_shape,
-            self.config.stacked_observations,
-            len(self.config.action_space),
-            self.config.encoding_size,
-            self.config.hidden_layers,
-            self.config.support_size,
-        ).get_weights()
+        self.muzero_weights = models.MuZeroNetwork(self.config).get_weights()
 
     def train(self):
         ray.init()
@@ -172,9 +165,9 @@ class MuZero:
             path = os.path.join(self.config.results_path, self.game_name)
         try:
             self.muzero_weights = torch.load(path)
-            print("Using weights from {}".format(path))
+            print("\nUsing weights from {}".format(path))
         except FileNotFoundError:
-            print("There is no model saved in {}.".format(path))
+            print("\nThere is no model saved in {}.".format(path))
 
 
 if __name__ == "__main__":

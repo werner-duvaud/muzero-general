@@ -19,14 +19,7 @@ class Trainer:
         self.training_step = 0
 
         # Initialize the network
-        self.model = models.MuZeroNetwork(
-            self.config.observation_shape,
-            self.config.stacked_observations,
-            len(self.config.action_space),
-            self.config.encoding_size,
-            self.config.hidden_layers,
-            self.config.support_size,
-        )
+        self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
         self.model.to(torch.device(config.training_device))
         self.model.train()

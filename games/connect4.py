@@ -9,16 +9,16 @@ class MuZeroConfig:
 
 
         ### Game
-        self.observation_shape = 6 * 7  # Dimensions of the game observation
+        self.observation_shape = (3, 6, 7)  # Dimensions of the game observation, must be 3. For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = [i for i in range(7)]  # Fixed list of all possible actions
         self.players = [i for i in range(2)]  # List of players
         self.stacked_observations = 2  # Number of previous observation to add to the current observation
 
 
         ### Self-Play
-        self.num_actors = 10  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 50  # Maximum number of moves if game is not finished before
-        self.num_simulations = 30  # Number of futur moves self-simulated
+        self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.self_play_delay = 0 # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
@@ -32,19 +32,30 @@ class MuZeroConfig:
 
 
         ### Network
+        self.network = "resnet"  # "resnet" / "fullyconnected"
+        self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
+        
+        # Residual Network
+        self.blocks = 2  # Number of blocks in the ResNet
+        self.channels = 8  # Number of channels in the ResNet
+        self.pooling_size = (2, 3)
+        self.fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
+        self.fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
+        self.fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
+        
+        # Fully Connected Network
         self.encoding_size = 32
         self.hidden_layers = [64]
-        self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
 
         ### Training
         self.results_path = "./pretrained"  # Path to store the model weights
-        self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128  # Number of parts of games to train on at each training step
+        self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
+        self.batch_size = 128*3  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
+        self.td_steps = 50  # Number of steps in the futur to take into account for calculating the target value
         self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -52,8 +63,8 @@ class MuZeroConfig:
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.05  # Initial learning rate
-        self.lr_decay_rate = 1
+        self.lr_init = 0.01  # Initial learning rate
+        self.lr_decay_rate = 0.9
         self.lr_decay_steps = 10000
 
 
@@ -96,7 +107,7 @@ class Game:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done = self.env.step(action)
-        return observation, reward, done
+        return observation, reward * 10, done
 
     def to_play(self):
         """
@@ -142,6 +153,9 @@ class Game:
         self.env.render()
         input("Press enter to take a step ")
 
+    def encode_board(self):
+        return self.env.encode_board()
+
 
 class Connect4:
     def __init__(self):
@@ -168,14 +182,13 @@ class Connect4:
 
         self.player *= -1
 
-
         return self.get_observation(), reward, done
 
     def get_observation(self):
-        if self.player == 1:
-            return self.board
-        else:
-            return -self.board
+        board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
+        board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
+        board_to_play = numpy.full((6, 7), self.player).astype(float)
+        return numpy.array([board_player1, board_player2, board_to_play])
 
     def legal_actions(self):
         legal = []
@@ -207,7 +220,7 @@ class Connect4:
                 ):
                     return True
 
-        # x diag check
+        # Positive diagonal check
         for i in range(4):
             for j in range(3):
                 if (
@@ -218,7 +231,7 @@ class Connect4:
                 ):
                     return True
 
-        # -x diag check
+        # Negative diagonal check
         for i in range(4):
             for j in range(3, 6):
                 if (
@@ -235,4 +248,4 @@ class Connect4:
         return False
 
     def render(self):
-        print(self.player * self.get_observation()[::-1])
+        print(self.board[::-1])

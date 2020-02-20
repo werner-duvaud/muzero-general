@@ -20,14 +20,7 @@ class SelfPlay:
         self.game = game
 
         # Initialize the network
-        self.model = models.MuZeroNetwork(
-            self.config.observation_shape,
-            self.config.stacked_observations,
-            len(self.config.action_space),
-            self.config.encoding_size,
-            self.config.hidden_layers,
-            self.config.support_size,
-        )
+        self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
         self.model.to(torch.device("cpu"))
         self.model.eval()
@@ -78,31 +71,43 @@ class SelfPlay:
 
         with torch.no_grad():
             while not done and len(game_history.action_history) < self.config.max_moves:
-                current_player = self.game.to_play()
+                root = MCTS(self.config).run(
+                    self.model,
+                    observation,
+                    self.game.legal_actions(),
+                    self.game.to_play(),
+                    False if temperature == 0 else True,
+                )
+
+                # Choose the action
                 if (
                     play_against_human_player is None
-                    or play_against_human_player == current_player
+                    or play_against_human_player == self.game.to_play()
                 ):
-                    root = MCTS(self.config).run(
-                        self.model,
-                        observation,
-                        self.game.legal_actions(),
-                        current_player,
-                        False if temperature == 0 else True,
-                    )
-
                     action = self.select_action(root, temperature)
+                else:
+                    input_ok = False
+                    while not input_ok:
+                        try:
+                            action = int(
+                                input(
+                                    "Enter the action of player {} (MuZero suggest {}): ".format(
+                                        self.game.to_play(), self.select_action(root, 0)
+                                    )
+                                )
+                            )
+                            if action not in self.game.legal_actions():
+                                raise ValueError("Illegal move")
+                            else:
+                                input_ok = True
+                        except ValueError as err:
+                            print(
+                                "There is a problem with your action. Try again. ({})".format(
+                                    str(err)
+                                )
+                            )
 
-                    observation, reward, done = self.game.step(action)
-
-                if (
-                    play_against_human_player is not None
-                    and current_player != play_against_human_player
-                ):
-                    action = int(
-                        input("Enter the action of player {} : ".format(current_player))
-                    )
-                    observation, reward, done = self.game.step(action)
+                observation, reward, done = self.game.step(action)
 
                 observation = self.stack_previous_observations(
                     observation, game_history, self.config.stacked_observations,
@@ -124,20 +129,24 @@ class SelfPlay:
     def stack_previous_observations(
         observation, game_history, num_stacked_observations
     ):
-        stacked_observations = [observation]
+        stacked_observations = observation.copy()
         for i in range(num_stacked_observations):
             try:
-                stacked_observations.append(
-                    game_history.observation_history[-(i + 1)][0]
-                )
+                previous_observation = game_history.observation_history[-i - 1][
+                    : observation.shape[0]
+                ]
             except IndexError:
-                stacked_observations.append(numpy.zeros_like(observation))
+                previous_observation = numpy.zeros_like(observation)
+
+            stacked_observations = numpy.concatenate(
+                (stacked_observations, previous_observation), axis=0
+            )
         return stacked_observations
 
     @staticmethod
     def select_action(node, temperature):
         """
-        Select action according to the vivist count distribution and the temperature.
+        Select action according to the visit count distribution and the temperature.
         The temperature is changed dynamically with the visit_softmax_temperature function 
         in the config.
         """

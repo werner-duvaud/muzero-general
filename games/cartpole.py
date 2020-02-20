@@ -9,11 +9,10 @@ class MuZeroConfig:
 
 
         ### Game
-        self.observation_shape = 4  # Dimensions of the game observation
+        self.observation_shape = (1, 1, 4)  # Dimensions of the game observation, must be 3. For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = [i for i in range(2)]  # Fixed list of all possible actions
         self.players = [i for i in range(1)]  # List of players
-        self.stacked_observations = 3  # Number of previous observation to add to the current observation
-
+        self.stacked_observations = 0  # Number of previous observation to add to the current observation
 
         ### Self-Play
         self.num_actors = 3  # Number of simultaneous threads self-playing to feed the replay buffer
@@ -32,9 +31,20 @@ class MuZeroConfig:
 
 
         ### Network
+        self.network = "fullyconnected"  # "resnet" / "fullyconnected"
+        self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
+        
+        # Residual Network
+        self.blocks = 1  # Number of blocks in the ResNet
+        self.channels = 2  # Number of channels in the ResNet
+        self.pooling_size = 2
+        self.fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
+        self.fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
+        self.fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
+
+        # Fully Connected Network
         self.encoding_size = 32
         self.hidden_layers = [64]
-        self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
 
         ### Training
@@ -44,7 +54,7 @@ class MuZeroConfig:
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 10  # Number of steps in the futur to take into account for calculating the target value
+        self.td_steps = 20  # Number of steps in the futur to take into account for calculating the target value
         self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -99,7 +109,7 @@ class Game:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done, _ = self.env.step(action)
-        return observation, reward, done
+        return numpy.array([[observation]]), reward, done
 
     def to_play(self):
         """
@@ -130,7 +140,7 @@ class Game:
         Returns:
             Initial observation of the game.
         """
-        return self.env.reset()
+        return numpy.array([[self.env.reset()]])
 
     def close(self):
         """
