@@ -154,3 +154,16 @@ class Game:
         """
         self.env.render()
         input("Press enter to take a step ")
+
+    def human_input_to_action(self):
+        human_input = input("Enter the action of player {}".format(self.to_play()))
+        try:
+            human_input = int(human_input)
+            if human_input in self.legal_actions():
+                return True, human_input
+        except ValueError:
+            pass
+        return False, -1
+
+    def action_to_human_input(self, action):
+        return str(action)

@@ -10,14 +10,14 @@ class MuZeroConfig:
 
 
         ### Game
-        self.observation_shape = (2, 11, 11)  # Dimensions of the game observation, must be 3. For a 1D array, please reshape it to (1, 1, length of array)
+        self.observation_shape = (3, 11, 11)  # Dimensions of the game observation, must be 3. For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = [i for i in range(11 * 11)]  # Fixed list of all possible actions
         self.players = [i for i in range(2)]  # List of players
         self.stacked_observations = 2  # Number of previous observation to add to the current observation
 
 
         ### Self-Play
-        self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_actors = 2  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 70  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
@@ -33,7 +33,7 @@ class MuZeroConfig:
 
 
         ### Network
-        self.network = "fullyconnected"  # "resnet" / "fullyconnected"
+        self.network = "resnet"  # "resnet" / "fullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
         
         # Residual Network
@@ -51,7 +51,7 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = "./pretrained"  # Path to store the model weights
-        self.training_steps = 10  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128*3  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
@@ -70,7 +70,7 @@ class MuZeroConfig:
 
 
         ### Test
-        self.test_episodes = 2  # Number of game played to evaluate the network
+        self.test_episodes = 1  # Number of game played to evaluate the network
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
@@ -196,10 +196,10 @@ class Gomoku:
         return self.get_observation(), reward, done
 
     def get_observation(self):
-        if self.player == 1:
-            return self.board
-        else:
-            return -self.board
+        board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
+        board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
+        board_to_play = numpy.full((11, 11), self.player).astype(float)
+        return numpy.array([board_player1, board_player2, board_to_play])
 
     def legal_actions(self):
         legal = []
@@ -255,6 +255,7 @@ class Gomoku:
             print()
 
     def human_input_to_action(self):
+        human_input = input("Enter an action: ")
         if len(human_input) == 2 and human_input[0] in self.board_markers and human_input[1] in self.board_markers:
             x = ord(human_input[0]) - 65
             y = ord(human_input[1]) - 65

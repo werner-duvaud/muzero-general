@@ -157,6 +157,13 @@ class Game:
         return self.env.encode_board()
 
 
+    def human_input_to_action(self):
+        return self.env.human_input_to_action()
+
+    def action_to_human_input(self, action):
+        return self.env.action_to_human_input(action)
+
+
 class Connect4:
     def __init__(self):
         self.board = numpy.zeros((6, 7)).astype(int)
@@ -249,3 +256,16 @@ class Connect4:
 
     def render(self):
         print(self.board[::-1])
+
+    def human_input_to_action(self):
+        human_input = input("Enter the action of player {}".format(self.to_play()))
+        try:
+            human_input = int(human_input)
+            if human_input in self.legal_actions():
+                return True, human_input
+        except ValueError:
+            pass
+        return False, -1
+
+    def action_to_human_input(self, action):
+        return str(action)

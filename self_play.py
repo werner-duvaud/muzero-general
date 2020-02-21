@@ -86,7 +86,7 @@ class SelfPlay:
                 ):
                     action = self.select_action(root, temperature)
                 else:
-                    print("MuZero suggests {}".format(self.action_to_human_input(self.select_action(root, 0))))
+                    print("MuZero suggests {}".format(self.game.action_to_human_input(self.select_action(root, 0))))
                     input_ok, action = self.game.human_input_to_action()
                     while not input_ok:
                         input_ok, action = self.game.human_input_to_action()
