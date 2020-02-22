@@ -14,6 +14,9 @@ import self_play
 import shared_storage
 import trainer
 
+from os.path import dirname, basename, isfile, join
+import glob
+
 
 class MuZero:
     """
@@ -169,19 +172,47 @@ class MuZero:
         except FileNotFoundError:
             print("\nThere is no model saved in {}.".format(path))
 
-
 if __name__ == "__main__":
-    # Use the game and config from the ./games folder
-    muzero = MuZero("cartpole")
+    print("Welcome to MuZero! Here's a list of games: ")
+    # Let user pick a game
+    filenames = glob.glob('games/*.py')
+    games = [ basename(f)[:-3] for f in filenames if isfile(f) and not f.endswith('__init__.py')]
+    for i in range(len(games)):
+        print(str(i) + ". " + games[i])
+    choice = input("Enter a number to choose the game: ")
+    valid_inputs = list(map(str, range(len(games))))
+    while choice not in valid_inputs:
+        choice = input("Invalid input, enter a number listed above: ")
 
-    ## Train
-    muzero.train()
+    # ## Init MuZero
+    choice = int(choice)
+    muzero = MuZero(games[choice])
+    print("Initialized game", games[choice])
 
-    ## Test
-    muzero.load_model()
+    # ## Configure running mode
+    settings = ["Train only", "Train and self play", "Train and play with human", "Human play with pretrained model"]
+    for i in range(len(settings)):
+        print(str(i) + ". " + settings[i])
 
-    # Render some self-played games
-    muzero.test(render=True, muzero_player=None)
-
-    # Let user play against MuZero (MuZero is player 0 here)
-    # muzero.test(render=True, muzero_player=0)
+    choice = input("Enter a number to choose the settings: ")
+    valid_inputs = list(map(str, range(len(settings))))
+    while choice not in valid_inputs:
+        choice = input("Invalid input, enter a number listed above: ")
+    choice = int(choice)
+    print("You chose", settings[choice])
+    if choice == 0:
+        muzero.train()
+    elif choice == 1:
+        muzero.train()
+        muzero.load_model()
+        # Render some self-played games
+        muzero.test(render=True, muzero_player=None)
+    elif choice == 2:
+        muzero.train()
+        muzero.load_model()
+        # Let user play against MuZero (MuZero is player 0 here)
+        muzero.test(render=True, muzero_player=0)
+    else:
+        # check if model 
+        muzero.load_model()
+        muzero.test(render=True, muzero_player=0)
