@@ -1,6 +1,7 @@
 import gym
 import numpy
 import torch
+import os
 
 
 class MuZeroConfig:
@@ -49,7 +50,7 @@ class MuZeroConfig:
 
 
         ### Training
-        self.results_path = "./pretrained"  # Path to store the model weights
+        self.results_path = os.path.join(os.path.dirname(__file__), '../pretrained')  # Path to store the model weights
         self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128*3  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
