@@ -1,6 +1,7 @@
 import gym
 import numpy
 import torch
+import math
 import os
 
 
@@ -10,15 +11,15 @@ class MuZeroConfig:
 
 
         ### Game
-        self.observation_shape = (3, 6, 7)  # Dimensions of the game observation, must be 3. For a 1D array, please reshape it to (1, 1, length of array)
-        self.action_space = [i for i in range(7)]  # Fixed list of all possible actions
+        self.observation_shape = (3, 11, 11)  # Dimensions of the game observation, must be 3. For a 1D array, please reshape it to (1, 1, length of array)
+        self.action_space = [i for i in range(11 * 11)]  # Fixed list of all possible actions
         self.players = [i for i in range(2)]  # List of players
         self.stacked_observations = 2  # Number of previous observation to add to the current observation
 
 
         ### Self-Play
-        self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 50  # Maximum number of moves if game is not finished before
+        self.num_actors = 2  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.max_moves = 70  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.self_play_delay = 0 # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
@@ -51,7 +52,7 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), '../pretrained')  # Path to store the model weights
-        self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 10  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128*3  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
@@ -70,7 +71,7 @@ class MuZeroConfig:
 
 
         ### Test
-        self.test_episodes = 2  # Number of game played to evaluate the network
+        self.test_episodes = 1  # Number of game played to evaluate the network
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
@@ -89,13 +90,15 @@ class MuZeroConfig:
             return 0.25
 
 
+
+
 class Game:
     """
     Game wrapper.
     """
 
     def __init__(self, seed=None):
-        self.env = Connect4()
+        self.env = Gomoku()
 
     def step(self, action):
         """
@@ -108,7 +111,7 @@ class Game:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done = self.env.step(action)
-        return observation, reward * 10, done
+        return observation, reward, done
 
     def to_play(self):
         """
@@ -118,6 +121,9 @@ class Game:
             The current player, it should be an element of the players list in the config. 
         """
         return self.env.to_play()
+
+    def input_to_action(self, input):
+        return self.env.input_to_action(input)
 
     def legal_actions(self):
         """
@@ -154,10 +160,6 @@ class Game:
         self.env.render()
         input("Press enter to take a step ")
 
-    def encode_board(self):
-        return self.env.encode_board()
-
-
     def human_input_to_action(self):
         return self.env.human_input_to_action()
 
@@ -165,108 +167,106 @@ class Game:
         return self.env.action_to_human_input(action)
 
 
-class Connect4:
+class Gomoku:
     def __init__(self):
-        self.board = numpy.zeros((6, 7)).astype(int)
+        self.board_size = 11
+        self.board = numpy.zeros((self.board_size , self.board_size)).astype(int)
         self.player = 1
+        self.board_markers = [chr(x) for x in range(ord('A'), ord('A') + self.board_size)]
 
     def to_play(self):
         return 0 if self.player == 1 else 1
 
     def reset(self):
-        self.board = numpy.zeros((6, 7)).astype(int)
+        self.board = numpy.zeros((self.board_size , self.board_size)).astype(int)
         self.player = 1
         return self.get_observation()
 
     def step(self, action):
-        for i in range(6):
-            if self.board[i][action] == 0:
-                self.board[i][action] = self.player
-                break
+        x = math.floor(action / self.board_size)
+        y = action % self.board_size
+        self.board[x][y] = self.player
 
         done = self.is_finished()
 
-        reward = 1 if done and 0 < len(self.legal_actions()) else 0
+        reward = 1 if done else 0
 
         self.player *= -1
+
 
         return self.get_observation(), reward, done
 
     def get_observation(self):
         board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
         board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
-        board_to_play = numpy.full((6, 7), self.player).astype(float)
+        board_to_play = numpy.full((11, 11), self.player).astype(float)
         return numpy.array([board_player1, board_player2, board_to_play])
 
     def legal_actions(self):
         legal = []
-        for i in range(7):
-            if self.board[5][i] == 0:
-                legal.append(i)
+        for i in range(self.board_size):
+            for j in range(self.board_size):
+                if self.board[i][j] == 0:
+                    legal.append(i * self.board_size + j)
         return legal
 
     def is_finished(self):
-        # Horizontal check
-        for i in range(4):
-            for j in range(6):
-                if (
-                    self.board[j][i] == self.player
-                    and self.board[j][i + 1] == self.player
-                    and self.board[j][i + 2] == self.player
-                    and self.board[j][i + 3] == self.player
-                ):
-                    return True
-
-        # Vertical check
-        for i in range(7):
-            for j in range(3):
-                if (
-                    self.board[j][i] == self.player
-                    and self.board[j + 1][i] == self.player
-                    and self.board[j + 2][i] == self.player
-                    and self.board[j + 3][i] == self.player
-                ):
-                    return True
-
-        # Positive diagonal check
-        for i in range(4):
-            for j in range(3):
-                if (
-                    self.board[j][i] == self.player
-                    and self.board[j + 1][i + 1] == self.player
-                    and self.board[j + 2][i + 2] == self.player
-                    and self.board[j + 3][i + 3] == self.player
-                ):
-                    return True
-
-        # Negative diagonal check
-        for i in range(4):
-            for j in range(3, 6):
-                if (
-                    self.board[j][i] == self.player
-                    and self.board[j - 1][i + 1] == self.player
-                    and self.board[j - 2][i + 2] == self.player
-                    and self.board[j - 3][i + 3] == self.player
-                ):
-                    return True
-
-        if len(self.legal_actions()) == 0:
-            return True
-
-        return False
+        has_legal_actions = False
+        directions = ((1, -1), (1, 0), (1, 1), (0, 1))
+        for i in range(self.board_size):
+            for j in range(self.board_size):
+                # if no stone is on the position, don't need to consider this position
+                if self.board[i][j] == 0:
+                    has_legal_actions = True
+                    continue
+                # value-value at a coord, i-row, j-col
+                player = self.board[i][j]
+                # check if there exist 5 in a line
+                for d in directions:
+                    x, y = i, j
+                    count = 0
+                    for _ in range(5):
+                        if (x not in range(self.board_size)) or (y not in range(self.board_size)):
+                            break
+                        if self.board[x][y] != player:
+                            break
+                        x += d[0]
+                        y += d[1]
+                        count += 1
+                    # if 5 in a line, store positions of all stones, return value
+                        if count == 5:
+                            return True
+        return not has_legal_actions
 
     def render(self):
-        print(self.board[::-1])
+        marker = '  '
+        for i in range(self.board_size):
+            marker = marker + self.board_markers[i] + ' '
+        print(marker)
+        for row in range(self.board_size):
+            print(chr(ord('A') + row), end=" ")
+            for col in range(self.board_size):
+                ch = self.board[row][col]
+                if ch == 0:
+                    print('.', end=" ")
+                elif ch == 1:
+                    print('X', end=" ")
+                elif ch == -1:
+                    print('O', end=" ")
+            print()
 
     def human_input_to_action(self):
-        human_input = input("Enter the action of player {}".format(self.to_play()))
-        try:
-            human_input = int(human_input)
-            if human_input in self.legal_actions():
-                return True, human_input
-        except ValueError:
-            pass
+        human_input = input("Enter an action: ")
+        if len(human_input) == 2 and human_input[0] in self.board_markers and human_input[1] in self.board_markers:
+            x = ord(human_input[0]) - 65
+            y = ord(human_input[1]) - 65
+            if self.board[x][y] == 0:
+                return True, x * self.board_size + y
         return False, -1
 
     def action_to_human_input(self, action):
-        return str(action)
+        x = math.floor(action / self.board_size)
+        y = action % self.board_size
+        x = chr(x + 65)
+        y = chr(y + 65)
+        return x + y

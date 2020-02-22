@@ -86,26 +86,10 @@ class SelfPlay:
                 ):
                     action = self.select_action(root, temperature)
                 else:
-                    input_ok = False
+                    print("MuZero suggests {}".format(self.game.action_to_human_input(self.select_action(root, 0))))
+                    input_ok, action = self.game.human_input_to_action()
                     while not input_ok:
-                        try:
-                            action = int(
-                                input(
-                                    "Enter the action of player {} (MuZero suggest {}): ".format(
-                                        self.game.to_play(), self.select_action(root, 0)
-                                    )
-                                )
-                            )
-                            if action not in self.game.legal_actions():
-                                raise ValueError("Illegal move")
-                            else:
-                                input_ok = True
-                        except ValueError as err:
-                            print(
-                                "There is a problem with your action. Try again. ({})".format(
-                                    str(err)
-                                )
-                            )
+                        input_ok, action = self.game.human_input_to_action()
 
                 observation, reward, done = self.game.step(action)
 

@@ -1,7 +1,7 @@
 import gym
 import numpy
 import torch
-
+import os
 
 class MuZeroConfig:
     def __init__(self):
@@ -48,7 +48,7 @@ class MuZeroConfig:
         
 
         ### Training
-        self.results_path = "./pretrained"  # Path to store the model weights
+        self.results_path = os.path.join(os.path.dirname(__file__), '../pretrained')  # Path to store the model weights
         self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128*3  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
@@ -153,3 +153,16 @@ class Game:
         """
         self.env.render()
         input("Press enter to take a step ")
+
+    def human_input_to_action(self):
+        human_input = input("Enter the action of player {}".format(self.to_play()))
+        try:
+            human_input = int(human_input)
+            if human_input in self.legal_actions():
+                return True, human_input
+        except ValueError:
+            pass
+        return False, -1
+
+    def action_to_human_input(self, action):
+        return str(action)
