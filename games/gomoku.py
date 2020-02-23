@@ -1,8 +1,10 @@
+import datetime
+import math
+import os
+
 import gym
 import numpy
 import torch
-import math
-import os
 
 
 class MuZeroConfig:
@@ -12,8 +14,8 @@ class MuZeroConfig:
 
         ### Game
         self.observation_shape = (3, 11, 11)  # Dimensions of the game observation, must be 3. For a 1D array, please reshape it to (1, 1, length of array)
-        self.action_space = [i for i in range(11 * 11)]  # Fixed list of all possible actions
-        self.players = [i for i in range(2)]  # List of players
+        self.action_space = [i for i in range(11 * 11)]  # Fixed list of all possible actions. You should only edit the length
+        self.players = [i for i in range(2)]  # List of players. You should only edit the length
         self.stacked_observations = 2  # Number of previous observation to add to the current observation
 
 
@@ -51,7 +53,7 @@ class MuZeroConfig:
 
 
         ### Training
-        self.results_path = os.path.join(os.path.dirname(__file__), '../pretrained')  # Path to store the model weights
+        self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
         self.training_steps = 10  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128*3  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
@@ -71,14 +73,13 @@ class MuZeroConfig:
 
 
         ### Test
-        self.test_episodes = 1  # Number of game played to evaluate the network
+        self.test_episodes = 1  # Number of games rendered when calling the MuZero test method
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
         Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
         The smaller it is, the more likely the best action (ie with the highest visit count) is chosen.
-
         Returns:
             Positive float.
         """
@@ -88,8 +89,6 @@ class MuZeroConfig:
             return 0.5
         else:
             return 0.25
-
-
 
 
 class Game:
@@ -106,7 +105,6 @@ class Game:
         
         Args:
             action : action of the action_space to take.
-
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
@@ -116,14 +114,10 @@ class Game:
     def to_play(self):
         """
         Return the current player.
-
         Returns:
             The current player, it should be an element of the players list in the config. 
         """
         return self.env.to_play()
-
-    def input_to_action(self, input):
-        return self.env.input_to_action(input)
 
     def legal_actions(self):
         """
@@ -132,9 +126,8 @@ class Game:
         
         For complexe game where calculating legal moves is too long, the idea is to define the legal actions
         equal to the action space but to return a negative reward if the action is illegal.        
-
         Returns:
-            An array of integers, subest of the action space.
+            An array of integers, subset of the action space.
         """
         return self.env.legal_actions()
 
@@ -160,25 +153,30 @@ class Game:
         self.env.render()
         input("Press enter to take a step ")
 
-    def human_input_to_action(self):
-        return self.env.human_input_to_action()
+    def input_action(self):
+        valid = False
+        while not valid:
+            valid, action = self.env.human_input_to_action()
+        return action
 
-    def action_to_human_input(self, action):
+    def output_action(self, action):
         return self.env.action_to_human_input(action)
 
 
 class Gomoku:
     def __init__(self):
         self.board_size = 11
-        self.board = numpy.zeros((self.board_size , self.board_size)).astype(int)
+        self.board = numpy.zeros((self.board_size, self.board_size)).astype(int)
         self.player = 1
-        self.board_markers = [chr(x) for x in range(ord('A'), ord('A') + self.board_size)]
+        self.board_markers = [
+            chr(x) for x in range(ord("A"), ord("A") + self.board_size)
+        ]
 
     def to_play(self):
         return 0 if self.player == 1 else 1
 
     def reset(self):
-        self.board = numpy.zeros((self.board_size , self.board_size)).astype(int)
+        self.board = numpy.zeros((self.board_size, self.board_size)).astype(int)
         self.player = 1
         return self.get_observation()
 
@@ -192,7 +190,6 @@ class Gomoku:
         reward = 1 if done else 0
 
         self.player *= -1
-
 
         return self.get_observation(), reward, done
 
@@ -226,38 +223,44 @@ class Gomoku:
                     x, y = i, j
                     count = 0
                     for _ in range(5):
-                        if (x not in range(self.board_size)) or (y not in range(self.board_size)):
+                        if (x not in range(self.board_size)) or (
+                            y not in range(self.board_size)
+                        ):
                             break
                         if self.board[x][y] != player:
                             break
                         x += d[0]
                         y += d[1]
                         count += 1
-                    # if 5 in a line, store positions of all stones, return value
+                        # if 5 in a line, store positions of all stones, return value
                         if count == 5:
                             return True
         return not has_legal_actions
 
     def render(self):
-        marker = '  '
+        marker = "  "
         for i in range(self.board_size):
-            marker = marker + self.board_markers[i] + ' '
+            marker = marker + self.board_markers[i] + " "
         print(marker)
         for row in range(self.board_size):
-            print(chr(ord('A') + row), end=" ")
+            print(chr(ord("A") + row), end=" ")
             for col in range(self.board_size):
                 ch = self.board[row][col]
                 if ch == 0:
-                    print('.', end=" ")
+                    print(".", end=" ")
                 elif ch == 1:
-                    print('X', end=" ")
+                    print("X", end=" ")
                 elif ch == -1:
-                    print('O', end=" ")
+                    print("O", end=" ")
             print()
 
     def human_input_to_action(self):
         human_input = input("Enter an action: ")
-        if len(human_input) == 2 and human_input[0] in self.board_markers and human_input[1] in self.board_markers:
+        if (
+            len(human_input) == 2
+            and human_input[0] in self.board_markers
+            and human_input[1] in self.board_markers
+        ):
             x = ord(human_input[0]) - 65
             y = ord(human_input[1]) - 65
             if self.board[x][y] == 0:

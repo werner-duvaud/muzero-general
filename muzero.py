@@ -14,9 +14,6 @@ import self_play
 import shared_storage
 import trainer
 
-from os.path import dirname, basename, isfile, join
-import glob
-
 
 class MuZero:
     """
@@ -48,8 +45,6 @@ class MuZero:
             )
             raise err
 
-        os.makedirs(os.path.join(self.config.results_path), exist_ok=True)
-
         # Fix random generator seed for reproductibility
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
@@ -59,9 +54,8 @@ class MuZero:
 
     def train(self):
         ray.init()
-        writer = SummaryWriter(
-            os.path.join(self.config.results_path, self.game_name + "_summary")
-        )
+        os.makedirs(self.config.results_path, exist_ok=True)
+        writer = SummaryWriter(self.config.results_path)
 
         # Initialize workers
         training_worker = trainer.Trainer.options(
@@ -80,7 +74,9 @@ class MuZero:
             for seed in range(self.config.num_actors)
         ]
         test_worker = self_play.SelfPlay.remote(
-            copy.deepcopy(self.muzero_weights), self.Game(), self.config
+            copy.deepcopy(self.muzero_weights),
+            self.Game(self.config.seed + self.config.num_actors),
+            self.config,
         )
 
         # Launch workers
@@ -95,10 +91,19 @@ class MuZero:
             replay_buffer_worker, shared_storage_worker
         )
 
-        # Loop for monitoring in real time the workers
         print(
-            "\nTraining...\nRun tensorboard --logdir ./ and go to http://localhost:6006/ to see in real time the training performance.\n"
+            "\nTraining...\nRun tensorboard --logdir ./results and go to http://localhost:6006/ to see in real time the training performance.\n"
         )
+        # Save hyperparameters to TensorBoard
+        hp_table = [
+            "| {} | {} |".format(key, value)
+            for key, value in self.config.__dict__.items()
+        ]
+        writer.add_text(
+            "Hyperparameters",
+            "| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table),
+        )
+        # Loop for monitoring in real time the workers
         counter = 0
         infos = ray.get(shared_storage_worker.get_infos.remote())
         try:
@@ -134,9 +139,10 @@ class MuZero:
                 time.sleep(3)
         except KeyboardInterrupt as err:
             # Comment the line below to be able to stop the training but keep running
-            raise err
+            # raise err
             pass
         self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
+        # End running actors
         ray.shutdown()
 
     def test(self, render, muzero_player):
@@ -152,7 +158,9 @@ class MuZero:
         print("\nTesting...")
         ray.init()
         self_play_workers = self_play.SelfPlay.remote(
-            copy.deepcopy(self.muzero_weights), self.Game(), self.config
+            copy.deepcopy(self.muzero_weights),
+            self.Game(self.config.seed + self.config.num_actors),
+            self.config,
         )
         test_rewards = []
         for _ in range(self.config.test_episodes):
@@ -165,54 +173,62 @@ class MuZero:
 
     def load_model(self, path=None):
         if not path:
-            path = os.path.join(self.config.results_path, self.game_name)
+            path = os.path.join(self.config.results_path, "model.weights")
         try:
             self.muzero_weights = torch.load(path)
             print("\nUsing weights from {}".format(path))
         except FileNotFoundError:
             print("\nThere is no model saved in {}.".format(path))
 
+
 if __name__ == "__main__":
-    print("Welcome to MuZero! Here's a list of games: ")
+    print("\nWelcome to MuZero! Here's a list of games:")
     # Let user pick a game
-    filenames = glob.glob('games/*.py')
-    games = [ basename(f)[:-3] for f in filenames if isfile(f) and not f.endswith('__init__.py')]
+    games = [
+        filename[:-3]
+        for filename in sorted(os.listdir("./games"))
+        if filename.endswith(".py") and not filename.endswith("__init__.py")
+    ]
     for i in range(len(games)):
-        print(str(i) + ". " + games[i])
+        print("{}. {}".format(i, games[i]))
     choice = input("Enter a number to choose the game: ")
-    valid_inputs = list(map(str, range(len(games))))
+    valid_inputs = [str(i) for i in range(len(games))]
     while choice not in valid_inputs:
         choice = input("Invalid input, enter a number listed above: ")
 
-    # ## Init MuZero
+    # Initialize MuZero
     choice = int(choice)
     muzero = MuZero(games[choice])
-    print("Initialized game", games[choice])
 
-    # ## Configure running mode
-    settings = ["Train only", "Train and self play", "Train and play with human", "Human play with pretrained model"]
-    for i in range(len(settings)):
-        print(str(i) + ". " + settings[i])
+    while True:
+        # Configure running options
+        options = [
+            "Train",
+            "Load pretrained model",
+            "Render some self play games",
+            "Play against MuZero",
+            "Exit",
+        ]
+        print()
+        for i in range(len(options)):
+            print("{}. {}".format(i, options[i]))
 
-    choice = input("Enter a number to choose the settings: ")
-    valid_inputs = list(map(str, range(len(settings))))
-    while choice not in valid_inputs:
-        choice = input("Invalid input, enter a number listed above: ")
-    choice = int(choice)
-    print("You chose", settings[choice])
-    if choice == 0:
-        muzero.train()
-    elif choice == 1:
-        muzero.train()
-        muzero.load_model()
-        # Render some self-played games
-        muzero.test(render=True, muzero_player=None)
-    elif choice == 2:
-        muzero.train()
-        muzero.load_model()
-        # Let user play against MuZero (MuZero is player 0 here)
-        muzero.test(render=True, muzero_player=0)
-    else:
-        # check if model 
-        muzero.load_model()
-        muzero.test(render=True, muzero_player=0)
+        choice = input("Enter a number to choose an action: ")
+        valid_inputs = [str(i) for i in range(len(options))]
+        while choice not in valid_inputs:
+            choice = input("Invalid input, enter a number listed above: ")
+        choice = int(choice)
+        if choice == 0:
+            muzero.train()
+        elif choice == 1:
+            path = input("Enter a path to the model.weights: ")
+            while not os.path.isfile(path):
+                path = input("Invalid path. Try again: ")
+            muzero.load_model(path)
+        elif choice == 2:
+            muzero.test(render=True, muzero_player=None)
+        elif choice == 3:
+            muzero.test(render=True, muzero_player=0)
+        else:
+            break
+        print("Done")

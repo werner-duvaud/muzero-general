@@ -28,7 +28,7 @@ class SharedStorage:
     def set_weights(self, weights, path=None):
         self.weights = weights
         if not path:
-            path = os.path.join(self.config.results_path, self.game_name)
+            path = os.path.join(self.config.results_path, "model.weights")
 
         torch.save(self.weights, path)
 

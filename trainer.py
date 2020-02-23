@@ -24,10 +24,10 @@ class Trainer:
         self.model.to(torch.device(config.training_device))
         self.model.train()
 
-        self.optimizer = torch.optim.SGD(
+        self.optimizer = torch.optim.Adam(
             self.model.parameters(),
             lr=self.config.lr_init,
-            momentum=self.config.momentum,
+            # momentum=self.config.momentum,
             weight_decay=self.config.weight_decay,
         )
 
