@@ -37,7 +37,7 @@ Testing Lunar Lander :
 
 ![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/lunarlander_training_preview.png)
 
-## Games already implemented with pretrained network available
+## Games already implemented
 
 * Cartpole
 * Lunar Lander
@@ -52,37 +52,21 @@ Testing Lunar Lander :
 ### Installation
 
 ```bash
+git clone https://github.com/werner-duvaud/muzero-general.git
 cd muzero-general
+
 pip install -r requirements.txt
 ```
 
-### Training
+### Run
 
-Edit the end of muzero.py:
-```python
-muzero = Muzero("cartpole")
-muzero.train()
-```
-Then run:
+Run:
 ```bash
 python muzero.py
 ```
 To visualize the training results, run in a new terminal:
 ```bash
-tensorboard --logdir ./
-```
-
-### Testing
-
-Edit the end of muzero.py:
-```python
-muzero = Muzero("cartpole")
-muzero.load_model()
-muzero.test()
-```
-Then run:
-```bash
-python muzero.py
+tensorboard --logdir ./results
 ```
 
 ## Authors
