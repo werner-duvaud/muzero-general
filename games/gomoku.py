@@ -5,7 +5,7 @@ import os
 import gym
 import numpy
 import torch
-
+from games.game import Game
 
 class MuZeroConfig:
     def __init__(self):
@@ -90,81 +90,11 @@ class MuZeroConfig:
         else:
             return 0.25
 
+def getGameClassName():
+    return "Gomoku"
 
-class Game:
-    """
-    Game wrapper.
-    """
-
+class Gomoku(Game):
     def __init__(self, seed=None):
-        self.env = Gomoku()
-
-    def step(self, action):
-        """
-        Apply action to the game.
-        
-        Args:
-            action : action of the action_space to take.
-        Returns:
-            The new observation, the reward and a boolean if the game has ended.
-        """
-        observation, reward, done = self.env.step(action)
-        return observation, reward, done
-
-    def to_play(self):
-        """
-        Return the current player.
-        Returns:
-            The current player, it should be an element of the players list in the config. 
-        """
-        return self.env.to_play()
-
-    def legal_actions(self):
-        """
-        Should return the legal actions at each turn, if it is not available, it can return
-        the whole action space. At each turn, the game have to be able to handle one of returned actions.
-        
-        For complexe game where calculating legal moves is too long, the idea is to define the legal actions
-        equal to the action space but to return a negative reward if the action is illegal.        
-        Returns:
-            An array of integers, subset of the action space.
-        """
-        return self.env.legal_actions()
-
-    def reset(self):
-        """
-        Reset the game for a new game.
-        
-        Returns:
-            Initial observation of the game.
-        """
-        return self.env.reset()
-
-    def close(self):
-        """
-        Properly close the game.
-        """
-        pass
-
-    def render(self):
-        """
-        Display the game observation.
-        """
-        self.env.render()
-        input("Press enter to take a step ")
-
-    def input_action(self):
-        valid = False
-        while not valid:
-            valid, action = self.env.human_input_to_action()
-        return action
-
-    def output_action(self, action):
-        return self.env.action_to_human_input(action)
-
-
-class Gomoku:
-    def __init__(self):
         self.board_size = 11
         self.board = numpy.zeros((self.board_size, self.board_size)).astype(int)
         self.player = 1
@@ -206,6 +136,10 @@ class Gomoku:
                 if self.board[i][j] == 0:
                     legal.append(i * self.board_size + j)
         return legal
+
+    def close(self):
+        pass
+
 
     def is_finished(self):
         has_legal_actions = False
@@ -253,6 +187,16 @@ class Gomoku:
                 elif ch == -1:
                     print("O", end=" ")
             print()
+
+    def input_action(self):
+        valid, action = self.human_input_to_action()
+        while not valid:
+            valid, action = self.human_input_to_action()
+        return action
+
+    def output_action(self, action):
+        return self.action_to_human_input(action)
+
 
     def human_input_to_action(self):
         human_input = input("Enter an action: ")
