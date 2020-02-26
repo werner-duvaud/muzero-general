@@ -35,9 +35,9 @@ class MuZero:
         # Load the game and the config from the module with the game name
         try:
             game_module = importlib.import_module("games." + self.game_name)
-            getGameClassName = getattr(game_module, 'getGameClassName')
-            self.Game = getattr(game_module, getGameClassName())
             self.config = game_module.MuZeroConfig()
+            self.Game = getattr(game_module, self.config.game_class_name)
+            
         except Exception as err:
             print(
                 '{} is not a supported game name, try "cartpole" or refer to the documentation for adding a new game.'.format(
@@ -188,7 +188,7 @@ if __name__ == "__main__":
     games = [
         filename[:-3]
         for filename in sorted(os.listdir("./games"))
-        if filename.endswith(".py") and not filename.endswith("__init__.py") and filename != 'game.py' and filename !='muzero_config.py'
+        if filename.endswith(".py") and not filename.endswith("__init__.py") and filename != 'game.py' and filename !='base_config.py'
     ]
     for i in range(len(games)):
         print("{}. {}".format(i, games[i]))
