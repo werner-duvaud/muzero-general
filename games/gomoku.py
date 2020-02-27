@@ -7,9 +7,11 @@ import numpy
 from games.game import Game
 from games.base_config import BaseConfig
 
-config = None
-
 class MuZeroConfig(BaseConfig):
+    def __init__(self):
+        super(MuZeroConfig, self).__init__()
+        self._results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))
+   
     @property
     def game_class_name(self):
         return "Gomoku"
@@ -37,7 +39,14 @@ class MuZeroConfig(BaseConfig):
     @property
     def test_episodes(self):
         return 1
-    
+
+    @property
+    def results_path(self):
+        return self._results_path
+
+    @property
+    def training_steps(self):
+        return 10   
 
 class Gomoku(Game):
     def __init__(self, seed=None):

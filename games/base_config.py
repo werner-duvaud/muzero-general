@@ -44,7 +44,18 @@ class BaseConfig(ABC):
     @abstractmethod
     def test_episodes(self):
         pass
-    
+
+    # Path to store the model weights and TensorBoard logs
+    @property
+    @abstractmethod
+    def results_path(self):
+        pass
+
+    # Total number of training steps (ie weights update according to a batch)
+    @property
+    @abstractmethod
+    def training_steps(self):
+        pass
     
 
     def __init__(self):
@@ -83,8 +94,6 @@ class BaseConfig(ABC):
 
 
         ### Training
-        self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 10  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128*3  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
