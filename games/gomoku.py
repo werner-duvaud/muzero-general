@@ -6,6 +6,8 @@ import gym
 import numpy
 import torch
 
+from games.abstract_game import AbstractGame
+
 
 class MuZeroConfig:
     def __init__(self):
@@ -23,8 +25,8 @@ class MuZeroConfig:
         self.num_actors = 2  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 70  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of futur moves self-simulated
-        self.discount = 0.997  # Chronological discount of the reward
-        self.self_play_delay = 0 # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
+        self.discount = 1  # Chronological discount of the reward
+        self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
@@ -42,7 +44,8 @@ class MuZeroConfig:
         # Residual Network
         self.blocks = 2  # Number of blocks in the ResNet
         self.channels = 8  # Number of channels in the ResNet
-        self.pooling_size = (2, 3)
+        self.pooling_size = (2, 2)  # Size of the average pooling kernel
+        self.pooling_stride = (2, 2)  # Stride of the pooling window
         self.fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
         self.fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
         self.fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
@@ -60,7 +63,7 @@ class MuZeroConfig:
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 50  # Number of steps in the futur to take into account for calculating the target value
-        self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
+        self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
         self.weight_decay = 1e-4  # L2 weights regularization
@@ -91,7 +94,7 @@ class MuZeroConfig:
             return 0.25
 
 
-class Game:
+class Game(AbstractGame):
     """
     Game wrapper.
     """

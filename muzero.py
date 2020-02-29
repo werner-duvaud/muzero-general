@@ -187,7 +187,7 @@ if __name__ == "__main__":
     games = [
         filename[:-3]
         for filename in sorted(os.listdir("./games"))
-        if filename.endswith(".py") and not filename.endswith("__init__.py")
+        if filename.endswith(".py") and filename != "abstract_game.py"
     ]
     for i in range(len(games)):
         print("{}. {}".format(i, games[i]))
@@ -231,4 +231,4 @@ if __name__ == "__main__":
             muzero.test(render=True, muzero_player=0)
         else:
             break
-        print("Done")
+        print("\nDone")

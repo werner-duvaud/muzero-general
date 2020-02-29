@@ -5,6 +5,8 @@ import gym
 import numpy
 import torch
 
+from games.abstract_game import AbstractGame
+
 
 class MuZeroConfig:
     def __init__(self):
@@ -21,9 +23,9 @@ class MuZeroConfig:
         ### Self-Play
         self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 10  # Maximum number of moves if game is not finished before
-        self.num_simulations = 20  # Number of future moves self-simulated
-        self.discount = 1.  # Chronological discount of the reward
-        self.self_play_delay = 0 # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
+        self.num_simulations = 100  # Number of future moves self-simulated
+        self.discount = 1  # Chronological discount of the reward
+        self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
@@ -37,15 +39,16 @@ class MuZeroConfig:
         ### Network
         self.network = "resnet"  # "resnet" / "fullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
-        
+
         # Residual Network
-        self.blocks = 2  # Number of blocks in the ResNet
-        self.channels = 8  # Number of channels in the ResNet
-        self.pooling_size = (2, 3)
-        self.fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
-        self.fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
-        self.fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
-        
+        self.blocks = 3  # Number of blocks in the ResNet
+        self.channels = 32  # Number of channels in the ResNet
+        self.pooling_size = (1, 1)  # Size of the average pooling kernel
+        self.pooling_stride = (1, 1)  # Stride of the pooling window
+        self.fc_reward_layers = [16]  # Define the hidden layers in the reward head of the dynamic network
+        self.fc_value_layers = [16]  # Define the hidden layers in the value head of the prediction network
+        self.fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
+
         # Fully Connected Network
         self.encoding_size = 32
         self.hidden_layers = [64]
@@ -54,19 +57,19 @@ class MuZeroConfig:
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
         self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128*3  # Number of parts of games to train on at each training step
+        self.batch_size = 128  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 10  # Number of steps in the future to take into account for calculating the target value
-        self.training_delay = 0 # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
+        self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.005  # Initial learning rate
+        self.lr_init = 0.01  # Initial learning rate
         self.lr_decay_rate = 1
         self.lr_decay_steps = 10000
 
@@ -79,7 +82,6 @@ class MuZeroConfig:
         """
         Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
         The smaller it is, the more likely the best action (ie with the highest visit count) is chosen.
-
         Returns:
             Positive float.
         """
@@ -91,13 +93,13 @@ class MuZeroConfig:
             return 0.25
 
 
-class Game:
+class Game(AbstractGame):
     """
     Game wrapper.
     """
 
     def __init__(self, seed=None):
-        self.env = Connect4()
+        self.env = TicTacToe()
 
     def step(self, action):
         """
@@ -105,17 +107,15 @@ class Game:
         
         Args:
             action : action of the action_space to take.
-
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done = self.env.step(action)
-        return observation, reward * 10, done
+        return observation, reward, done
 
     def to_play(self):
         """
         Return the current player.
-
         Returns:
             The current player, it should be an element of the players list in the config. 
         """
@@ -128,7 +128,6 @@ class Game:
         
         For complexe game where calculating legal moves is too long, the idea is to define the legal actions
         equal to the action space but to return a negative reward if the action is illegal.        
-
         Returns:
             An array of integers, subset of the action space.
         """
@@ -163,29 +162,28 @@ class Game:
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
-
         Returns:
             An integer from the action space.
         """
-        choice = ("Enter the column to play for the player {}: ".format(self.to_play()))
+        choice = input(
+            "Enter the column to play for the player {}: ".format(self.to_play())
+        )
         while choice not in [str(action) for action in self.legal_actions()]:
-            choice = ("Enter another column : ")
+            choice = input("Enter another column : ")
         return int(choice)
 
     def output_action(self, action_number):
         """
         Convert an action number to a string representing the action.
-
         Args:
             action_number: an integer from the action space.
-
         Returns:
             String representing the action.
         """
         return "Play column {}".format(action_number + 1)
 
 
-class Connect4:
+class TicTacToe:
     def __init__(self):
         self.board = numpy.zeros((3, 3)).astype(int)
         self.player = 1
@@ -199,9 +197,9 @@ class Connect4:
         return self.get_observation()
 
     def step(self, action):
-        row = action//3
-        col = action%3
-        self.board[row,col] = self.player
+        row = action // 3
+        col = action % 3
+        self.board[row, col] = self.player
 
         done = self.is_finished()
 
@@ -220,24 +218,37 @@ class Connect4:
     def legal_actions(self):
         legal = []
         for i in range(9):
-            row = i//3
-            col = i%3
-            if self.board[row,col] == 0:
+            row = i // 3
+            col = i % 3
+            if self.board[row, col] == 0:
                 legal.append(i)
         return legal
 
     def is_finished(self):
         # Horizontal and vertical checks
         for i in range(3):
-            if (self.board[i,:] == self.player*numpy.ones(3).astype(int)).all(): return True
-            if (self.board[:,i] == self.player*numpy.ones(3).astype(int)).all(): return True
+            if (self.board[i, :] == self.player * numpy.ones(3).astype(int)).all():
+                return True
+            if (self.board[:, i] == self.player * numpy.ones(3).astype(int)).all():
+                return True
 
         # Diagonal checks
-        if self.board[0,0] == self.player and self.board[1,1] == self.player and self.board[2,2] == self.player: return True
-        if self.board[2,0] == self.player and self.board[1,1] == self.player and self.board[0,2] == self.player: return True
+        if (
+            self.board[0, 0] == self.player
+            and self.board[1, 1] == self.player
+            and self.board[2, 2] == self.player
+        ):
+            return True
+        if (
+            self.board[2, 0] == self.player
+            and self.board[1, 1] == self.player
+            and self.board[0, 2] == self.player
+        ):
+            return True
 
         # No legal actions means a draw
-        if len(self.legal_actions()) == 0: return True
+        if len(self.legal_actions()) == 0:
+            return True
 
         return False
 
