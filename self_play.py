@@ -41,7 +41,9 @@ class SelfPlay:
                     ]
                 )
             )
-            game_history = self.play_game(temperature, False, None)
+            game_history = self.play_game(
+                temperature, False, "self" if not test_mode else "random", 0
+            )
 
             # Save to the shared storage
             if test_mode:
@@ -54,7 +56,7 @@ class SelfPlay:
             if not test_mode and self.config.self_play_delay:
                 time.sleep(self.config.self_play_delay)
 
-    def play_game(self, temperature, render, play_against_human_player):
+    def play_game(self, temperature, render, opponent, muzero_player):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
         """
@@ -80,18 +82,21 @@ class SelfPlay:
                 )
 
                 # Choose the action
-                if (
-                    play_against_human_player is None
-                    or play_against_human_player == self.game.to_play()
-                ):
+                if opponent == "self" or muzero_player == self.game.to_play():
                     action = self.select_action(root, temperature)
-                else:
+                elif opponent == "human":
                     print(
                         "MuZero suggests {}".format(
                             self.game.output_action(self.select_action(root, 0))
                         )
                     )
                     action = self.game.input_action()
+                elif opponent == "random":
+                    action = numpy.random.choice(self.game.legal_actions())
+                else:
+                    raise ValueError(
+                        'Wrong argument: "opponent" argument should be "self", "human" or "random"'
+                    )
 
                 observation, reward, done = self.game.step(action)
 

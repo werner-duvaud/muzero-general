@@ -145,14 +145,17 @@ class MuZero:
         # End running actors
         ray.shutdown()
 
-    def test(self, render, muzero_player):
+    def test(self, render, opponent, muzero_player):
         """
         Test the model in a dedicated thread.
 
         Args:
-            render : boolean to display or not the environment.
+            render: Boolean to display or not the environment.
 
-            muzero_player : Integer with the player number of MuZero in case of multiplayer
+            opponent: "self" for self-play, "human" for playing against MuZero and "random"
+            for a random agent.
+
+            muzero_player: Integer with the player number of MuZero in case of multiplayer
             games, None let MuZero play all players turn by turn.
         """
         print("\nTesting...")
@@ -165,7 +168,7 @@ class MuZero:
         test_rewards = []
         for _ in range(self.config.test_episodes):
             history = ray.get(
-                self_play_workers.play_game.remote(0, render, muzero_player)
+                self_play_workers.play_game.remote(0, render, opponent, muzero_player)
             )
             test_rewards.append(sum(history.rewards))
         ray.shutdown()
@@ -226,9 +229,9 @@ if __name__ == "__main__":
                 path = input("Invalid path. Try again: ")
             muzero.load_model(path)
         elif choice == 2:
-            muzero.test(render=True, muzero_player=None)
+            muzero.test(render=True, opponent="self", muzero_player=None)
         elif choice == 3:
-            muzero.test(render=True, muzero_player=0)
+            muzero.test(render=True, opponent="human", muzero_player=0)
         else:
             break
         print("\nDone")
