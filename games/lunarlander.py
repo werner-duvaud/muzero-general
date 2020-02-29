@@ -5,6 +5,8 @@ import gym
 import numpy
 import torch
 
+from games.abstract_game import AbstractGame
+
 
 class MuZeroConfig:
     def __init__(self):
@@ -17,10 +19,11 @@ class MuZeroConfig:
         self.players = [i for i in range(1)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observation to add to the current observation
 
+
         ### Self-Play
-        self.num_actors = 2  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_actors = 4  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 2000  # Maximum number of moves if game is not finished before
-        self.num_simulations = 50  # Number of futur moves self-simulated
+        self.num_simulations = 100  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
@@ -40,23 +43,24 @@ class MuZeroConfig:
         # Residual Network
         self.blocks = 2  # Number of blocks in the ResNet
         self.channels = 16  # Number of channels in the ResNet
-        self.pooling_size = 2
+        self.pooling_size = (2, 2)  # Size of the average pooling kernel
+        self.pooling_stride = (2, 2)  # Stride of the pooling window
         self.fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
         self.fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
         self.fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
 
         # Fully Connected Network
-        self.encoding_size = 8
+        self.encoding_size = 16
         self.hidden_layers = [16]
         
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 8000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128*5  # Number of parts of games to train on at each training step
+        self.training_steps = 50000  # Total number of training steps (ie weights update according to a batch)
+        self.batch_size = 128  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
-        self.window_size = 2000  # Number of self-play games to keep in the replay buffer
+        self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 2000  # Number of steps in the futur to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
@@ -65,7 +69,7 @@ class MuZeroConfig:
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.01  # Initial learning rate
+        self.lr_init = 0.005  # Initial learning rate
         self.lr_decay_rate = 1
         self.lr_decay_steps = 1000
 
@@ -90,7 +94,7 @@ class MuZeroConfig:
             return 0.25
 
 
-class Game:
+class Game(AbstractGame):
     """
     Game wrapper.
     """
