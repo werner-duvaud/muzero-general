@@ -17,7 +17,7 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 * [x] Multi-Threaded with [Ray](https://github.com/ray-project/ray)
 * [x] CPU/GPU support
 * [x] TensorBoard real-time monitoring
-* [x] Model weights automatically saved
+* [x] Model weights automatically saved at checkpoints
 * [x] Single and multiplayer mode
 * [x] Commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation)
 * [x] Easily adaptable for new games
@@ -42,7 +42,7 @@ Testing Lunar Lander :
 
 * Cartpole
 * Lunar Lander
-* TicTacToe
+* Tic-tac-toe
 * Connect4
 * Gomoku
 

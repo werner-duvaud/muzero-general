@@ -49,7 +49,7 @@ class MuZero:
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
-        # Initial weights used to initialize components
+        # Weights used to initialize components
         self.muzero_weights = models.MuZeroNetwork(self.config).get_weights()
 
     def train(self):
@@ -114,13 +114,20 @@ class MuZero:
                     "1.Total reward/Total reward", infos["total_reward"], counter
                 )
                 writer.add_scalar(
-                    "2.Workers/Self played games",
+                    "2.Workers/1.Self played games",
                     ray.get(replay_buffer_worker.get_self_play_count.remote()),
                     counter,
                 )
                 writer.add_scalar(
-                    "2.Workers/Training steps", infos["training_step"], counter
+                    "2.Workers/2.Training steps", infos["training_step"], counter
                 )
+                writer.add_scalar(
+                    "2.Workers/3.Self played games per training step ratio",
+                    ray.get(replay_buffer_worker.get_self_play_count.remote())
+                    / max(1, infos["training_step"]),
+                    counter,
+                )
+                writer.add_scalar("2.Workers/4.Learning rate", infos["lr"], counter)
                 writer.add_scalar("3.Loss/1.Total loss", infos["total_loss"], counter)
                 writer.add_scalar("3.Loss/Value loss", infos["value_loss"], counter)
                 writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
@@ -168,7 +175,9 @@ class MuZero:
         test_rewards = []
         for _ in range(self.config.test_episodes):
             history = ray.get(
-                self_play_workers.play_game.remote(0, render, opponent, muzero_player)
+                self_play_workers.play_game.remote(
+                    0, 0, render, opponent, muzero_player
+                )
             )
             test_rewards.append(sum(history.rewards))
         ray.shutdown()
@@ -235,3 +244,12 @@ if __name__ == "__main__":
         else:
             break
         print("\nDone")
+
+
+
+    ## Successive training, create a new config file for each experiment
+    # experiments = ["cartpole", "tictactoe"]
+    # for experiment in experiments:
+    #     print("\nStrating experiment {}".format(experiment))
+    #     muzero = MuZero(experiment)
+    #     muzero.train()

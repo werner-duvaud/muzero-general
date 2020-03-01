@@ -11,7 +11,11 @@ class MuZeroNetwork:
                 config.stacked_observations,
                 len(config.action_space),
                 config.encoding_size,
-                config.hidden_layers,
+                config.fc_reward_layers,
+                config.fc_value_layers,
+                config.fc_policy_layers,
+                config.fc_representation_layers,
+                config.fc_dynamics_layers,
                 config.support_size,
             )
         elif config.network == "resnet":
@@ -23,9 +27,9 @@ class MuZeroNetwork:
                 config.channels,
                 config.pooling_size,
                 config.pooling_stride,
-                config.fc_reward_layers,
-                config.fc_value_layers,
-                config.fc_policy_layers,
+                config.resnet_fc_reward_layers,
+                config.resnet_fc_value_layers,
+                config.resnet_fc_policy_layers,
                 config.support_size,
             )
         else:
@@ -45,7 +49,11 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
         stacked_observations,
         action_space_size,
         encoding_size,
-        hidden_layers,
+        fc_reward_layers,
+        fc_value_layers,
+        fc_policy_layers,
+        fc_representation_layers,
+        fc_dynamics_layers,        
         support_size,
     ):
         super().__init__()
@@ -57,16 +65,16 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
             * observation_shape[1]
             * observation_shape[2]
             * (stacked_observations + 1),
-            [],
+            fc_representation_layers,
             encoding_size,
         )
 
         self.dynamics_encoded_state_network = FullyConnectedNetwork(
-            encoding_size + self.action_space_size, hidden_layers, encoding_size
+            encoding_size + self.action_space_size, fc_dynamics_layers, encoding_size
         )
         self.dynamics_reward_network = FullyConnectedNetwork(
             encoding_size + self.action_space_size,
-            hidden_layers,
+            fc_reward_layers,
             self.full_support_size,
         )
 
@@ -74,7 +82,7 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
             encoding_size, [], self.action_space_size
         )
         self.prediction_value_network = FullyConnectedNetwork(
-            encoding_size, [], self.full_support_size,
+            encoding_size, fc_value_layers, self.full_support_size,
         )
 
     def prediction(self, encoded_state):

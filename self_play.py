@@ -42,13 +42,13 @@ class SelfPlay:
                 )
             )
             game_history = self.play_game(
-                temperature, False, "self" if not test_mode else "random", 0
+                temperature, self.config.temperature_threshold, False, "self" if not test_mode else "random", 0
             )
 
             # Save to the shared storage
             if test_mode:
                 shared_storage.set_infos.remote(
-                    "total_reward", sum(game_history.rewards)
+                    "total_reward", sum(game_history.reward_history)
                 )
             if not test_mode:
                 replay_buffer.save_game.remote(game_history)
@@ -56,7 +56,7 @@ class SelfPlay:
             if not test_mode and self.config.self_play_delay:
                 time.sleep(self.config.self_play_delay)
 
-    def play_game(self, temperature, render, opponent, muzero_player):
+    def play_game(self, temperature, temperature_threshold, render, opponent, muzero_player):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
         """
@@ -83,7 +83,7 @@ class SelfPlay:
 
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
-                    action = self.select_action(root, temperature)
+                    action = self.select_action(root, temperature if len(game_history.action_history) < temperature_threshold else 0)
                 elif opponent == "human":
                     print(
                         "MuZero suggests {}".format(
@@ -113,8 +113,9 @@ class SelfPlay:
                     self.game.render()
 
                 game_history.observation_history.append(observation)
-                game_history.rewards.append(reward)
+                game_history.reward_history.append(reward)
                 game_history.action_history.append(action)
+                game_history.to_play_history.append(self.game.to_play())
                 game_history.store_search_statistics(root, self.config.action_space)
 
         self.game.close()
@@ -358,7 +359,8 @@ class GameHistory:
     def __init__(self):
         self.observation_history = []
         self.action_history = []
-        self.rewards = []
+        self.reward_history = []
+        self.to_play_history = []
         self.child_visits = []
         self.root_values = []
 
