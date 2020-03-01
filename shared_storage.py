@@ -14,8 +14,9 @@ class SharedStorage:
         self.game_name = game_name
         self.weights = weights
         self.infos = {
-            "training_step": 0,
             "total_reward": 0,
+            "training_step": 0,
+            "lr": 0,
             "total_loss": 0,
             "value_loss": 0,
             "reward_loss": 0,

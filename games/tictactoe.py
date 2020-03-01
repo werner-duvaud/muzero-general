@@ -23,8 +23,9 @@ class MuZeroConfig:
         ### Self-Play
         self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 10  # Maximum number of moves if game is not finished before
-        self.num_simulations = 100  # Number of future moves self-simulated
+        self.num_simulations = 20  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
+        self.temperature_threshold = 5  # Number of moves before dropping temperature to 0 (ie playing according to the max)
         self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
@@ -41,26 +42,30 @@ class MuZeroConfig:
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
         # Residual Network
-        self.blocks = 3  # Number of blocks in the ResNet
-        self.channels = 32  # Number of channels in the ResNet
+        self.blocks = 2  # Number of blocks in the ResNet
+        self.channels = 8  # Number of channels in the ResNet
         self.pooling_size = (1, 1)  # Size of the average pooling kernel
         self.pooling_stride = (1, 1)  # Stride of the pooling window
-        self.fc_reward_layers = [16]  # Define the hidden layers in the reward head of the dynamic network
-        self.fc_value_layers = [16]  # Define the hidden layers in the value head of the prediction network
-        self.fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
+        self.resnet_fc_reward_layers = [16]  # Define the hidden layers in the reward head of the dynamic network
+        self.resnet_fc_value_layers = [16]  # Define the hidden layers in the value head of the prediction network
+        self.resnet_fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
 
         # Fully Connected Network
         self.encoding_size = 32
-        self.hidden_layers = [64]
+        self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
+        self.fc_value_layers = []  # Define the hidden layers in the value network
+        self.fc_policy_layers = []  # Define the hidden layers in the policy network
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
 
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128  # Number of parts of games to train on at each training step
-        self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
+        self.training_steps = 100000  # Total number of training steps (ie weights update according to a batch)
+        self.batch_size = 32  # Number of parts of games to train on at each training step
+        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
-        self.window_size = 1000  # Number of self-play games to keep in the replay buffer
+        self.window_size = 1000000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 10  # Number of steps in the future to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
@@ -69,8 +74,8 @@ class MuZeroConfig:
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.01  # Initial learning rate
-        self.lr_decay_rate = 1
+        self.lr_init = 0.1  # Initial learning rate
+        self.lr_decay_rate = 0.1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
 
 
@@ -82,15 +87,11 @@ class MuZeroConfig:
         """
         Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
         The smaller it is, the more likely the best action (ie with the highest visit count) is chosen.
+
         Returns:
             Positive float.
         """
-        if trained_steps < 0.5 * self.training_steps:
-            return 1.0
-        elif trained_steps < 0.75 * self.training_steps:
-            return 0.5
-        else:
-            return 0.25
+        return 1
 
 
 class Game(AbstractGame):
@@ -107,15 +108,17 @@ class Game(AbstractGame):
         
         Args:
             action : action of the action_space to take.
+
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done = self.env.step(action)
-        return observation, reward, done
+        return observation, reward*20, done
 
     def to_play(self):
         """
         Return the current player.
+
         Returns:
             The current player, it should be an element of the players list in the config. 
         """
@@ -127,7 +130,8 @@ class Game(AbstractGame):
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
         
         For complexe game where calculating legal moves is too long, the idea is to define the legal actions
-        equal to the action space but to return a negative reward if the action is illegal.        
+        equal to the action space but to return a negative reward if the action is illegal.
+    
         Returns:
             An array of integers, subset of the action space.
         """
@@ -162,6 +166,7 @@ class Game(AbstractGame):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
+
         Returns:
             An integer from the action space.
         """
@@ -175,8 +180,10 @@ class Game(AbstractGame):
     def output_action(self, action_number):
         """
         Convert an action number to a string representing the action.
+
         Args:
             action_number: an integer from the action space.
+
         Returns:
             String representing the action.
         """

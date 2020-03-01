@@ -25,6 +25,7 @@ class MuZeroConfig:
         self.max_moves = 500  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
+        self.temperature_threshold = 500  # Number of moves before dropping temperature to 0 (ie playing according to the max)
         self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
@@ -51,7 +52,11 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 8
-        self.hidden_layers = [16]
+        self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
+        self.fc_value_layers = []  # Define the hidden layers in the value network
+        self.fc_policy_layers = []  # Define the hidden layers in the policy network
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
 
 
         ### Training
@@ -70,7 +75,7 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.01  # Initial learning rate
-        self.lr_decay_rate = 0.9
+        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
 
 

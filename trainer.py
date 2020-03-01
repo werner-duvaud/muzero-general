@@ -47,6 +47,9 @@ class Trainer:
             if self.training_step % self.config.checkpoint_interval == 0:
                 shared_storage_worker.set_weights.remote(self.model.get_weights())
             shared_storage_worker.set_infos.remote("training_step", self.training_step)
+            shared_storage_worker.set_infos.remote(
+                "lr", self.optimizer.param_groups[0]["lr"]
+            )
             shared_storage_worker.set_infos.remote("total_loss", total_loss)
             shared_storage_worker.set_infos.remote("value_loss", value_loss)
             shared_storage_worker.set_infos.remote("reward_loss", reward_loss)

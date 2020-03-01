@@ -26,6 +26,7 @@ class MuZeroConfig:
         self.max_moves = 70  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of futur moves self-simulated
         self.discount = 1  # Chronological discount of the reward
+        self.temperature_threshold = 40  # Number of moves before dropping temperature to 0 (ie playing according to the max)
         self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
@@ -46,13 +47,17 @@ class MuZeroConfig:
         self.channels = 8  # Number of channels in the ResNet
         self.pooling_size = (2, 2)  # Size of the average pooling kernel
         self.pooling_stride = (2, 2)  # Stride of the pooling window
-        self.fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
-        self.fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
-        self.fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
+        self.resnet_fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
+        self.resnet_fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
+        self.resnet_fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
         
         # Fully Connected Network
         self.encoding_size = 32
-        self.hidden_layers = [64]
+        self.fc_reward_layers = [64]  # Define the hidden layers in the reward network
+        self.fc_value_layers = []  # Define the hidden layers in the value network
+        self.fc_policy_layers = []  # Define the hidden layers in the policy network
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [64]  # Define the hidden layers in the dynamics network
 
 
         ### Training
@@ -71,7 +76,7 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.01  # Initial learning rate
-        self.lr_decay_rate = 0.9
+        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
 
 
@@ -108,6 +113,7 @@ class Game(AbstractGame):
         
         Args:
             action : action of the action_space to take.
+
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
@@ -117,6 +123,7 @@ class Game(AbstractGame):
     def to_play(self):
         """
         Return the current player.
+
         Returns:
             The current player, it should be an element of the players list in the config. 
         """
@@ -128,7 +135,8 @@ class Game(AbstractGame):
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
         
         For complexe game where calculating legal moves is too long, the idea is to define the legal actions
-        equal to the action space but to return a negative reward if the action is illegal.        
+        equal to the action space but to return a negative reward if the action is illegal.
+
         Returns:
             An array of integers, subset of the action space.
         """

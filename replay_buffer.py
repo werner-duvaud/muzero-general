@@ -65,7 +65,7 @@ class ReplayBuffer:
         Sample position from game either uniformly or according to some priority.
         """
         # TODO: sample according to some priority
-        return numpy.random.choice(range(len(game_history.rewards)))
+        return numpy.random.choice(range(len(game_history.reward_history)))
 
     @staticmethod
     def make_target(game_history, state_index, num_unroll_steps, td_steps, discount):
@@ -81,13 +81,13 @@ class ReplayBuffer:
             else:
                 value = 0
 
-            for i, reward in enumerate(game_history.rewards[current_index:bootstrap_index]):
-                value += reward * discount ** i
+            for i, reward in enumerate(game_history.reward_history[current_index:bootstrap_index]):
+                value += (reward if game_history.to_play_history[current_index] == game_history.to_play_history[current_index + i] else -reward) * discount ** i
 
             if current_index < len(game_history.root_values):
                 # Value target could be scaled by 0.25 (See paper appendix Reanalyze)
                 target_values.append(value)
-                target_rewards.append(game_history.rewards[current_index])
+                target_rewards.append(game_history.reward_history[current_index])
                 target_policies.append(game_history.child_visits[current_index])
                 actions.append(game_history.action_history[current_index])
             else:
@@ -101,6 +101,6 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
-                actions.append(game_history.action_history[-1])
+                actions.append(0)
 
         return target_values, target_rewards, target_policies, actions
