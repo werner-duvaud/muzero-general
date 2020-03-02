@@ -81,8 +81,15 @@ class ReplayBuffer:
             else:
                 value = 0
 
-            for i, reward in enumerate(game_history.reward_history[current_index:bootstrap_index]):
-                value += (reward if game_history.to_play_history[current_index] == game_history.to_play_history[current_index + i] else -reward) * discount ** i
+            for i, reward in enumerate(
+                game_history.reward_history[current_index:bootstrap_index]
+            ):
+                value += (
+                    reward
+                    if game_history.to_play_history[current_index]
+                    == game_history.to_play_history[current_index + i]
+                    else -reward
+                ) * discount ** i
 
             if current_index < len(game_history.root_values):
                 # Value target could be scaled by 0.25 (See paper appendix Reanalyze)

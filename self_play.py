@@ -42,7 +42,11 @@ class SelfPlay:
                 )
             )
             game_history = self.play_game(
-                temperature, self.config.temperature_threshold, False, "self" if not test_mode else "random", 0
+                temperature,
+                self.config.temperature_threshold,
+                False,
+                "self" if not test_mode else "random",
+                0,
             )
 
             # Save to the shared storage
@@ -50,13 +54,35 @@ class SelfPlay:
                 shared_storage.set_infos.remote(
                     "total_reward", sum(game_history.reward_history)
                 )
+                shared_storage.set_infos.remote(
+                    "player_0_reward",
+                    sum(
+                        [
+                            reward
+                            for i, reward in enumerate(game_history.reward_history)
+                            if game_history.to_play_history[i] == 0
+                        ]
+                    ),
+                )
+                shared_storage.set_infos.remote(
+                    "player_1_reward",
+                    sum(
+                        [
+                            reward
+                            for i, reward in enumerate(game_history.reward_history)
+                            if game_history.to_play_history[i] == 1
+                        ]
+                    ),
+                )
             if not test_mode:
                 replay_buffer.save_game.remote(game_history)
 
             if not test_mode and self.config.self_play_delay:
                 time.sleep(self.config.self_play_delay)
 
-    def play_game(self, temperature, temperature_threshold, render, opponent, muzero_player):
+    def play_game(
+        self, temperature, temperature_threshold, render, opponent, muzero_player
+    ):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
         """
@@ -66,6 +92,7 @@ class SelfPlay:
             observation, game_history, self.config.stacked_observations
         )
         game_history.observation_history.append(observation)
+        game_history.to_play_history.append(self.game.to_play())
         done = False
 
         if render:
@@ -83,11 +110,17 @@ class SelfPlay:
 
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
-                    action = self.select_action(root, temperature if len(game_history.action_history) < temperature_threshold else 0)
+                    action = self.select_action(
+                        root,
+                        temperature
+                        if len(game_history.action_history) < temperature_threshold
+                        else 0,
+                    )
                 elif opponent == "human":
                     print(
-                        "MuZero suggests {}".format(
-                            self.game.output_action(self.select_action(root, 0))
+                        "Player {} turn. MuZero suggests {}".format(
+                            self.game.to_play(),
+                            self.game.output_action(self.select_action(root, 0)),
                         )
                     )
                     action = self.game.input_action()
@@ -105,11 +138,7 @@ class SelfPlay:
                 )
 
                 if render:
-                    print(
-                        "Player {}: {}".format(
-                            self.game.to_play(), self.game.output_action(action)
-                        )
-                    )
+                    print("Played action: {}".format(self.game.output_action(action)))
                     self.game.render()
 
                 game_history.observation_history.append(observation)
