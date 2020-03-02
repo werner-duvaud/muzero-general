@@ -111,7 +111,17 @@ class MuZero:
                 # Get and save real time performance
                 infos = ray.get(shared_storage_worker.get_infos.remote())
                 writer.add_scalar(
-                    "1.Total reward/Total reward", infos["total_reward"], counter
+                    "1.Total reward/1.Total reward", infos["total_reward"], counter,
+                )
+                writer.add_scalar(
+                    "1.Total reward/2.Player 0 MuZero reward",
+                    infos["player_0_reward"],
+                    counter,
+                )
+                writer.add_scalar(
+                    "1.Total reward/3.Player 1 Random reward",
+                    infos["player_1_reward"],
+                    counter,
                 )
                 writer.add_scalar(
                     "2.Workers/1.Self played games",
@@ -133,8 +143,8 @@ class MuZero:
                 writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
                 writer.add_scalar("3.Loss/Policy loss", infos["policy_loss"], counter)
                 print(
-                    "Last test reward: {0:.2f}. Training step: {1}/{2}. Played games: {3}. Loss: {4:.2f}".format(
-                        infos["total_reward"],
+                    "MuZero test reward: {0:.2f}. Training step: {1}/{2}. Played games: {3}. Loss: {4:.2f}".format(
+                        infos["player_0_reward"],
                         infos["training_step"],
                         self.config.training_steps,
                         ray.get(replay_buffer_worker.get_self_play_count.remote()),
@@ -143,7 +153,7 @@ class MuZero:
                     end="\r",
                 )
                 counter += 1
-                time.sleep(3)
+                time.sleep(0.5)
         except KeyboardInterrupt as err:
             # Comment the line below to be able to stop the training but keep running
             # raise err
@@ -179,7 +189,7 @@ class MuZero:
                     0, 0, render, opponent, muzero_player
                 )
             )
-            test_rewards.append(sum(history.rewards))
+            test_rewards.append(sum(history.reward_history))
         ray.shutdown()
         return test_rewards
 
@@ -244,8 +254,6 @@ if __name__ == "__main__":
         else:
             break
         print("\nDone")
-
-
 
     ## Successive training, create a new config file for each experiment
     # experiments = ["cartpole", "tictactoe"]
