@@ -39,6 +39,7 @@ class Trainer:
         # Training loop
         while True:
             batch = ray.get(replay_buffer.get_batch.remote())
+            self.update_lr()
             total_loss, value_loss, reward_loss, policy_loss = self.update_weights(
                 batch
             )
@@ -62,7 +63,6 @@ class Trainer:
         """
         Perform one training step.
         """
-        self.update_lr()
 
         (
             observation_batch,
@@ -78,24 +78,49 @@ class Trainer:
         target_value = torch.tensor(target_value).float().to(device)
         target_reward = torch.tensor(target_reward).float().to(device)
         target_policy = torch.tensor(target_policy).float().to(device)
+        # observation_batch: batch, channels, heigth, width
+        # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
+        # target_value: batch, num_unroll_steps+1
+        # target_reward: batch, num_unroll_steps+1
+        # target_policy: batch, num_unroll_steps+1, len(action_space)
 
         target_value = self.scalar_to_support(target_value, self.config.support_size)
         target_reward = self.scalar_to_support(target_reward, self.config.support_size)
+        # target_value: batch, num_unroll_steps+1, 2*support_size+1
+        # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
+        # Generate predictions
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
         )
         predictions = [(value, reward, policy_logits)]
-        for action_i in range(self.config.num_unroll_steps):
+        for i in range(1, action_batch.shape[1]):
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                hidden_state, action_batch[:, action_i]
+                hidden_state, action_batch[:, i]
             )
             predictions.append((value, reward, policy_logits))
+        # predictions: num_unroll_steps + 1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
 
         # Compute losses
         value_loss, reward_loss, policy_loss = (0, 0, 0)
-        for i, prediction in enumerate(predictions):
-            value, reward, policy_logits = prediction
+        # Ignore reward loss for the first batch step
+        value, reward, policy_logits = predictions[0]
+        (
+            current_value_loss,
+            _,
+            current_policy_loss,
+        ) = self.loss_function(
+            value.squeeze(-1),
+            reward.squeeze(-1),
+            policy_logits,
+            target_value[:, 0],
+            target_reward[:, 0],
+            target_policy[:, 0],
+        )
+        value_loss += current_value_loss
+        policy_loss += current_policy_loss
+        for i in range(1, len(predictions)):
+            value, reward, policy_logits = predictions[i]
             (
                 current_value_loss,
                 current_reward_loss,
@@ -167,7 +192,7 @@ class Trainer:
     def loss_function(
         value, reward, policy_logits, target_value, target_reward, target_policy
     ):
-        # Cross-entropy had a better convergence than MSE
+        # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1).mean()
         reward_loss = (
             (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1).mean()

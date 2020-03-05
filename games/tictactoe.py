@@ -22,14 +22,14 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 10  # Maximum number of moves if game is not finished before
-        self.num_simulations = 20  # Number of future moves self-simulated
+        self.max_moves = 12  # Maximum number of moves if game is not finished before
+        self.num_simulations = 25  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
-        self.temperature_threshold = 5  # Number of moves before dropping temperature to 0 (ie playing according to the max)
+        self.temperature_threshold = 6  # Number of moves before dropping temperature to 0 (ie playing according to the max)
         self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25
+        self.root_dirichlet_alpha = 0.1
         self.root_exploration_fraction = 0.25
 
         # UCB formula
@@ -38,17 +38,17 @@ class MuZeroConfig:
 
 
         ### Network
-        self.network = "resnet"  # "resnet" / "fullyconnected"
+        self.network = "fullyconnected"  # "resnet" / "fullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
         # Residual Network
-        self.blocks = 2  # Number of blocks in the ResNet
-        self.channels = 8  # Number of channels in the ResNet
+        self.blocks = 6  # Number of blocks in the ResNet
+        self.channels = 16  # Number of channels in the ResNet
         self.pooling_size = (1, 1)  # Size of the average pooling kernel
         self.pooling_stride = (1, 1)  # Stride of the pooling window
-        self.resnet_fc_reward_layers = [16]  # Define the hidden layers in the reward head of the dynamic network
-        self.resnet_fc_value_layers = [16]  # Define the hidden layers in the value head of the prediction network
-        self.resnet_fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
+        self.resnet_fc_reward_layers = [8]  # Define the hidden layers in the reward head of the dynamic network
+        self.resnet_fc_value_layers = [8]  # Define the hidden layers in the value head of the prediction network
+        self.resnet_fc_policy_layers = [8]  # Define the hidden layers in the policy head of the prediction network
 
         # Fully Connected Network
         self.encoding_size = 32
@@ -62,11 +62,11 @@ class MuZeroConfig:
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
         self.training_steps = 100000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 400  # Number of parts of games to train on at each training step
-        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
+        self.batch_size = 64  # Number of parts of games to train on at each training step
+        self.num_unroll_steps = 20  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
-        self.window_size = 1000000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 10  # Number of steps in the future to take into account for calculating the target value
+        self.window_size = 3000  # Number of self-play games to keep in the replay buffer
+        self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -74,8 +74,8 @@ class MuZeroConfig:
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.1  # Initial learning rate
-        self.lr_decay_rate = 0.1  # Set it to 1 to use a constant learning rate
+        self.lr_init = 0.01  # Initial learning rate
+        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
 
 
