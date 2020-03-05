@@ -331,7 +331,7 @@ class MCTS:
             torch.tensor([x for x in range(-support_size, support_size + 1)])
             .expand(probs.shape)
             .to(device=probs.device)
-        )
+        ).float()
         x = torch.sum(support * probs, dim=1, keepdim=True)
 
         # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
