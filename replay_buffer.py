@@ -34,13 +34,7 @@ class ReplayBuffer:
             game_history = self.sample_game(self.buffer)
             game_pos = self.sample_position(game_history)
 
-            value, reward, policy, actions = self.make_target(
-                game_history,
-                game_pos,
-                self.config.num_unroll_steps,
-                self.config.td_steps,
-                self.config.discount,
-            )
+            value, reward, policy, actions = self.make_target(game_history, game_pos,)
 
             observation_batch.append(game_history.observation_history[game_pos])
             action_batch.append(actions)
@@ -48,36 +42,43 @@ class ReplayBuffer:
             reward_batch.append(reward)
             policy_batch.append(policy)
 
+        # observation_batch: batch, channels, heigth, width
+        # action_batch: batch, num_unroll_steps+1
+        # value_batch: batch, num_unroll_steps+1
+        # reward_batch: batch, num_unroll_steps+1
+        # policy_batch: batch, num_unroll_steps+1, len(action_space)
         return observation_batch, action_batch, value_batch, reward_batch, policy_batch
 
-    @staticmethod
-    def sample_game(buffer):
+    def sample_game(self, buffer):
         """
         Sample game from buffer either uniformly or according to some priority.
         """
         # TODO: sample with probability link to the highest difference between real and
         # predicted value (See paper appendix Training)
-        return numpy.random.choice(buffer)
+        return numpy.random.choice(self.buffer)
 
-    @staticmethod
-    def sample_position(game_history):
+    def sample_position(self, game_history):
         """
         Sample position from game either uniformly or according to some priority.
         """
         # TODO: sample according to some priority
         return numpy.random.choice(range(len(game_history.reward_history)))
 
-    @staticmethod
-    def make_target(game_history, state_index, num_unroll_steps, td_steps, discount):
+    def make_target(self, game_history, state_index):
         """
         The value target is the discounted root value of the search tree td_steps into the
         future, plus the discounted sum of all rewards until then.
         """
         target_values, target_rewards, target_policies, actions = [], [], [], []
-        for current_index in range(state_index, state_index + num_unroll_steps + 1):
-            bootstrap_index = current_index + td_steps
+        for current_index in range(
+            state_index, state_index + self.config.num_unroll_steps + 1
+        ):
+            bootstrap_index = current_index + self.config.td_steps
             if bootstrap_index < len(game_history.root_values):
-                value = game_history.root_values[bootstrap_index] * discount ** td_steps
+                value = (
+                    game_history.root_values[bootstrap_index]
+                    * self.config.discount ** self.config.td_steps
+                )
             else:
                 value = 0
 
@@ -89,13 +90,23 @@ class ReplayBuffer:
                     if game_history.to_play_history[current_index]
                     == game_history.to_play_history[current_index + i]
                     else -reward
-                ) * discount ** i
+                ) * self.config.discount ** i
 
             if current_index < len(game_history.root_values):
                 # Value target could be scaled by 0.25 (See paper appendix Reanalyze)
                 target_values.append(value)
                 target_rewards.append(game_history.reward_history[current_index])
                 target_policies.append(game_history.child_visits[current_index])
+                actions.append(game_history.action_history[current_index])
+            elif current_index == len(game_history.root_values):
+                target_values.append(value)
+                target_rewards.append(game_history.reward_history[current_index])
+                target_policies.append(
+                    [
+                        1 / len(game_history.child_visits[0])
+                        for _ in range(len(game_history.child_visits[0]))
+                    ]
+                )
                 actions.append(game_history.action_history[current_index])
             else:
                 # States past the end of games are treated as absorbing states
@@ -108,6 +119,6 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
-                actions.append(0)
+                actions.append(numpy.random.choice(game_history.action_history))
 
         return target_values, target_rewards, target_policies, actions

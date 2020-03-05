@@ -122,7 +122,7 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
         scale_next_encoded_state = max_next_encoded_state - min_next_encoded_state
         scale_next_encoded_state[scale_next_encoded_state == 0] = 1
         next_encoded_state_normalized = (
-            encoded_state - min_next_encoded_state
+            next_encoded_state - min_next_encoded_state
         ) / scale_next_encoded_state
 
         reward = self.dynamics_reward_network(x)

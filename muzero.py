@@ -143,8 +143,8 @@ class MuZero:
                 writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
                 writer.add_scalar("3.Loss/Policy loss", infos["policy_loss"], counter)
                 print(
-                    "MuZero test reward: {0:.2f}. Training step: {1}/{2}. Played games: {3}. Loss: {4:.2f}".format(
-                        infos["player_0_reward"],
+                    "Last test reward: {0:.2f}. Training step: {1}/{2}. Played games: {3}. Loss: {4:.2f}".format(
+                        infos["total_reward"],
                         infos["training_step"],
                         self.config.training_steps,
                         ray.get(replay_buffer_worker.get_self_play_count.remote()),
