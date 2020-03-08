@@ -87,7 +87,6 @@ class MuZeroConfig:
         """
         Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
         The smaller it is, the more likely the best action (ie with the highest visit count) is chosen.
-
         Returns:
             Positive float.
         """
@@ -108,7 +107,6 @@ class Game(AbstractGame):
         
         Args:
             action : action of the action_space to take.
-
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
@@ -118,7 +116,6 @@ class Game(AbstractGame):
     def to_play(self):
         """
         Return the current player.
-
         Returns:
             The current player, it should be an element of the players list in the config. 
         """
@@ -166,7 +163,6 @@ class Game(AbstractGame):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
-
         Returns:
             An integer from the action space.
         """
@@ -180,10 +176,8 @@ class Game(AbstractGame):
     def output_action(self, action_number):
         """
         Convert an action number to a string representing the action.
-
         Args:
             action_number: an integer from the action space.
-
         Returns:
             String representing the action.
         """

@@ -103,7 +103,9 @@ class SelfPlay:
             self.game.render()
 
         with torch.no_grad():
-            while not done and len(game_history.action_history) <= self.config.max_moves:
+            while (
+                not done and len(game_history.action_history) <= self.config.max_moves
+            ):
                 root = MCTS(self.config).run(
                     self.model,
                     observation,
@@ -145,7 +147,6 @@ class SelfPlay:
                     print("Played action: {}".format(self.game.output_action(action)))
                     self.game.render()
 
-
                 game_history.store_search_statistics(root, self.config.action_space)
 
                 # Next batch
@@ -164,15 +165,24 @@ class SelfPlay:
         stacked_observations = observation.copy()
         for i in range(num_stacked_observations):
             try:
-                previous_observation = game_history.observation_history[-i - 1][
-                    : observation.shape[0]
-                ]
+                previous_observation = numpy.concatenate(
+                    (
+                        game_history.observation_history[-i - 1][
+                            : observation.shape[0]
+                        ],
+                        [numpy.ones_like(observation[0])
+                        * game_history.action_history[-i - 1]],
+                    ), axis=0
+                )
             except IndexError:
-                previous_observation = numpy.zeros_like(observation)
+                previous_observation = numpy.concatenate(
+                    (numpy.zeros_like(observation), [numpy.zeros_like(observation[0])]), axis=0
+                )
 
             stacked_observations = numpy.concatenate(
                 (stacked_observations, previous_observation), axis=0
             )
+
         return stacked_observations
 
     @staticmethod
@@ -227,12 +237,8 @@ class MCTS:
             .unsqueeze(0)
             .to(next(model.parameters()).device)
         )
-        _, reward, policy_logits, hidden_state = model.initial_inference(
-            observation
-        )
-        reward = self.support_to_scalar(
-            reward, self.config.support_size
-        )
+        _, reward, policy_logits, hidden_state = model.initial_inference(observation)
+        reward = self.support_to_scalar(reward, self.config.support_size)
         root.expand(
             legal_actions, to_play, reward, policy_logits, hidden_state,
         )
@@ -276,7 +282,9 @@ class MCTS:
                 hidden_state,
             )
 
-            self.backpropagate(search_path, value.item(), virtual_to_play, min_max_stats)
+            self.backpropagate(
+                search_path, value.item(), virtual_to_play, min_max_stats
+            )
 
         return root
 
@@ -330,8 +338,9 @@ class MCTS:
         support = (
             torch.tensor([x for x in range(-support_size, support_size + 1)])
             .expand(probs.shape)
+            .float()
             .to(device=probs.device)
-        ).float()
+        )
         x = torch.sum(support * probs, dim=1, keepdim=True)
 
         # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
@@ -400,6 +409,7 @@ class GameHistory:
         self.root_values = []
 
     def store_search_statistics(self, root, action_space):
+        # Turn visit count from root into a policy
         sum_visits = sum(child.visit_count for child in root.children.values())
         self.child_visits.append(
             [
@@ -407,6 +417,7 @@ class GameHistory:
                 for a in action_space
             ]
         )
+
         self.root_values.append(root.value())
 
 

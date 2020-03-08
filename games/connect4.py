@@ -170,9 +170,9 @@ class Game(AbstractGame):
         Returns:
             An integer from the action space.
         """
-        choice = ("Enter the column to play for the player {}: ".format(self.to_play()))
+        choice = input("Enter the column to play for the player {}: ".format(self.to_play()))
         while choice not in [str(action) for action in self.legal_actions()]:
-            choice = ("Enter another column : ")
+            choice = input("Enter another column : ")
         return int(choice)
 
     def output_action(self, action_number):
