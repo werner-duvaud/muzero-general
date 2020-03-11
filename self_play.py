@@ -211,7 +211,7 @@ class SelfPlay:
         return action
 
 
-# Game independant
+# Game independent
 class MCTS:
     """
     Core Monte Carlo Tree Search algorithm.
@@ -311,7 +311,11 @@ class MCTS:
         pb_c *= math.sqrt(parent.visit_count) / (child.visit_count + 1)
 
         prior_score = pb_c * child.prior
-        value_score = min_max_stats.normalize(child.value())
+
+        if child.visit_count > 0:
+            value_score = child.reward + self.config.discount * min_max_stats.normalize(child.value())
+        else:
+            value_score = 0
 
         return prior_score + value_score
 
@@ -320,7 +324,7 @@ class MCTS:
         At the end of a simulation, we propagate the evaluation all the way up the tree
         to the root.
         """
-        for node in search_path:
+        for node in reversed(search_path):
             node.value_sum += value if node.to_play == to_play else -value
             node.visit_count += 1
             min_max_stats.update(node.value())
@@ -334,14 +338,14 @@ class MCTS:
         See paper appendix Network Architecture
         """
         # Decode to a scalar
-        probs = torch.softmax(logits, dim=1)
+        probabilities = torch.softmax(logits, dim=1)
         support = (
             torch.tensor([x for x in range(-support_size, support_size + 1)])
-            .expand(probs.shape)
+            .expand(probabilities.shape)
             .float()
-            .to(device=probs.device)
+            .to(device=probabilities.device)
         )
-        x = torch.sum(support * probs, dim=1, keepdim=True)
+        x = torch.sum(support * probabilities, dim=1, keepdim=True)
 
         # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
         x = torch.sign(x) * (

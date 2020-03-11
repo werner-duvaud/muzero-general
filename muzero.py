@@ -45,7 +45,7 @@ class MuZero:
             )
             raise err
 
-        # Fix random generator seed for reproductibility
+        # Fix random generator seed
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
@@ -258,6 +258,6 @@ if __name__ == "__main__":
     ## Successive training, create a new config file for each experiment
     # experiments = ["cartpole", "tictactoe"]
     # for experiment in experiments:
-    #     print("\nStrating experiment {}".format(experiment))
+    #     print("\nStarting experiment {}".format(experiment))
     #     muzero = MuZero(experiment)
     #     muzero.train()
