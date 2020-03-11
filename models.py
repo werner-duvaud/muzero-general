@@ -87,9 +87,9 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
         )
 
     def prediction(self, encoded_state):
-        policy_logit = self.prediction_policy_network(encoded_state)
+        policy_logits = self.prediction_policy_network(encoded_state)
         value = self.prediction_value_network(encoded_state)
-        return policy_logit, value
+        return policy_logits, value
 
     def representation(self, observation):
         encoded_state = self.representation_network(
@@ -131,20 +131,20 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
-        policy_logit, value = self.prediction(encoded_state)
+        policy_logits, value = self.prediction(encoded_state)
         return (
             value,
             torch.zeros(len(observation), self.full_support_size).to(
                 observation.device
             ),
-            policy_logit,
+            policy_logits,
             encoded_state,
         )
 
     def recurrent_inference(self, encoded_state, action):
         next_encoded_state, reward = self.dynamics(encoded_state, action)
-        policy_logit, value = self.prediction(next_encoded_state)
-        return value, reward, policy_logit, next_encoded_state
+        policy_logits, value = self.prediction(next_encoded_state)
+        return value, reward, policy_logits, next_encoded_state
 
     def get_weights(self):
         return {key: value.cpu() for key, value in self.state_dict().items()}
@@ -460,8 +460,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
 class FullyConnectedNetwork(torch.nn.Module):
     def __init__(self, input_size, layer_sizes, output_size, activation=None):
         super(FullyConnectedNetwork, self).__init__()
-        sizes_list = layer_sizes.copy()
-        sizes_list.insert(0, input_size)
+        sizes_list = [input_size] + layer_sizes
         layers = []
         if 1 < len(sizes_list):
             for i in range(len(sizes_list) - 1):
