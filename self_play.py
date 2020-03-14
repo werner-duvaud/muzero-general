@@ -126,10 +126,10 @@ class SelfPlay:
                     print(
                         "Player {} turn. MuZero suggests {}".format(
                             self.game.to_play(),
-                            self.game.output_action(self.select_action(root, 0)),
+                            self.game.print_action(self.select_action(root, 0)),
                         )
                     )
-                    action = self.game.input_action()
+                    action = self.game.human_action()
                 elif opponent == "random":
                     action = numpy.random.choice(self.game.legal_actions())
                 else:
@@ -144,7 +144,7 @@ class SelfPlay:
                 )
 
                 if render:
-                    print("Played action: {}".format(self.game.output_action(action)))
+                    print("Played action: {}".format(self.game.print_action(action)))
                     self.game.render()
 
                 game_history.store_search_statistics(root, self.config.action_space)
@@ -170,13 +170,17 @@ class SelfPlay:
                         game_history.observation_history[-i - 1][
                             : observation.shape[0]
                         ],
-                        [numpy.ones_like(observation[0])
-                        * game_history.action_history[-i - 1]],
-                    ), axis=0
+                        [
+                            numpy.ones_like(observation[0])
+                            * game_history.action_history[-i - 1]
+                        ],
+                    ),
+                    axis=0,
                 )
             except IndexError:
                 previous_observation = numpy.concatenate(
-                    (numpy.zeros_like(observation), [numpy.zeros_like(observation[0])]), axis=0
+                    (numpy.zeros_like(observation), [numpy.zeros_like(observation[0])]),
+                    axis=0,
                 )
 
             stacked_observations = numpy.concatenate(
@@ -313,7 +317,9 @@ class MCTS:
         prior_score = pb_c * child.prior
 
         if child.visit_count > 0:
-            value_score = child.reward + self.config.discount * min_max_stats.normalize(child.value())
+            value_score = min_max_stats.normalize(
+                child.reward + self.config.discount * child.value()
+            )
         else:
             value_score = 0
 

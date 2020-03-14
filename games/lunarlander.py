@@ -21,11 +21,11 @@ class MuZeroConfig:
 
 
         ### Self-Play
-        self.num_actors = 10  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_actors = 3  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 2000  # Maximum number of moves if game is not finished before
-        self.num_simulations = 50  # Number of futur moves self-simulated
+        self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
-        self.temperature_threshold = 600  # Number of moves before dropping temperature to 0 (ie playing according to the max)
+        self.temperature_threshold = 3000  # Number of moves before dropping temperature to 0 (ie playing according to the max)
         self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
@@ -63,10 +63,10 @@ class MuZeroConfig:
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
         self.training_steps = 50000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
-        self.num_unroll_steps = 200  # Number of game moves to keep for every batch element
+        self.num_unroll_steps = 100  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 600  # Number of steps in the futur to take into account for calculating the target value
+        self.td_steps = 2000  # Number of steps in the future to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -74,7 +74,7 @@ class MuZeroConfig:
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.5  # Initial learning rate
+        self.lr_init = 0.05  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
 
@@ -136,7 +136,7 @@ class Game(AbstractGame):
         Should return the legal actions at each turn, if it is not available, it can return
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
         
-        For complexe game where calculating legal moves is too long, the idea is to define the legal actions
+        For complex game where calculating legal moves is too long, the idea is to define the legal actions
         equal to the action space but to return a negative reward if the action is illegal.        
 
         Returns:
@@ -166,7 +166,7 @@ class Game(AbstractGame):
         self.env.render()
         input("Press enter to take a step ")
 
-    def input_action(self):
+    def human_action(self):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
@@ -176,7 +176,7 @@ class Game(AbstractGame):
         """
         pass
 
-    def output_action(self, action_number):
+    def print_action(self, action_number):
         """
         Convert an action number to a string representing the action.
 

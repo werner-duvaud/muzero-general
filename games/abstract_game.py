@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class AbstractGame(ABC):
     """
     Inherit this class for muzero to play
@@ -16,6 +17,7 @@ class AbstractGame(ABC):
         
         Args:
             action : action of the action_space to take.
+
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
@@ -25,11 +27,12 @@ class AbstractGame(ABC):
     def to_play(self):
         """
         Return the current player.
+
         Returns:
             The current player, it should be an element of the players list in the config. 
         """
         pass
-    
+
     @abstractmethod
     def legal_actions(self):
         """
@@ -37,7 +40,8 @@ class AbstractGame(ABC):
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
         
         For complexe game where calculating legal moves is too long, the idea is to define the legal actions
-        equal to the action space but to return a negative reward if the action is illegal.        
+        equal to the action space but to return a negative reward if the action is illegal.
+
         Returns:
             An array of integers, subset of the action space.
         """
@@ -68,22 +72,30 @@ class AbstractGame(ABC):
         pass
 
     @abstractmethod
-    def input_action(self):
+    def human_action(self):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
+
         Returns:
             An integer from the action space.
         """
-        pass
+        choice = input(
+            "Enter the action to play for the player {}: ".format(self.to_play())
+        )
+        while choice not in [str(action) for action in self.legal_actions()]:
+            choice = input("Enter another action : ")
+        return int(choice)
 
     @abstractmethod
-    def output_action(self, action_number):
+    def print_action(self, action_number):
         """
         Convert an action number to a string representing the action.
+
         Args:
             action_number: an integer from the action space.
+
         Returns:
             String representing the action.
         """
-        pass
+        return str(action_number)
