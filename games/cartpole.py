@@ -23,7 +23,7 @@ class MuZeroConfig:
         ### Self-Play
         self.num_actors = 3  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 500  # Maximum number of moves if game is not finished before
-        self.num_simulations = 50  # Number of futur moves self-simulated
+        self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = 500  # Number of moves before dropping temperature to 0 (ie playing according to the max)
         self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
@@ -66,7 +66,7 @@ class MuZeroConfig:
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 50  # Number of steps in the futur to take into account for calculating the target value
+        self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -136,7 +136,7 @@ class Game(AbstractGame):
         Should return the legal actions at each turn, if it is not available, it can return
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
         
-        For complexe game where calculating legal moves is too long, the idea is to define the legal actions
+        For complex game where calculating legal moves is too long, the idea is to define the legal actions
         equal to the action space but to return a negative reward if the action is illegal.        
 
         Returns:
@@ -166,7 +166,7 @@ class Game(AbstractGame):
         self.env.render()
         input("Press enter to take a step ")
 
-    def input_action(self):
+    def human_action(self):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
@@ -176,7 +176,7 @@ class Game(AbstractGame):
         """
         pass
 
-    def output_action(self, action_number):
+    def print_action(self, action_number):
         """
         Convert an action number to a string representing the action.
 

@@ -34,15 +34,15 @@ class ReplayBuffer:
             game_history = self.sample_game(self.buffer)
             game_pos = self.sample_position(game_history)
 
-            value, reward, policy, actions = self.make_target(game_history, game_pos,)
+            values, rewards, policies, actions = self.make_target(game_history, game_pos)
 
             observation_batch.append(game_history.observation_history[game_pos])
             action_batch.append(actions)
-            value_batch.append(value)
-            reward_batch.append(reward)
-            policy_batch.append(policy)
+            value_batch.append(values)
+            reward_batch.append(rewards)
+            policy_batch.append(policies)
 
-        # observation_batch: batch, channels, heigth, width
+        # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1
         # value_batch: batch, num_unroll_steps+1
         # reward_batch: batch, num_unroll_steps+1

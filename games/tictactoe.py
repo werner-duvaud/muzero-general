@@ -87,6 +87,7 @@ class MuZeroConfig:
         """
         Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
         The smaller it is, the more likely the best action (ie with the highest visit count) is chosen.
+
         Returns:
             Positive float.
         """
@@ -107,6 +108,7 @@ class Game(AbstractGame):
         
         Args:
             action : action of the action_space to take.
+
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
@@ -116,6 +118,7 @@ class Game(AbstractGame):
     def to_play(self):
         """
         Return the current player.
+
         Returns:
             The current player, it should be an element of the players list in the config. 
         """
@@ -126,7 +129,7 @@ class Game(AbstractGame):
         Should return the legal actions at each turn, if it is not available, it can return
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
         
-        For complexe game where calculating legal moves is too long, the idea is to define the legal actions
+        For complex game where calculating legal moves is too long, the idea is to define the legal actions
         equal to the action space but to return a negative reward if the action is illegal.
     
         Returns:
@@ -159,10 +162,11 @@ class Game(AbstractGame):
     def encode_board(self):
         return self.env.encode_board()
 
-    def input_action(self):
+    def human_action(self):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
+
         Returns:
             An integer from the action space.
         """
@@ -173,11 +177,13 @@ class Game(AbstractGame):
             choice = input("Enter another column : ")
         return int(choice)
 
-    def output_action(self, action_number):
+    def print_action(self, action_number):
         """
         Convert an action number to a string representing the action.
+        
         Args:
             action_number: an integer from the action space.
+
         Returns:
             String representing the action.
         """
