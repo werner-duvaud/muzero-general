@@ -38,14 +38,13 @@ class MuZeroConfig:
 
 
         ### Network
-        self.network = "fullyconnected"  # "resnet" / "fullyconnected"
+        self.network = "resnet"  # "resnet" / "fullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
         # Residual Network
         self.blocks = 6  # Number of blocks in the ResNet
         self.channels = 16  # Number of channels in the ResNet
-        self.pooling_size = (1, 1)  # Size of the average pooling kernel
-        self.pooling_stride = (1, 1)  # Stride of the pooling window
+        self.reduced_channels = 16  # Number of channels before heads of dynamic and prediction networks
         self.resnet_fc_reward_layers = [8]  # Define the hidden layers in the reward head of the dynamic network
         self.resnet_fc_value_layers = [8]  # Define the hidden layers in the value head of the prediction network
         self.resnet_fc_policy_layers = [8]  # Define the hidden layers in the policy head of the prediction network
