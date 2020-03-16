@@ -44,8 +44,7 @@ class MuZeroConfig:
         # Residual Network
         self.blocks = 1  # Number of blocks in the ResNet
         self.channels = 2  # Number of channels in the ResNet
-        self.pooling_size = (2, 2)  # Size of the average pooling kernel
-        self.pooling_stride = (2, 2)  # Stride of the pooling window
+        self.reduced_channels = 2  # Number of channels before heads of dynamic and prediction networks
         self.fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
         self.fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
         self.fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network

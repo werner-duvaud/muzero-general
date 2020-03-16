@@ -25,8 +25,7 @@ class MuZeroNetwork:
                 len(config.action_space),
                 config.blocks,
                 config.channels,
-                config.pooling_size,
-                config.pooling_stride,
+                config.reduced_channels,
                 config.resnet_fc_reward_layers,
                 config.resnet_fc_value_layers,
                 config.resnet_fc_policy_layers,
@@ -217,8 +216,7 @@ class DynamicNetwork(torch.nn.Module):
         observation_shape,
         num_blocks,
         num_channels,
-        pooling_size,
-        pooling_stride,
+        reduced_channels,
         fc_reward_layers,
         full_support_size,
     ):
@@ -231,13 +229,8 @@ class DynamicNetwork(torch.nn.Module):
             [ResidualBlock(num_channels - 1) for _ in range(num_blocks)]
         )
 
-        self.pool = torch.nn.AvgPool2d(pooling_size, stride=pooling_stride)
-        # Flattened output size of AvgPool2d. (See PyTorch AvgPool2d documentation)
-        self.block_output_size = int(
-            (num_channels - 1)
-            * math.floor((observation_shape[1] - pooling_size[0]) / pooling_stride[0] + 1)
-            * math.floor((observation_shape[2] - pooling_size[1]) / pooling_stride[1] + 1)
-        )
+        self.conv1x1 = torch.nn.Conv2d(num_channels - 1, reduced_channels, 1)
+        self.block_output_size = reduced_channels * observation_shape[1] * observation_shape[2]
         self.fc = FullyConnectedNetwork(
             self.block_output_size,
             fc_reward_layers,
@@ -252,7 +245,7 @@ class DynamicNetwork(torch.nn.Module):
         for block in self.resblocks:
             out = block(out)
         state = out
-        out = self.pool(out)
+        out = self.conv1x1(out)
         out = out.view(-1, self.block_output_size)
         reward = self.fc(out)
         return state, reward
@@ -265,8 +258,7 @@ class PredictionNetwork(torch.nn.Module):
         action_space_size,
         num_blocks,
         num_channels,
-        pooling_size,
-        pooling_stride,
+        reduced_channels,
         fc_value_layers,
         fc_policy_layers,
         full_support_size,
@@ -277,13 +269,8 @@ class PredictionNetwork(torch.nn.Module):
             [ResidualBlock(num_channels) for _ in range(num_blocks)]
         )
 
-        self.pool = torch.nn.AvgPool2d(pooling_size, stride=pooling_stride)
-        # Flattened output size of AvgPool2d. (See PyTorch AvgPool2d documentation)
-        self.block_output_size = int(
-            num_channels
-            * math.floor((observation_shape[1] - pooling_size[0]) / pooling_stride[0] + 1)
-            * math.floor((observation_shape[2] - pooling_size[1]) / pooling_stride[1] + 1)
-        )
+        self.conv1x1 = torch.nn.Conv2d(num_channels, reduced_channels, 1)
+        self.block_output_size = reduced_channels * observation_shape[1] * observation_shape[2]
         self.fc_value = FullyConnectedNetwork(
             self.block_output_size, fc_value_layers, full_support_size, activation=None,
         )
@@ -298,7 +285,7 @@ class PredictionNetwork(torch.nn.Module):
         out = x
         for block in self.resblocks:
             out = block(out)
-        out = self.pool(out)
+        out = self.conv1x1(out)
         out = out.view(-1, self.block_output_size)
         value = self.fc_value(out)
         policy = self.fc_policy(out)
@@ -313,8 +300,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
         action_space_size,
         num_blocks,
         num_channels,
-        pooling_size,
-        pooling_stride,
+        reduced_channels,
         fc_reward_layers,
         fc_value_layers,
         fc_policy_layers,
@@ -332,8 +318,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
             observation_shape,
             num_blocks,
             num_channels + 1,
-            pooling_size,
-            pooling_stride,
+            reduced_channels,
             fc_reward_layers,
             self.full_support_size,
         )
@@ -343,8 +328,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
             action_space_size,
             num_blocks,
             num_channels,
-            pooling_size,
-            pooling_stride,
+            reduced_channels,
             fc_value_layers,
             fc_policy_layers,
             self.full_support_size,

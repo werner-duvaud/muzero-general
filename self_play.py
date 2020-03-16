@@ -388,10 +388,15 @@ class Node:
         self.to_play = to_play
         self.reward = reward
         self.hidden_state = hidden_state
-        policy = {a: math.exp(policy_logits[0][a]) for a in actions}
-        policy_sum = sum(policy.values())
+        policy = {}
+        for a in actions:
+            try:
+                policy[a] = 1/sum(torch.exp(policy_logits[0] - policy_logits[0][a]))
+            except OverflowError:
+                print("Warning: prior has been approximated")
+                policy[a] = 0.
         for action, p in policy.items():
-            self.children[action] = Node(p / policy_sum)
+            self.children[action] = Node(p)
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
