@@ -40,11 +40,13 @@ Testing Lunar Lander :
 
 ## Games already implemented
 
-* Cartpole
-* Lunar Lander
-* Tic-tac-toe
-* Connect4
+* Cartpole      (Tested with the fully connected network)
+* Lunar Lander  (Tested in deterministic mode with the fully connected network)
+* Tic-tac-toe   (Tested with the fully connected network and the residual network)
+* Connect4      (Slightly tested with the residual network)
 * Gomoku
+
+Tests are done on Ubuntu with 16 GB RAM / Intel I7 / GTX 1050Ti max-Q. We make sure to obtain a progression and a level which ensures that it has learned. But we do not systematically reach a superhuman level. For certain environments, we notice a regression after a certain time. The proposed configurations are certainly not optimal and we do not focus for now on the optimization of hyperparameters. Any help is welcome.
 
 ## Code structure
 

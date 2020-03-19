@@ -5,7 +5,7 @@ import gym
 import numpy
 import torch
 
-from games.abstract_game import AbstractGame
+from .abstract_game import AbstractGame
 
 
 class MuZeroConfig:
@@ -67,6 +67,7 @@ class MuZeroConfig:
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
+        self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
         self.weight_decay = 1e-4  # L2 weights regularization

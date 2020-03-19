@@ -93,7 +93,6 @@ class ReplayBuffer:
                 ) * self.config.discount ** i
 
             if current_index < len(game_history.root_values):
-                # Value target could be scaled by 0.25 (See paper appendix Reanalyze)
                 target_values.append(value)
                 target_rewards.append(game_history.reward_history[current_index])
                 target_policies.append(game_history.child_visits[current_index])

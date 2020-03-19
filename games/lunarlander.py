@@ -5,7 +5,7 @@ import gym
 import numpy
 import torch
 
-from games.abstract_game import AbstractGame
+from .abstract_game import AbstractGame
 
 
 class MuZeroConfig:
@@ -22,10 +22,10 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_actors = 3  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 2000  # Maximum number of moves if game is not finished before
+        self.max_moves = 1000  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
-        self.temperature_threshold = 3000  # Number of moves before dropping temperature to 0 (ie playing according to the max)
+        self.temperature_threshold = 5000  # Number of moves before dropping temperature to 0 (ie playing according to the max)
         self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
@@ -51,29 +51,30 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 10
-        self.fc_reward_layers = [8]  # Define the hidden layers in the reward network
-        self.fc_value_layers = [8]  # Define the hidden layers in the value network
-        self.fc_policy_layers = [8]  # Define the hidden layers in the policy network
+        self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
+        self.fc_value_layers = [16]  # Define the hidden layers in the value network
+        self.fc_policy_layers = []  # Define the hidden layers in the policy network
         self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [8]  # Define the hidden layers in the dynamics network
+        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 50000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128  # Number of parts of games to train on at each training step
-        self.num_unroll_steps = 100  # Number of game moves to keep for every batch element
+        self.training_steps = 200000  # Total number of training steps (ie weights update according to a batch)
+        self.batch_size = 64  # Number of parts of games to train on at each training step
+        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
-        self.window_size = 1000  # Number of self-play games to keep in the replay buffer
-        self.td_steps = 2000  # Number of steps in the future to take into account for calculating the target value
+        self.window_size = 500  # Number of self-play games to keep in the replay buffer
+        self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
+        self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
 
         # Exponential learning rate schedule
-        self.lr_init = 0.05  # Initial learning rate
+        self.lr_init = 0.005  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
 
@@ -119,7 +120,7 @@ class Game(AbstractGame):
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done, _ = self.env.step(action)
-        return numpy.array([[observation]]), reward, done
+        return numpy.array([[observation]]), reward/3, done
 
     def to_play(self):
         """
