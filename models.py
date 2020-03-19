@@ -131,11 +131,17 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
         policy_logits, value = self.prediction(encoded_state)
+        # reward equal to 0 for consistency
+        reward = (
+            torch.zeros(1, self.full_support_size)
+            .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
+            .repeat(len(observation), 1)
+            .to(observation.device)
+        )
+
         return (
             value,
-            torch.zeros(len(observation), self.full_support_size).to(
-                observation.device
-            ),
+            reward,
             policy_logits,
             encoded_state,
         )
@@ -415,20 +421,25 @@ class MuZeroResidualNetwork(torch.nn.Module):
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
-        policy_logit, value = self.prediction(encoded_state)
+        policy_logits, value = self.prediction(encoded_state)
+        # reward equal to 0 for consistency
+        reward = (
+            torch.zeros(1, self.full_support_size)
+            .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
+            .repeat(len(observation), 1)
+            .to(observation.device)
+        )
         return (
             value,
-            torch.zeros(len(observation), self.full_support_size).to(
-                observation.device
-            ),
-            policy_logit,
+            reward,
+            policy_logits,
             encoded_state,
         )
 
     def recurrent_inference(self, encoded_state, action):
         next_encoded_state, reward = self.dynamics(encoded_state, action)
-        policy_logit, value = self.prediction(next_encoded_state)
-        return value, reward, policy_logit, next_encoded_state
+        policy_logits, value = self.prediction(next_encoded_state)
+        return value, reward, policy_logits, next_encoded_state
 
     def get_weights(self):
         return {key: value.cpu() for key, value in self.state_dict().items()}
@@ -444,17 +455,17 @@ class MuZeroResidualNetwork(torch.nn.Module):
 class FullyConnectedNetwork(torch.nn.Module):
     def __init__(self, input_size, layer_sizes, output_size, activation=None):
         super(FullyConnectedNetwork, self).__init__()
-        sizes_list = [input_size] + layer_sizes
+        size_list = [input_size] + layer_sizes
         layers = []
-        if 1 < len(sizes_list):
-            for i in range(len(sizes_list) - 1):
+        if 1 < len(size_list):
+            for i in range(len(size_list) - 1):
                 layers.extend(
                     [
-                        torch.nn.Linear(sizes_list[i], sizes_list[i + 1]),
-                        torch.nn.ReLU(),
+                        torch.nn.Linear(size_list[i], size_list[i + 1]),
+                        torch.nn.LeakyReLU(),
                     ]
                 )
-        layers.append(torch.nn.Linear(sizes_list[-1], output_size))
+        layers.append(torch.nn.Linear(size_list[-1], output_size))
         if activation:
             layers.append(activation)
         self.layers = torch.nn.ModuleList(layers)

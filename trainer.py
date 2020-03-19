@@ -98,6 +98,8 @@ class Trainer:
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                 hidden_state, action_batch[:, i]
             )
+            # Scale the gradient at the start of the dynamics function (See paper appendix Training)
+            hidden_state.register_hook(lambda grad: grad * 0.5)
             predictions.append((value, reward, policy_logits))
         # predictions: num_unroll_steps + 1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
 
@@ -137,9 +139,12 @@ class Trainer:
             reward_loss += current_reward_loss
             policy_loss += current_policy_loss
 
-        loss = (value_loss + reward_loss + policy_loss).mean()
+        # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
+        value_loss = value_loss * self.config.value_loss_weight
+        loss = (value_loss * self.config.value_loss_weight + reward_loss + policy_loss).mean()
 
         # Scale gradient by number of unroll steps (See paper Training appendix)
+        # The pseudocode uses the real number of enroll steps, not the config one
         loss.register_hook(lambda grad: grad / self.config.num_unroll_steps)
 
         # Optimize
