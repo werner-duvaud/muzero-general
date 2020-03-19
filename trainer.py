@@ -38,11 +38,12 @@ class Trainer:
 
         # Training loop
         while True:
-            batch = ray.get(replay_buffer.get_batch.remote())
+            index_batch, batch = ray.get(replay_buffer.get_batch.remote())
             self.update_lr()
-            total_loss, value_loss, reward_loss, policy_loss = self.update_weights(
+            priorities, total_loss, value_loss, reward_loss, policy_loss = self.update_weights(
                 batch
             )
+            replay_buffer.update_priorities.remote(priorities, index_batch)
 
             # Save to the shared storage
             if self.training_step % self.config.checkpoint_interval == 0:
@@ -71,6 +72,9 @@ class Trainer:
             target_reward,
             target_policy,
         ) = batch
+
+        target_value_scalar = numpy.array(target_value)
+        priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device
         observation_batch = torch.tensor(observation_batch).float().to(device)
@@ -107,6 +111,8 @@ class Trainer:
         value_loss, reward_loss, policy_loss = (0, 0, 0)
         # Ignore reward loss for the first batch step
         value, reward, policy_logits = predictions[0]
+        pred_value_scalar = self.support_to_scalar(value, self.config.support_size)
+        priorities[:, 0] = numpy.abs(pred_value_scalar.detach().numpy().squeeze() - target_value_scalar[:, 0]) ** .5
         (
             current_value_loss,
             _,
@@ -123,6 +129,8 @@ class Trainer:
         policy_loss += current_policy_loss
         for i in range(1, len(predictions)):
             value, reward, policy_logits = predictions[i]
+            pred_value_scalar = self.support_to_scalar(value, self.config.support_size)
+            priorities[:, i] = numpy.abs(pred_value_scalar.detach().numpy().squeeze() - target_value_scalar[:, 0]) ** .5
             (
                 current_value_loss,
                 current_reward_loss,
@@ -154,6 +162,7 @@ class Trainer:
         self.training_step += 1
 
         return (
+            priorities,
             loss.item(),
             value_loss.mean().item(),
             reward_loss.mean().item(),
@@ -206,3 +215,27 @@ class Trainer:
             (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1).mean()
         )
         return value_loss, reward_loss, policy_loss
+
+    @staticmethod
+    def support_to_scalar(logits, support_size):
+        """
+        Transform a categorical representation to a scalar
+        See paper appendix Network Architecture
+        """
+        # Decode to a scalar
+        probabilities = torch.softmax(logits, dim=1)
+        support = (
+            torch.tensor([x for x in range(-support_size, support_size + 1)])
+            .expand(probabilities.shape)
+            .float()
+            .to(device=probabilities.device)
+        )
+        x = torch.sum(support * probabilities, dim=1, keepdim=True)
+
+        # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
+        x = torch.sign(x) * (
+            ((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))
+            ** 2
+            - 1
+        )
+        return x
