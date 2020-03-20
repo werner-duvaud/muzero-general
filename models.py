@@ -52,7 +52,7 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
         fc_value_layers,
         fc_policy_layers,
         fc_representation_layers,
-        fc_dynamics_layers,        
+        fc_dynamics_layers,
         support_size,
     ):
         super().__init__()
@@ -63,8 +63,8 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
             observation_shape[0]
             * observation_shape[1]
             * observation_shape[2]
-            * (stacked_observations + 1) + stacked_observations  * observation_shape[1]
-            * observation_shape[2],
+            * (stacked_observations + 1)
+            + stacked_observations * observation_shape[1] * observation_shape[2],
             fc_representation_layers,
             encoding_size,
         )
@@ -199,7 +199,8 @@ class RepresentationNetwork(torch.nn.Module):
     ):
         super(RepresentationNetwork, self).__init__()
         self.conv = conv3x3(
-            observation_shape[0] * (stacked_observations + 1) + stacked_observations, num_channels
+            observation_shape[0] * (stacked_observations + 1) + stacked_observations,
+            num_channels,
         )
         self.bn = torch.nn.BatchNorm2d(num_channels)
         self.relu = torch.nn.ReLU()
@@ -236,7 +237,9 @@ class DynamicNetwork(torch.nn.Module):
         )
 
         self.conv1x1 = torch.nn.Conv2d(num_channels - 1, reduced_channels, 1)
-        self.block_output_size = reduced_channels * observation_shape[1] * observation_shape[2]
+        self.block_output_size = (
+            reduced_channels * observation_shape[1] * observation_shape[2]
+        )
         self.fc = FullyConnectedNetwork(
             self.block_output_size,
             fc_reward_layers,
@@ -276,7 +279,9 @@ class PredictionNetwork(torch.nn.Module):
         )
 
         self.conv1x1 = torch.nn.Conv2d(num_channels, reduced_channels, 1)
-        self.block_output_size = reduced_channels * observation_shape[1] * observation_shape[2]
+        self.block_output_size = (
+            reduced_channels * observation_shape[1] * observation_shape[2]
+        )
         self.fc_value = FullyConnectedNetwork(
             self.block_output_size, fc_value_layers, full_support_size, activation=None,
         )
