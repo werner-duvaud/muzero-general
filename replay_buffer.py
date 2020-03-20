@@ -34,7 +34,9 @@ class ReplayBuffer:
             game_history = self.sample_game(self.buffer)
             game_pos = self.sample_position(game_history)
 
-            values, rewards, policies, actions = self.make_target(game_history, game_pos)
+            values, rewards, policies, actions = self.make_target(
+                game_history, game_pos
+            )
 
             observation_batch.append(game_history.observation_history[game_pos])
             action_batch.append(actions)

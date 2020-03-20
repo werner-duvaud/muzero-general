@@ -30,7 +30,7 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 
 ## Demo
 
-All performances are tracked and displayed in real time in tensorboard :
+All performances are tracked and displayed in real time in TensorBoard :
 
 ![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/cartpole_training_summary.png)
 
@@ -46,7 +46,7 @@ Testing Lunar Lander :
 * Connect4      (Slightly tested with the residual network)
 * Gomoku
 
-Tests are done on Ubuntu with 16 GB RAM / Intel I7 / GTX 1050Ti max-Q. We make sure to obtain a progression and a level which ensures that it has learned. But we do not systematically reach a superhuman level. For certain environments, we notice a regression after a certain time. The proposed configurations are certainly not optimal and we do not focus for now on the optimization of hyperparameters. Any help is welcome.
+Tests are done on Ubuntu with 16 GB RAM / Intel i7 / GTX 1050Ti Max-Q. We make sure to obtain a progression and a level which ensures that it has learned. But we do not systematically reach a human level. For certain environments, we notice a regression after a certain time. The proposed configurations are certainly not optimal and we do not focus for now on the optimization of hyperparameters. Any help is welcome.
 
 ## Code structure
 

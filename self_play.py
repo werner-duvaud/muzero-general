@@ -242,7 +242,7 @@ class MCTS:
             .to(next(model.parameters()).device)
         )
         _, reward, policy_logits, hidden_state = model.initial_inference(observation)
-        reward = self.support_to_scalar(reward, self.config.support_size)
+        reward = self.support_to_scalar(reward, self.config.support_size).item()
         root.expand(
             legal_actions, to_play, reward, policy_logits, hidden_state,
         )
@@ -276,8 +276,8 @@ class MCTS:
                 parent.hidden_state,
                 torch.tensor([[action]]).to(parent.hidden_state.device),
             )
-            value = self.support_to_scalar(value, self.config.support_size)
-            reward = self.support_to_scalar(reward, self.config.support_size)
+            value = self.support_to_scalar(value, self.config.support_size).item()
+            reward = self.support_to_scalar(reward, self.config.support_size).item()
             node.expand(
                 self.config.action_space,
                 virtual_to_play,
@@ -287,7 +287,7 @@ class MCTS:
             )
 
             self.backpropagate(
-                search_path, value.item(), virtual_to_play, min_max_stats
+                search_path, value, virtual_to_play, min_max_stats
             )
 
         return root
@@ -391,10 +391,10 @@ class Node:
         policy = {}
         for a in actions:
             try:
-                policy[a] = 1/sum(torch.exp(policy_logits[0] - policy_logits[0][a]))
+                policy[a] = 1 / sum(torch.exp(policy_logits[0] - policy_logits[0][a]))
             except OverflowError:
                 print("Warning: prior has been approximated")
-                policy[a] = 0.
+                policy[a] = 0.0
         for action, p in policy.items():
             self.children[action] = Node(p)
 

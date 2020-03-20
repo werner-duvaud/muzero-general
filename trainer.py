@@ -140,8 +140,8 @@ class Trainer:
             policy_loss += current_policy_loss
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
-        value_loss = value_loss * self.config.value_loss_weight
-        loss = (value_loss * self.config.value_loss_weight + reward_loss + policy_loss).mean()
+        value_loss *= self.config.value_loss_weight
+        loss = (value_loss + reward_loss + policy_loss).mean()
 
         # Scale gradient by number of unroll steps (See paper Training appendix)
         # The pseudocode uses the real number of enroll steps, not the config one
