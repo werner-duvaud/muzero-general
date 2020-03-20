@@ -130,7 +130,7 @@ class Trainer:
         for i in range(1, len(predictions)):
             value, reward, policy_logits = predictions[i]
             pred_value_scalar = self.support_to_scalar(value, self.config.support_size)
-            priorities[:, i] = numpy.abs(pred_value_scalar.detach().numpy().squeeze() - target_value_scalar[:, 0]) ** .5
+            priorities[:, i] = numpy.abs(pred_value_scalar.detach().numpy().squeeze() - target_value_scalar[:, i]) ** .5
             (
                 current_value_loss,
                 current_reward_loss,
