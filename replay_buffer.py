@@ -11,33 +11,41 @@ class ReplayBuffer:
     def __init__(self, config):
         self.config = config
         self.buffer = []
+        self.game_priorities = []
+        self.max_recorded_game_priority = 1.0
         self.self_play_count = 0
 
     def save_game(self, game_history):
         if len(self.buffer) > self.config.window_size:
             self.buffer.pop(0)
+            self.game_priorities.pop(0)
+        game_history.priorities = numpy.ones(len(game_history.observation_history)) * self.max_recorded_game_priority
         self.buffer.append(game_history)
+        self.game_priorities.append(numpy.mean(game_history.priorities))
+
         self.self_play_count += 1
 
     def get_self_play_count(self):
         return self.self_play_count
 
     def get_batch(self):
-        observation_batch, action_batch, reward_batch, value_batch, policy_batch = (
+        index_batch, observation_batch, action_batch, reward_batch, value_batch, policy_batch = (
             [],
             [],
             [],
             [],
             [],
+            []
         )
         for _ in range(self.config.batch_size):
-            game_history = self.sample_game(self.buffer)
+            game_index, game_history = self.sample_game(self.buffer)
             game_pos = self.sample_position(game_history)
 
             values, rewards, policies, actions = self.make_target(
                 game_history, game_pos
             )
 
+            index_batch.append([game_index, game_pos])
             observation_batch.append(game_history.observation_history[game_pos])
             action_batch.append(actions)
             value_batch.append(values)
@@ -49,7 +57,7 @@ class ReplayBuffer:
         # value_batch: batch, num_unroll_steps+1
         # reward_batch: batch, num_unroll_steps+1
         # policy_batch: batch, num_unroll_steps+1, len(action_space)
-        return observation_batch, action_batch, value_batch, reward_batch, policy_batch
+        return index_batch, (observation_batch, action_batch, value_batch, reward_batch, policy_batch)
 
     def sample_game(self, buffer):
         """
@@ -57,14 +65,36 @@ class ReplayBuffer:
         """
         # TODO: sample with probability link to the highest difference between real and
         # predicted value (See paper appendix Training)
-        return numpy.random.choice(self.buffer)
+        game_probs = numpy.array(self.game_priorities) / sum(self.game_priorities)
+        game_index_candidates = numpy.arange(0, len(self.buffer), dtype=int)
+        game_index = numpy.random.choice(game_index_candidates, p=game_probs)
+
+        return game_index, self.buffer[game_index]
 
     def sample_position(self, game_history):
         """
         Sample position from game either uniformly or according to some priority.
         """
         # TODO: sample according to some priority
-        return numpy.random.choice(range(len(game_history.reward_history)))
+        position_probs = numpy.array(game_history.priorities) / sum(game_history.priorities)
+        position_index_candidates = numpy.arange(0, len(position_probs), dtype=int)
+        position_index = numpy.random.choice(position_index_candidates, p=position_probs)
+
+        return position_index
+
+    def update_priorities(self, priorities, index_info):
+
+        for i in range(len(index_info)):
+            game_index, game_pos = index_info[i]
+
+            # update position priorities
+            priority = priorities[i, :]
+            numpy.put(self.buffer[game_index].priorities, range(game_pos, game_pos + len(priority)), priority, 'wrap')
+
+            # update game priorities
+            self.game_priorities[game_index] = numpy.mean(self.buffer[game_index].priorities)
+
+            self.max_recorded_game_priority = numpy.max(self.game_priorities)
 
     def make_target(self, game_history, state_index):
         """
