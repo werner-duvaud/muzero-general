@@ -87,7 +87,9 @@ class ReplayBuffer:
 
             # update position priorities
             priority = priorities[i, :]
-            numpy.put(self.buffer[game_index].priorities, range(game_pos, game_pos + len(priority)), priority, 'wrap')
+            start_index = game_pos
+            end_index = min(game_pos + len(priority), len(self.buffer[game_index].priorities))
+            numpy.put(self.buffer[game_index].priorities, range(start_index, end_index), priority)
 
             # update game priorities
             self.game_priorities[game_index] = numpy.mean(self.buffer[game_index].priorities)

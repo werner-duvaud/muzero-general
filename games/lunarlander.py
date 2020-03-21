@@ -73,6 +73,10 @@ class MuZeroConfig:
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
 
+        # Prioritized Replay
+        self.PER = True
+        self.PER_alpha = 0.5
+
         # Exponential learning rate schedule
         self.lr_init = 0.005  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
