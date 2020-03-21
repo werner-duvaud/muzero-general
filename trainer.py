@@ -43,7 +43,8 @@ class Trainer:
             priorities, total_loss, value_loss, reward_loss, policy_loss = self.update_weights(
                 batch
             )
-            replay_buffer.update_priorities.remote(priorities, index_batch)
+            if self.config.PER:
+                replay_buffer.update_priorities.remote(priorities, index_batch)
 
             # Save to the shared storage
             if self.training_step % self.config.checkpoint_interval == 0:
@@ -111,8 +112,8 @@ class Trainer:
         value_loss, reward_loss, policy_loss = (0, 0, 0)
         # Ignore reward loss for the first batch step
         value, reward, policy_logits = predictions[0]
-        pred_value_scalar = self.support_to_scalar(value, self.config.support_size)
-        priorities[:, 0] = numpy.abs(pred_value_scalar.detach().numpy().squeeze() - target_value_scalar[:, 0]) ** .5
+        pred_value_scalar = self.support_to_scalar(value, self.config.support_size).detach().numpy().squeeze()
+        priorities[:, 0] = numpy.abs(pred_value_scalar - target_value_scalar[:, 0]) ** self.config.PER_alpha
         (
             current_value_loss,
             _,
@@ -129,8 +130,8 @@ class Trainer:
         policy_loss += current_policy_loss
         for i in range(1, len(predictions)):
             value, reward, policy_logits = predictions[i]
-            pred_value_scalar = self.support_to_scalar(value, self.config.support_size)
-            priorities[:, i] = numpy.abs(pred_value_scalar.detach().numpy().squeeze() - target_value_scalar[:, i]) ** .5
+            pred_value_scalar = self.support_to_scalar(value, self.config.support_size).detach().numpy().squeeze()
+            priorities[:, i] = numpy.abs(pred_value_scalar - target_value_scalar[:, i]) ** self.config.PER_alpha
             (
                 current_value_loss,
                 current_reward_loss,
