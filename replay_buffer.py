@@ -23,13 +23,14 @@ class ReplayBuffer:
         return self.self_play_count
 
     def get_batch(self):
-        observation_batch, action_batch, reward_batch, value_batch, policy_batch = (
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        (
+            observation_batch,
+            action_batch,
+            reward_batch,
+            value_batch,
+            policy_batch,
+            gradient_scale_batch,
+        ) = [], [], [], [], [], []
         for _ in range(self.config.batch_size):
             game_history = self.sample_game(self.buffer)
             game_pos = self.sample_position(game_history)
@@ -43,13 +44,30 @@ class ReplayBuffer:
             value_batch.append(values)
             reward_batch.append(rewards)
             policy_batch.append(policies)
+            gradient_scale_batch.append(
+                [
+                    min(
+                        self.config.num_unroll_steps,
+                        len(game_history.action_history) - game_pos,
+                    )
+                ]
+                * len(actions)
+            )
 
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1
         # value_batch: batch, num_unroll_steps+1
         # reward_batch: batch, num_unroll_steps+1
         # policy_batch: batch, num_unroll_steps+1, len(action_space)
-        return observation_batch, action_batch, value_batch, reward_batch, policy_batch
+        # gradient_scale_batch: batch, num_unroll_steps+1
+        return (
+            observation_batch,
+            action_batch,
+            value_batch,
+            reward_batch,
+            policy_batch,
+            gradient_scale_batch,
+        )
 
     def sample_game(self, buffer):
         """

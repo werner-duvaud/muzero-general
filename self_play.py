@@ -286,9 +286,7 @@ class MCTS:
                 hidden_state,
             )
 
-            self.backpropagate(
-                search_path, value, virtual_to_play, min_max_stats
-            )
+            self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
 
         return root
 
@@ -333,7 +331,7 @@ class MCTS:
         for node in reversed(search_path):
             node.value_sum += value if node.to_play == to_play else -value
             node.visit_count += 1
-            min_max_stats.update(node.value())
+            min_max_stats.update(node.reward + self.config.discount * node.value())
 
             value = node.reward + self.config.discount * value
 
