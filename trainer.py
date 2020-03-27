@@ -67,6 +67,7 @@ class Trainer:
         """
 
         (
+            weight_batch,
             observation_batch,
             action_batch,
             target_value,
@@ -78,6 +79,7 @@ class Trainer:
         priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device
+        weight_batch = torch.tensor(weight_batch).float().to(device)
         observation_batch = torch.tensor(observation_batch).float().to(device)
         action_batch = torch.tensor(action_batch).float().to(device).unsqueeze(-1)
         target_value = torch.tensor(target_value).float().to(device)
@@ -119,6 +121,7 @@ class Trainer:
             _,
             current_policy_loss,
         ) = self.loss_function(
+            weight_batch,
             value.squeeze(-1),
             reward.squeeze(-1),
             policy_logits,
@@ -137,6 +140,7 @@ class Trainer:
                 current_reward_loss,
                 current_policy_loss,
             ) = self.loss_function(
+                weight_batch,
                 value.squeeze(-1),
                 reward.squeeze(-1),
                 policy_logits,
@@ -205,16 +209,12 @@ class Trainer:
 
     @staticmethod
     def loss_function(
-        value, reward, policy_logits, target_value, target_reward, target_policy
+        weight_batch, value, reward, policy_logits, target_value, target_reward, target_policy
     ):
         # Cross-entropy seems to have a better convergence than MSE
-        value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1).mean()
-        reward_loss = (
-            (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1).mean()
-        )
-        policy_loss = (
-            (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1).mean()
-        )
+        value_loss = ((-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1) * weight_batch).mean()
+        reward_loss = ((-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1) * weight_batch).mean()
+        policy_loss = ((-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1) * weight_batch).mean()
         return value_loss, reward_loss, policy_loss
 
     @staticmethod
