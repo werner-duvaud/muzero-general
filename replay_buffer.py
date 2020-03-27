@@ -37,13 +37,16 @@ class ReplayBuffer:
             [],
             []
         )
+        total_samples = sum((len(game_history.priorities) for game_history in self.buffer))
+        weight_batch = []
         for _ in range(self.config.batch_size):
-            game_index, game_history = self.sample_game(self.buffer)
-            game_pos = self.sample_position(game_history)
+            game_index, game_history, game_prob = self.sample_game(self.buffer)
+            game_pos, pos_prob = self.sample_position(game_history)
+            index_batch.append([game_index, game_pos])
+            weight_batch.append((total_samples * game_prob * pos_prob) ** (-self.config.PER_beta))
 
             values, rewards, policies, actions = self.make_target(game_history, game_pos)
 
-            index_batch.append([game_index, game_pos])
             observation_batch.append(game_history.observation_history[game_pos])
             action_batch.append(actions)
             value_batch.append(values)
@@ -55,7 +58,8 @@ class ReplayBuffer:
         # value_batch: batch, num_unroll_steps+1
         # reward_batch: batch, num_unroll_steps+1
         # policy_batch: batch, num_unroll_steps+1, len(action_space)
-        return index_batch, (observation_batch, action_batch, value_batch, reward_batch, policy_batch)
+        weight_batch = numpy.array(weight_batch) / max(weight_batch)
+        return index_batch, (weight_batch, observation_batch, action_batch, value_batch, reward_batch, policy_batch)
 
     def sample_game(self, buffer):
         """
@@ -66,8 +70,9 @@ class ReplayBuffer:
         game_probs = numpy.array(self.game_priorities) / sum(self.game_priorities)
         game_index_candidates = numpy.arange(0, len(self.buffer), dtype=int)
         game_index = numpy.random.choice(game_index_candidates, p=game_probs)
+        game_prob = game_probs[game_index]
 
-        return game_index, self.buffer[game_index]
+        return game_index, self.buffer[game_index], game_prob
 
     def sample_position(self, game_history):
         """
@@ -77,8 +82,9 @@ class ReplayBuffer:
         position_probs = numpy.array(game_history.priorities) / sum(game_history.priorities)
         position_index_candidates = numpy.arange(0, len(position_probs), dtype=int)
         position_index = numpy.random.choice(position_index_candidates, p=position_probs)
+        position_prob = position_probs[position_index]
 
-        return position_index
+        return position_index, position_prob
 
     def update_priorities(self, priorities, index_info):
 
@@ -92,7 +98,7 @@ class ReplayBuffer:
             numpy.put(self.buffer[game_index].priorities, range(start_index, end_index), priority)
 
             # update game priorities
-            self.game_priorities[game_index] = numpy.mean(self.buffer[game_index].priorities)
+            self.game_priorities[game_index] = numpy.max(self.buffer[game_index].priorities)  # option: mean, sum, max
 
             self.max_recorded_game_priority = numpy.max(self.game_priorities)
 
