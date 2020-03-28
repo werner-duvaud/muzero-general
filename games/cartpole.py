@@ -26,7 +26,7 @@ class MuZeroConfig:
         self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = 500  # Number of moves before dropping temperature to 0 (ie playing according to the max)
-        self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
+        self.self_play_delay = 0.5  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
@@ -72,6 +72,11 @@ class MuZeroConfig:
 
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
+
+        # Prioritized Replay (See paper appendix Training)
+        self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
+        self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
+        self.PER_beta = 1.0
 
         # Exponential learning rate schedule
         self.lr_init = 0.05  # Initial learning rate

@@ -73,6 +73,11 @@ class MuZeroConfig:
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
 
+        # Prioritized Replay (See paper appendix Training)
+        self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
+        self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
+        self.PER_beta = 1.0
+
         # Exponential learning rate schedule
         self.lr_init = 0.01  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
