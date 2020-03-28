@@ -208,9 +208,9 @@ class Trainer:
             priorities,
             # For log purpose
             loss.item(),
-            value_loss.item(),
-            reward_loss.item(),
-            policy_loss.item(),
+            value_loss.mean().item(),
+            reward_loss.mean().item(),
+            policy_loss.mean().item(),
         )
 
     def update_lr(self):
