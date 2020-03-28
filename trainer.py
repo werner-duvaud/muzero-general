@@ -146,6 +146,7 @@ class Trainer:
             numpy.abs(pred_value_scalar - target_value_scalar[:, 0])
             ** self.config.PER_alpha
         )
+
         for i in range(1, len(predictions)):
             value, reward, policy_logits = predictions[i]
             (
@@ -207,9 +208,9 @@ class Trainer:
             priorities,
             # For log purpose
             loss.item(),
-            value_loss.mean().item(),
-            reward_loss.mean().item(),
-            policy_loss.mean().item(),
+            value_loss.item(),
+            reward_loss.item(),
+            policy_loss.item(),
         )
 
     def update_lr(self):
