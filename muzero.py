@@ -138,7 +138,7 @@ class MuZero:
                     counter,
                 )
                 writer.add_scalar("2.Workers/4.Learning rate", infos["lr"], counter)
-                writer.add_scalar("3.Loss/1.Total loss", infos["total_loss"], counter)
+                writer.add_scalar("3.Loss/1.Total weighted loss", infos["total_loss"], counter)
                 writer.add_scalar("3.Loss/Value loss", infos["value_loss"], counter)
                 writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
                 writer.add_scalar("3.Loss/Policy loss", infos["policy_loss"], counter)

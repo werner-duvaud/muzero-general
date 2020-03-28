@@ -67,11 +67,16 @@ class MuZeroConfig:
         self.window_size = 3000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
-        self.value_loss_weight = 0.7  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
+        self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9
+
+        # Prioritized Replay (See paper appendix Training)
+        self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
+        self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
+        self.PER_beta = 1.0
 
         # Exponential learning rate schedule
         self.lr_init = 0.01  # Initial learning rate
@@ -187,7 +192,7 @@ class Game(AbstractGame):
         Returns:
             String representing the action.
         """
-        return "Play column {}".format(action_number + 1)
+        return "Play column {}".format(action_number)
 
 
 class TicTacToe:
