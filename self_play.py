@@ -341,6 +341,7 @@ class MCTS:
         Transform a categorical representation to a scalar
         See paper appendix Network Architecture
         """
+        # Duplicated method, don't forget to update the one in trainer.py
         # Decode to a scalar
         probabilities = torch.softmax(logits, dim=1)
         support = (
@@ -420,6 +421,7 @@ class GameHistory:
         self.to_play_history = []
         self.child_visits = []
         self.root_values = []
+        self.priorities = None
 
     def store_search_statistics(self, root, action_space):
         # Turn visit count from root into a policy
