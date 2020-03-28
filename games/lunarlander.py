@@ -76,6 +76,7 @@ class MuZeroConfig:
         # Prioritized Replay
         self.PER = True
         self.PER_alpha = 0.5
+        self.PER_beta = 1.0
 
         # Exponential learning rate schedule
         self.lr_init = 0.005  # Initial learning rate
