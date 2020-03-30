@@ -103,9 +103,7 @@ class SelfPlay:
             self.game.render()
 
         with torch.no_grad():
-            while (
-                not done and len(game_history.action_history) <= self.config.max_moves
-            ):
+            while not done and len(game_history.action_history) < self.config.max_moves:
                 root = MCTS(self.config).run(
                     self.model,
                     observation,
