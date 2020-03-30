@@ -27,7 +27,6 @@ class MuZeroConfig:
         self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
         self.temperature_threshold = 40  # Number of moves before dropping temperature to 0 (ie playing according to the max)
-        self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
@@ -67,7 +66,6 @@ class MuZeroConfig:
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
-        self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -83,6 +81,12 @@ class MuZeroConfig:
         self.lr_init = 0.01  # Initial learning rate
         self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
+
+
+        ## Adjust the self play / training ratio to avoid over/underfitting
+        self.self_play_delay = 0  # Number of seconds to wait after each played game
+        self.training_delay = 0  # Number of seconds to wait after each training step
+        self.ratio = None  # Desired self played games per training step ratio. Set it to None to disable it.
 
 
         ### Test

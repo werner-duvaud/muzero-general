@@ -22,11 +22,10 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 12  # Maximum number of moves if game is not finished before
+        self.max_moves = 9  # Maximum number of moves if game is not finished before
         self.num_simulations = 25  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
         self.temperature_threshold = 6  # Number of moves before dropping temperature to 0 (ie playing according to the max)
-        self.self_play_delay = 0  # Number of seconds to wait after each played game to adjust the self play / training ratio to avoid over/underfitting
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.1
@@ -66,7 +65,6 @@ class MuZeroConfig:
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.window_size = 3000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
-        self.training_delay = 0  # Number of seconds to wait after each training to adjust the self play / training ratio to avoid over/underfitting
         self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -77,6 +75,13 @@ class MuZeroConfig:
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
+
+
+        ## Adjust the self play / training ratio to avoid over/underfitting
+        self.self_play_delay = 0  # Number of seconds to wait after each played game
+        self.training_delay = 0  # Number of seconds to wait after each training step
+        self.ratio = None  # Desired self played games per training step ratio. Set it to None to disable it.
+
 
         # Exponential learning rate schedule
         self.lr_init = 0.01  # Initial learning rate

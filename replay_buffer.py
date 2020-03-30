@@ -15,6 +15,8 @@ class ReplayBuffer:
         self.max_recorded_game_priority = 1.0
         self.self_play_count = 0
 
+        numpy.random.seed(self.config.seed)
+
     def save_game(self, game_history):
         if len(self.buffer) > self.config.window_size:
             self.buffer.pop(0)
