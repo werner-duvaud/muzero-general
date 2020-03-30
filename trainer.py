@@ -18,6 +18,10 @@ class Trainer:
         self.config = config
         self.training_step = 0
 
+        # Fix random generator seed
+        numpy.random.seed(self.config.seed)
+        torch.manual_seed(self.config.seed)
+
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
@@ -64,8 +68,16 @@ class Trainer:
             shared_storage_worker.set_infos.remote("reward_loss", reward_loss)
             shared_storage_worker.set_infos.remote("policy_loss", policy_loss)
 
+            # Managing the self-play / training ratio
             if self.config.training_delay:
                 time.sleep(self.config.training_delay)
+            if self.config.ratio:
+                while (
+                    ray.get(replay_buffer.get_self_play_count.remote())
+                    / max(1, self.training_step)
+                    < self.config.ratio
+                ):
+                    time.sleep(0.5)
 
     def update_weights(self, batch):
         """

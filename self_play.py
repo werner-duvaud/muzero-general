@@ -19,6 +19,10 @@ class SelfPlay:
         self.config = config
         self.game = game
 
+        # Fix random generator seed
+        numpy.random.seed(self.config.seed)
+        torch.manual_seed(self.config.seed)
+
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
@@ -78,8 +82,18 @@ class SelfPlay:
             if not test_mode:
                 replay_buffer.save_game.remote(game_history)
 
+            # Managing the self-play / training ratio
             if not test_mode and self.config.self_play_delay:
                 time.sleep(self.config.self_play_delay)
+            if not test_mode and self.config.ratio:
+                while (
+                    ray.get(replay_buffer.get_self_play_count.remote())
+                    / max(
+                        1, ray.get(shared_storage.get_infos.remote())["training_step"]
+                    )
+                    > self.config.ratio
+                ):
+                    time.sleep(0.5)
 
     def play_game(
         self, temperature, temperature_threshold, render, opponent, muzero_player

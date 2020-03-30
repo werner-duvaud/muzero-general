@@ -21,12 +21,12 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 * [x] Single and multiplayer mode
 * [x] Commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation)
 * [x] Easily adaptable for new games
-* [x] [Examples](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py) of board and Gym games (See [list below](https://github.com/werner-duvaud/muzero-general#games-already-implemented))
+* [x] [Examples](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py) of board and Gym games (See [list of implemented games](https://github.com/werner-duvaud/muzero-general#games-already-implemented))
 * [x] [Pretrained weights](https://github.com/werner-duvaud/muzero-general/tree/master/results) available
 * [ ] Improve TensorBoard logging (tree depth, ...)
 * [ ] Atari games
 * [ ] Appendix Reanalyse of the paper
-* [ ] Windows support ([workaround by ihexx](https://github.com/ihexx/muzero-general))
+* [ ] Windows support ([workaround by ihexx](https://github.com/ihexx/muzero-general) or use the [notebook](https://github.com/werner-duvaud/muzero-general/blob/master/notebook.ipynb) in Google Colab)
 
 ## Demo
 
