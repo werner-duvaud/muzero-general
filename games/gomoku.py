@@ -69,8 +69,9 @@ class MuZeroConfig:
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
+        self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
-        self.momentum = 0.9
+        self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = False  # Select in priority the elements in the replay buffer which are unexpected for the network
@@ -87,10 +88,6 @@ class MuZeroConfig:
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired self played games per training step ratio. Set it to None to disable it.
-
-
-        ### Test
-        self.test_episodes = 1  # Number of games rendered when calling the MuZero test method
 
 
     def visit_softmax_temperature_fn(self, trained_steps):

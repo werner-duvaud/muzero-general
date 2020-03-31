@@ -28,12 +28,21 @@ class Trainer:
         self.model.to(torch.device(config.training_device))
         self.model.train()
 
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=self.config.lr_init,
-            # momentum=self.config.momentum,
-            weight_decay=self.config.weight_decay,
-        )
+        if self.config.optimizer == 'SGD':
+            self.optimizer = torch.optim.SGD(
+                self.model.parameters(),
+                lr=self.config.lr_init,
+                momentum=self.config.momentum,
+                weight_decay=self.config.weight_decay,
+            )
+        elif self.config.optimizer == 'Adam':
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=self.config.lr_init,
+                weight_decay=self.config.weight_decay,
+            )
+        else:
+            raise ValueError("{} is not implemented. You can change the optimizer manually in trainer.py.")
 
     def continuous_update_weights(self, replay_buffer, shared_storage_worker):
         # Wait for the replay buffer to be filled

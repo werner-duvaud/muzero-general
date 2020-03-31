@@ -22,10 +22,10 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_actors = 2  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 1000  # Maximum number of moves if game is not finished before
+        self.max_moves = 700  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
-        self.temperature_threshold = 5000  # Number of moves before dropping temperature to 0 (ie playing according to the max)
+        self.temperature_threshold = None  # Number of moves before dropping temperature to 0 (ie playing according to the max)
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
@@ -63,13 +63,14 @@ class MuZeroConfig:
         self.batch_size = 32  # Number of parts of games to train on at each training step
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
-        self.window_size = 1000  # Number of self-play games to keep in the replay buffer
+        self.window_size = 500  # Number of self-play games to keep in the replay buffer
         self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
+        self.optimizer = "SGD"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
-        self.momentum = 0.9
+        self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
@@ -77,19 +78,15 @@ class MuZeroConfig:
         self.PER_beta = 1.0
 
         # Exponential learning rate schedule
-        self.lr_init = 0.003  # Initial learning rate
-        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
+        self.lr_init = 0.07  # Initial learning rate
+        self.lr_decay_rate = 0.97  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
 
 
         ## Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
-        self.ratio = 1/1000  # Desired self played games per training step ratio. Set it to None to disable it.
-
-
-        ### Test
-        self.test_episodes = 2  # Number of games rendered when calling the MuZero test method
+        self.ratio = 1/70  # Desired self played games per training step ratio. Set it to None to disable it.
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
