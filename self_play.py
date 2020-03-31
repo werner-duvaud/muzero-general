@@ -120,7 +120,7 @@ class SelfPlay:
             while (
                 not done and len(game_history.action_history) <= self.config.max_moves
             ):
-                root = MCTS(self.config).run(
+                root, tree_depth = MCTS(self.config).run(
                     self.model,
                     observation,
                     self.game.legal_actions(),
@@ -128,12 +128,16 @@ class SelfPlay:
                     False if temperature == 0 else True,
                 )
 
+                if render:
+                    print("Tree depth: {}".format(tree_depth))
+                    print("Root value for player {0}: {1:.2f}".format(self.game.to_play(), root.value()))
+
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
                     action = self.select_action(
                         root,
                         temperature
-                        if len(game_history.action_history) < temperature_threshold
+                        if not temperature_threshold or len(game_history.action_history) < temperature_threshold
                         else 0,
                     )
                 elif opponent == "human":
@@ -268,12 +272,15 @@ class MCTS:
 
         min_max_stats = MinMaxStats()
 
+        max_tree_depth = 0
         for _ in range(self.config.num_simulations):
             virtual_to_play = to_play
             node = root
             search_path = [node]
+            current_tree_depth = 0
 
             while node.expanded():
+                current_tree_depth += 1
                 action, node = self.select_child(node, min_max_stats)
                 search_path.append(node)
 
@@ -302,7 +309,9 @@ class MCTS:
 
             self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
 
-        return root
+            max_tree_depth = max(max_tree_depth, current_tree_depth)
+
+        return root, max_tree_depth
 
     def select_child(self, node, min_max_stats):
         """

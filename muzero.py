@@ -182,16 +182,13 @@ class MuZero:
             self.Game(self.config.seed + self.config.num_actors),
             self.config,
         )
-        test_rewards = []
-        for _ in range(self.config.test_episodes):
-            history = ray.get(
-                self_play_workers.play_game.remote(
-                    0, 0, render, opponent, muzero_player
-                )
+        history = ray.get(
+            self_play_workers.play_game.remote(
+                0, 0, render, opponent, muzero_player
             )
-            test_rewards.append(sum(history.reward_history))
+        )
         ray.shutdown()
-        return test_rewards
+        return sum(history.reward_history)
 
     def load_model(self, path=None):
         if not path:
@@ -259,5 +256,8 @@ if __name__ == "__main__":
     # experiments = ["cartpole", "tictactoe"]
     # for experiment in experiments:
     #     print("\nStarting experiment {}".format(experiment))
-    #     muzero = MuZero(experiment)
-    #     muzero.train()
+    #     try:
+    #         muzero = MuZero(experiment)
+    #         muzero.train()
+    #     except:
+    #         print("Skipping {}, an error has occurred.".format(experiment))
