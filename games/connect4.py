@@ -14,10 +14,10 @@ class MuZeroConfig:
 
 
         ### Game
-        self.observation_shape = (3, 6, 7)  # Dimensions of the game observation, must be 3D. For a 1D array, please reshape it to (1, 1, length of array)
+        self.observation_shape = (3, 6, 7)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = [i for i in range(7)]  # Fixed list of all possible actions. You should only edit the length
         self.players = [i for i in range(2)]  # List of players. You should only edit the length
-        self.stacked_observations = 0  # Number of previous observation to add to the current observation
+        self.stacked_observations = 0  # Number of previous observation and previous actions to add to the current observation
 
 
         ### Self-Play
@@ -41,12 +41,13 @@ class MuZeroConfig:
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
         
         # Residual Network
+        self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
         self.blocks = 2  # Number of blocks in the ResNet
-        self.channels = 8  # Number of channels in the ResNet
-        self.reduced_channels = 8  # Number of channels before heads of dynamic and prediction networks
-        self.resnet_fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
-        self.resnet_fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
-        self.resnet_fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
+        self.channels = 16  # Number of channels in the ResNet
+        self.reduced_channels = 16  # Number of channels before heads of dynamic and prediction networks
+        self.resnet_fc_reward_layers = [8]  # Define the hidden layers in the reward head of the dynamic network
+        self.resnet_fc_value_layers = [8]  # Define the hidden layers in the value head of the prediction network
+        self.resnet_fc_policy_layers = [8]  # Define the hidden layers in the policy head of the prediction network
         
         # Fully Connected Network
         self.encoding_size = 32
@@ -59,13 +60,13 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128*3  # Number of parts of games to train on at each training step
-        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
+        self.training_steps = 100000  # Total number of training steps (ie weights update according to a batch)
+        self.batch_size = 64  # Number of parts of games to train on at each training step
+        self.num_unroll_steps = 20  # Number of game moves to keep for every batch element
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
-        self.window_size = 1000  # Number of self-play games to keep in the replay buffer
+        self.window_size = 3000  # Number of self-play games to keep in the replay buffer
         self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
-        self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
+        self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
@@ -73,12 +74,12 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Prioritized Replay (See paper appendix Training)
-        self.PER = False  # Select in priority the elements in the replay buffer which are unexpected for the network
+        self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
         # Exponential learning rate schedule
-        self.lr_init = 0.1  # Initial learning rate
+        self.lr_init = 0.01  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
 
@@ -168,7 +169,7 @@ class Game(AbstractGame):
     def encode_board(self):
         return self.env.encode_board()
 
-    def human_action(self):
+    def human_to_action(self):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
@@ -181,7 +182,7 @@ class Game(AbstractGame):
             choice = input("Enter another column : ")
         return int(choice)
 
-    def print_action(self, action_number):
+    def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
 

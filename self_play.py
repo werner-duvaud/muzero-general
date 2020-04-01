@@ -58,6 +58,9 @@ class SelfPlay:
                 shared_storage.set_infos.remote(
                     "total_reward", sum(game_history.reward_history)
                 )
+                shared_storage.set_infos.remote(
+                    "episode_length", len(game_history.action_history)
+                )
                 if 1 < len(self.config.players):
                     shared_storage.set_infos.remote(
                         "player_0_reward",
@@ -130,24 +133,29 @@ class SelfPlay:
 
                 if render:
                     print("Tree depth: {}".format(tree_depth))
-                    print("Root value for player {0}: {1:.2f}".format(self.game.to_play(), root.value()))
+                    print(
+                        "Root value for player {0}: {1:.2f}".format(
+                            self.game.to_play(), root.value()
+                        )
+                    )
 
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
                     action = self.select_action(
                         root,
                         temperature
-                        if not temperature_threshold or len(game_history.action_history) < temperature_threshold
+                        if not temperature_threshold
+                        or len(game_history.action_history) < temperature_threshold
                         else 0,
                     )
                 elif opponent == "human":
                     print(
                         "Player {} turn. MuZero suggests {}".format(
                             self.game.to_play(),
-                            self.game.print_action(self.select_action(root, 0)),
+                            self.game.action_to_string(self.select_action(root, 0)),
                         )
                     )
-                    action = self.game.human_action()
+                    action = self.game.human_to_action()
                 elif opponent == "random":
                     action = numpy.random.choice(self.game.legal_actions())
                 else:
@@ -162,7 +170,9 @@ class SelfPlay:
                 )
 
                 if render:
-                    print("Played action: {}".format(self.game.print_action(action)))
+                    print(
+                        "Played action: {}".format(self.game.action_to_string(action))
+                    )
                     self.game.render()
 
                 game_history.store_search_statistics(root, self.config.action_space)
