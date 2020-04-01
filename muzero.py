@@ -114,12 +114,15 @@ class MuZero:
                     "1.Total reward/1.Total reward", infos["total_reward"], counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/2.Player 0 MuZero reward",
+                    "1.Total reward/2.Episode length", infos["episode_length"], counter,
+                )
+                writer.add_scalar(
+                    "1.Total reward/3.Player 0 MuZero reward",
                     infos["player_0_reward"],
                     counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/3.Player 1 Random reward",
+                    "1.Total reward/4.Player 1 Random reward",
                     infos["player_1_reward"],
                     counter,
                 )
@@ -138,7 +141,9 @@ class MuZero:
                     counter,
                 )
                 writer.add_scalar("2.Workers/4.Learning rate", infos["lr"], counter)
-                writer.add_scalar("3.Loss/1.Total weighted loss", infos["total_loss"], counter)
+                writer.add_scalar(
+                    "3.Loss/1.Total weighted loss", infos["total_loss"], counter
+                )
                 writer.add_scalar("3.Loss/Value loss", infos["value_loss"], counter)
                 writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
                 writer.add_scalar("3.Loss/Policy loss", infos["policy_loss"], counter)
@@ -183,9 +188,7 @@ class MuZero:
             self.config,
         )
         history = ray.get(
-            self_play_workers.play_game.remote(
-                0, 0, render, opponent, muzero_player
-            )
+            self_play_workers.play_game.remote(0, 0, render, opponent, muzero_player)
         )
         ray.shutdown()
         return sum(history.reward_history)

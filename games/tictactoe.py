@@ -14,10 +14,10 @@ class MuZeroConfig:
 
 
         ### Game
-        self.observation_shape = (3, 3, 3)  # Dimensions of the game observation, must be 3D. For a 1D array, please reshape it to (1, 1, length of array)
+        self.observation_shape = (3, 3, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = [i for i in range(9)]  # Fixed list of all possible actions. You should only edit the length
         self.players = [i for i in range(2)]  # List of players. You should only edit the length
-        self.stacked_observations = 0  # Number of previous observation to add to the current observation
+        self.stacked_observations = 0  # Number of previous observation and previous actions to add to the current observation
 
 
         ### Self-Play
@@ -41,6 +41,7 @@ class MuZeroConfig:
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
 
         # Residual Network
+        self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
         self.blocks = 1  # Number of blocks in the ResNet
         self.channels = 16  # Number of channels in the ResNet
         self.reduced_channels = 16  # Number of channels before heads of dynamic and prediction networks
@@ -77,17 +78,16 @@ class MuZeroConfig:
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
+        # Exponential learning rate schedule
+        self.lr_init = 0.01  # Initial learning rate
+        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
+        self.lr_decay_steps = 10000
+
 
         ## Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired self played games per training step ratio. Set it to None to disable it.
-
-
-        # Exponential learning rate schedule
-        self.lr_init = 0.01  # Initial learning rate
-        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
-        self.lr_decay_steps = 10000
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
@@ -169,7 +169,7 @@ class Game(AbstractGame):
     def encode_board(self):
         return self.env.encode_board()
 
-    def human_action(self):
+    def human_to_action(self):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
@@ -184,7 +184,7 @@ class Game(AbstractGame):
             choice = input("Enter another column : ")
         return int(choice)
 
-    def print_action(self, action_number):
+    def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
         

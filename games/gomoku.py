@@ -15,10 +15,10 @@ class MuZeroConfig:
 
 
         ### Game
-        self.observation_shape = (3, 11, 11)  # Dimensions of the game observation, must be 3. For a 1D array, please reshape it to (1, 1, length of array)
+        self.observation_shape = (3, 11, 11)  # Dimensions of the game observation, must be 3 (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = [i for i in range(11 * 11)]  # Fixed list of all possible actions. You should only edit the length
         self.players = [i for i in range(2)]  # List of players. You should only edit the length
-        self.stacked_observations = 2  # Number of previous observation to add to the current observation
+        self.stacked_observations = 2  # Number of previous observation and previous actions to add to the current observation
 
 
         ### Self-Play
@@ -170,7 +170,7 @@ class Game(AbstractGame):
         self.env.render()
         input("Press enter to take a step ")
 
-    def human_action(self):
+    def human_to_action(self):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
@@ -183,7 +183,7 @@ class Game(AbstractGame):
             valid, action = self.env.human_input_to_action()
         return action
 
-    def print_action(self, action):
+    def action_to_string(self, action):
         """
         Convert an action number to a string representing the action.
         Args:

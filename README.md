@@ -23,7 +23,6 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 * [x] Easily adaptable for new games
 * [x] [Examples](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py) of board and Gym games (See [list of implemented games](https://github.com/werner-duvaud/muzero-general#games-already-implemented))
 * [x] [Pretrained weights](https://github.com/werner-duvaud/muzero-general/tree/master/results) available
-* [ ] Atari games
 * [ ] Appendix Reanalyse of the paper
 * [ ] Windows support ([workaround by ihexx](https://github.com/ihexx/muzero-general) or use the [notebook](https://github.com/werner-duvaud/muzero-general/blob/master/notebook.ipynb) in Google Colab)
 
@@ -44,6 +43,7 @@ Testing Lunar Lander :
 * Tic-tac-toe   (Tested with the fully connected network and the residual network)
 * Connect4      (Slightly tested with the residual network)
 * Gomoku
+* Atari Breakout
 
 Tests are done on Ubuntu with 16 GB RAM / Intel i7 / GTX 1050Ti Max-Q. We make sure to obtain a progression and a level which ensures that it has learned. But we do not systematically reach a human level. For certain environments, we notice a regression after a certain time. The proposed configurations are certainly not optimal and we do not focus for now on the optimization of hyperparameters. Any help is welcome.
 

@@ -72,7 +72,7 @@ class AbstractGame(ABC):
         pass
 
     @abstractmethod
-    def human_action(self):
+    def human_to_action(self):
         """
         For multiplayer games, ask the user for a legal action
         and return the corresponding action number.
@@ -88,7 +88,7 @@ class AbstractGame(ABC):
         return int(choice)
 
     @abstractmethod
-    def print_action(self, action_number):
+    def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
 
