@@ -53,7 +53,7 @@ class Trainer:
 
         # Training loop
         while True:
-            index_batch, batch = ray.get(replay_buffer.get_batch.remote())
+            index_batch, batch = ray.get(replay_buffer.get_batch.remote(self.model.get_weights()))
             self.update_lr()
             (
                 priorities,
@@ -124,8 +124,8 @@ class Trainer:
         # target_policy: batch, num_unroll_steps+1, len(action_space)
         # gradient_scale_batch: batch, num_unroll_steps+1
 
-        target_value = self.scalar_to_support(target_value, self.config.support_size)
-        target_reward = self.scalar_to_support(target_reward, self.config.support_size)
+        target_value = models.scalar_to_support(target_value, self.config.support_size)
+        target_reward = models.scalar_to_support(target_reward, self.config.support_size)
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
@@ -159,7 +159,7 @@ class Trainer:
         policy_loss += current_policy_loss
         # Compute priorities for the prioritized replay (See paper appendix Training)
         pred_value_scalar = (
-            self.support_to_scalar(value, self.config.support_size)
+            models.support_to_scalar(value, self.config.support_size)
             .detach()
             .cpu()
             .numpy()
@@ -202,7 +202,7 @@ class Trainer:
 
             # Compute priorities for the prioritized replay (See paper appendix Training)
             pred_value_scalar = (
-                self.support_to_scalar(value, self.config.support_size)
+                models.support_to_scalar(value, self.config.support_size)
                 .detach()
                 .cpu()
                 .numpy()
@@ -245,54 +245,6 @@ class Trainer:
         )
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
-
-    @staticmethod
-    def scalar_to_support(x, support_size):
-        """
-        Transform a scalar to a categorical representation with (2 * support_size + 1) categories
-        See paper appendix Network Architecture
-        """
-        # Reduce the scale (defined in https://arxiv.org/abs/1805.11593)
-        x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + 0.001 * x
-
-        # Encode on a vector
-        x = torch.clamp(x, -support_size, support_size)
-        floor = x.floor()
-        prob = x - floor
-        logits = torch.zeros(x.shape[0], x.shape[1], 2 * support_size + 1).to(x.device)
-        logits.scatter_(
-            2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1)
-        )
-        indexes = floor + support_size + 1
-        prob = prob.masked_fill_(2 * support_size < indexes, 0.0)
-        indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
-        logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
-        return logits
-
-    @staticmethod
-    def support_to_scalar(logits, support_size):
-        """
-        Transform a categorical representation to a scalar
-        See paper appendix Network Architecture
-        """
-        # Duplicated method, don't forget to update the one in self_play.py
-        # Decode to a scalar
-        probabilities = torch.softmax(logits, dim=1)
-        support = (
-            torch.tensor([x for x in range(-support_size, support_size + 1)])
-            .expand(probabilities.shape)
-            .float()
-            .to(device=probabilities.device)
-        )
-        x = torch.sum(support * probabilities, dim=1, keepdim=True)
-
-        # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
-        x = torch.sign(x) * (
-            ((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))
-            ** 2
-            - 1
-        )
-        return x
 
     @staticmethod
     def loss_function(
