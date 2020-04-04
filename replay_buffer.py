@@ -21,10 +21,12 @@ class ReplayBuffer:
         if len(self.buffer) > self.config.window_size:
             self.buffer.pop(0)
             self.game_priorities.pop(0)
-        game_history.priorities = (
-            numpy.ones(len(game_history.observation_history))
-            * self.max_recorded_game_priority
-        )
+            
+        if self.config.use_max_priority:
+            game_history.priorities = (
+                numpy.ones(len(game_history.root_values))
+                * self.max_recorded_game_priority
+            )
         self.buffer.append(game_history)
         self.game_priorities.append(numpy.mean(game_history.priorities))
         self.self_play_count += 1

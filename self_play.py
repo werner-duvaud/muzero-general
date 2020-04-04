@@ -123,7 +123,7 @@ class SelfPlay:
             while (
                 not done and len(game_history.action_history) <= self.config.max_moves
             ):
-                root, tree_depth = MCTS(self.config).run(
+                root, priority, tree_depth = MCTS(self.config).run(
                     self.model,
                     observation,
                     self.game.legal_actions(),
@@ -176,6 +176,8 @@ class SelfPlay:
                     self.game.render()
 
                 game_history.store_search_statistics(root, self.config.action_space)
+                if not self.config.use_max_priority:
+                    game_history.priorities.append(priority)
 
                 # Next batch
                 game_history.action_history.append(action)
@@ -269,7 +271,15 @@ class MCTS:
             .unsqueeze(0)
             .to(next(model.parameters()).device)
         )
-        _, reward, policy_logits, hidden_state = model.initial_inference(observation)
+        (
+            root_predicted_value,
+            reward,
+            policy_logits,
+            hidden_state,
+        ) = model.initial_inference(observation)
+        root_predicted_value = self.support_to_scalar(
+            root_predicted_value, self.config.support_size
+        ).item()
         reward = self.support_to_scalar(reward, self.config.support_size).item()
         root.expand(
             legal_actions, to_play, reward, policy_logits, hidden_state,
@@ -321,7 +331,13 @@ class MCTS:
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
 
-        return root, max_tree_depth
+        priority = (
+            None
+            if self.config.use_max_priority
+            else numpy.abs(root_predicted_value - root.value()) ** self.config.PER_alpha
+        )
+
+        return root, priority, max_tree_depth
 
     def select_child(self, node, min_max_stats):
         """
