@@ -41,6 +41,7 @@ class MuZeroConfig:
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
         
         # Residual Network
+        self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
         self.blocks = 2  # Number of blocks in the ResNet
         self.channels = 16  # Number of channels in the ResNet
         self.reduced_channels = 16  # Number of channels before heads of dynamic and prediction networks
@@ -74,19 +75,20 @@ class MuZeroConfig:
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
+        self.use_max_priority = True  # Use the n-step TD error as initial priority. Better for large replay buffer
         self.PER_alpha = 1.0  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
         # Exponential learning rate schedule
-        self.lr_init = 0.07  # Initial learning rate
-        self.lr_decay_rate = 0.97  # Set it to 1 to use a constant learning rate
+        self.lr_init = 0.05  # Initial learning rate
+        self.lr_decay_rate = 0.95  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
 
 
         ## Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
-        self.ratio = 1/70  # Desired self played games per training step ratio. Set it to None to disable it.
+        self.ratio = 1/100  # Desired self played games per training step ratio. Set it to None to disable it.
 
 
     def visit_softmax_temperature_fn(self, trained_steps):

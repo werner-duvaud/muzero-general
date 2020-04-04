@@ -42,6 +42,7 @@ class MuZeroConfig:
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
         
         # Residual Network
+        self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
         self.blocks = 2  # Number of blocks in the ResNet
         self.channels = 8  # Number of channels in the ResNet
         self.reduced_channels = 8  # Number of channels before heads of dynamic and prediction networks
@@ -74,7 +75,8 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Prioritized Replay (See paper appendix Training)
-        self.PER = False  # Select in priority the elements in the replay buffer which are unexpected for the network
+        self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
+        self.use_max_priority = True  # Use the n-step TD error as initial priority. Better for large replay buffer
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
