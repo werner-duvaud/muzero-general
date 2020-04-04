@@ -1,5 +1,10 @@
+import copy
+
 import numpy
 import ray
+import torch
+
+import models
 
 
 @ray.remote
@@ -15,13 +20,17 @@ class ReplayBuffer:
         self.max_recorded_game_priority = 1.0
         self.self_play_count = 0
 
+        self.model = models.MuZeroNetwork(self.config)
+
+        # Fix random generator seed
         numpy.random.seed(self.config.seed)
+        torch.manual_seed(self.config.seed)
 
     def save_game(self, game_history):
         if len(self.buffer) > self.config.window_size:
             self.buffer.pop(0)
             self.game_priorities.pop(0)
-            
+
         if self.config.use_max_priority:
             game_history.priorities = (
                 numpy.ones(len(game_history.root_values))
@@ -34,7 +43,7 @@ class ReplayBuffer:
     def get_self_play_count(self):
         return self.self_play_count
 
-    def get_batch(self):
+    def get_batch(self, model_weights):
         (
             index_batch,
             observation_batch,
@@ -49,6 +58,9 @@ class ReplayBuffer:
         total_samples = sum(
             (len(game_history.priorities) for game_history in self.buffer)
         )
+
+        if self.config.use_last_model_value:
+            self.model.set_weights(model_weights)
 
         for _ in range(self.config.batch_size):
             game_index, game_history, game_prob = self.sample_game(self.buffer)
@@ -141,11 +153,9 @@ class ReplayBuffer:
             end_index = min(
                 game_pos + len(priority), len(self.buffer[game_index].priorities)
             )
-            numpy.put(
-                self.buffer[game_index].priorities,
-                range(start_index, end_index),
-                priority,
-            )
+            self.buffer[game_index].priorities[start_index:end_index] = priority[
+                : end_index - start_index
+            ]
 
             # update game priorities
             self.game_priorities[game_index] = numpy.max(
@@ -166,10 +176,19 @@ class ReplayBuffer:
             # future, plus the discounted sum of all rewards until then.
             bootstrap_index = current_index + self.config.td_steps
             if bootstrap_index < len(game_history.root_values):
-                value = (
-                    game_history.root_values[bootstrap_index]
-                    * self.config.discount ** self.config.td_steps
-                )
+                if self.config.use_last_model_value:
+                    # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+                    observation = torch.tensor(
+                        game_history.observation_history[bootstrap_index]
+                    ).float()
+                    last_step_value = models.support_to_scalar(
+                        self.model.initial_inference(observation)[0],
+                        self.config.support_size,
+                    ).item()
+                else:
+                    last_step_value = game_history.root_values[bootstrap_index]
+
+                value = last_step_value * self.config.discount ** self.config.td_steps
             else:
                 value = 0
 

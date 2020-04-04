@@ -277,10 +277,10 @@ class MCTS:
             policy_logits,
             hidden_state,
         ) = model.initial_inference(observation)
-        root_predicted_value = self.support_to_scalar(
+        root_predicted_value = models.support_to_scalar(
             root_predicted_value, self.config.support_size
         ).item()
-        reward = self.support_to_scalar(reward, self.config.support_size).item()
+        reward = models.support_to_scalar(reward, self.config.support_size).item()
         root.expand(
             legal_actions, to_play, reward, policy_logits, hidden_state,
         )
@@ -317,8 +317,8 @@ class MCTS:
                 parent.hidden_state,
                 torch.tensor([[action]]).to(parent.hidden_state.device),
             )
-            value = self.support_to_scalar(value, self.config.support_size).item()
-            reward = self.support_to_scalar(reward, self.config.support_size).item()
+            value = models.support_to_scalar(value, self.config.support_size).item()
+            reward = models.support_to_scalar(reward, self.config.support_size).item()
             node.expand(
                 self.config.action_space,
                 virtual_to_play,
@@ -384,31 +384,6 @@ class MCTS:
 
             value = node.reward + self.config.discount * value
 
-    @staticmethod
-    def support_to_scalar(logits, support_size):
-        """
-        Transform a categorical representation to a scalar
-        See paper appendix Network Architecture
-        """
-        # Duplicated method, don't forget to update the one in trainer.py
-        # Decode to a scalar
-        probabilities = torch.softmax(logits, dim=1)
-        support = (
-            torch.tensor([x for x in range(-support_size, support_size + 1)])
-            .expand(probabilities.shape)
-            .float()
-            .to(device=probabilities.device)
-        )
-        x = torch.sum(support * probabilities, dim=1, keepdim=True)
-
-        # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
-        x = torch.sign(x) * (
-            ((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))
-            ** 2
-            - 1
-        )
-        return x
-
 
 class Node:
     def __init__(self, prior):
@@ -470,7 +445,7 @@ class GameHistory:
         self.to_play_history = []
         self.child_visits = []
         self.root_values = []
-        self.priorities = None
+        self.priorities = []
 
     def store_search_statistics(self, root, action_space):
         # Turn visit count from root into a policy
