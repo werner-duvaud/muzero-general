@@ -204,10 +204,10 @@ class Game(AbstractGame):
         Returns:
             String representing the action.
         """
-        descriptions = [
-            "Do nothing", 
-            "Fire left orientation engine",
-            "Fire main engine",
-            "Fire right orientation engine",
-        ]
-        return "{}. {}".format(action_number, descriptions[action_number])
+        actions = {
+            0: "Do nothing", 
+            1: "Fire left orientation engine",
+            2: "Fire main engine",
+            3: "Fire right orientation engine",
+        }
+        return "{}. {}".format(action_number, actions[action_number])

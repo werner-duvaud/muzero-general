@@ -106,9 +106,6 @@ class SelfPlay:
         """
         game_history = GameHistory()
         observation = self.game.reset()
-        observation = self.stack_previous_observations(
-            observation, game_history, self.config.stacked_observations
-        )
         game_history.action_history.append(0)
         game_history.observation_history.append(observation)
         game_history.reward_history.append(0)
@@ -123,9 +120,13 @@ class SelfPlay:
             while (
                 not done and len(game_history.action_history) <= self.config.max_moves
             ):
+                stacked_observations = game_history.get_stacked_observations(
+                    -1, self.config.stacked_observations,
+                )
+
                 root, priority, tree_depth = MCTS(self.config).run(
                     self.model,
-                    observation,
+                    stacked_observations,
                     self.game.legal_actions(),
                     self.game.to_play(),
                     False if temperature == 0 else True,
@@ -165,10 +166,6 @@ class SelfPlay:
 
                 observation, reward, done = self.game.step(action)
 
-                observation = self.stack_previous_observations(
-                    observation, game_history, self.config.stacked_observations,
-                )
-
                 if render:
                     print(
                         "Played action: {}".format(self.game.action_to_string(action))
@@ -187,37 +184,6 @@ class SelfPlay:
 
         self.game.close()
         return game_history
-
-    @staticmethod
-    def stack_previous_observations(
-        observation, game_history, num_stacked_observations
-    ):
-        stacked_observations = observation.copy()
-        for i in range(num_stacked_observations):
-            try:
-                previous_observation = numpy.concatenate(
-                    (
-                        game_history.observation_history[-i - 1][
-                            : observation.shape[0]
-                        ],
-                        [
-                            numpy.ones_like(observation[0])
-                            * game_history.action_history[-i - 1]
-                        ],
-                    ),
-                    axis=0,
-                )
-            except IndexError:
-                previous_observation = numpy.concatenate(
-                    (numpy.zeros_like(observation), [numpy.zeros_like(observation[0])]),
-                    axis=0,
-                )
-
-            stacked_observations = numpy.concatenate(
-                (stacked_observations, previous_observation), axis=0
-            )
-
-        return stacked_observations
 
     @staticmethod
     def select_action(node, temperature):
@@ -364,6 +330,7 @@ class MCTS:
         prior_score = pb_c * child.prior
 
         if child.visit_count > 0:
+            # mean value Q
             value_score = min_max_stats.normalize(
                 child.reward + self.config.discount * child.value()
             )
@@ -458,6 +425,42 @@ class GameHistory:
         )
 
         self.root_values.append(root.value())
+
+    def get_stacked_observations(self, index, num_stacked_observations):
+        """
+        Generate a new observation with the observation at the index position
+        and num_stacked_observations past observations and actions stacked.
+        """
+        # Convert to positive index
+        index = index % len(self.observation_history)
+
+        stacked_observations = self.observation_history[index].copy()
+        for past_observation_index in reversed(
+            range(index - num_stacked_observations, index)
+        ):
+            if 0 <= past_observation_index:
+                previous_observation = numpy.concatenate(
+                    (
+                        self.observation_history[past_observation_index],
+                        [
+                            numpy.ones_like(stacked_observations[0])
+                            * self.action_history[past_observation_index + 1]
+                        ],
+                    )
+                )
+            else:
+                previous_observation = numpy.concatenate(
+                    (
+                        numpy.zeros_like(self.observation_history[index]),
+                        [numpy.zeros_like(stacked_observations[0])],
+                    )
+                )
+
+            stacked_observations = numpy.concatenate(
+                (stacked_observations, previous_observation)
+            )
+
+        return stacked_observations
 
 
 class MinMaxStats:

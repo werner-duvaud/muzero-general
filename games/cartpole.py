@@ -204,8 +204,8 @@ class Game(AbstractGame):
         Returns:
             String representing the action.
         """
-        descriptions = [
-            "Push cart to the left",
-            "Push cart to the right"
-        ]
-        return "{}. {}".format(action_number, descriptions[action_number])
+        actions = {
+            0: "Push cart to the left",
+            1: "Push cart to the right",
+        }
+        return "{}. {}".format(action_number, actions[action_number])
