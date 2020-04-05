@@ -130,7 +130,7 @@ class Game(AbstractGame):
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done = self.env.step(action)
-        return observation, reward*20, done
+        return observation, reward * 20, done
 
     def to_play(self):
         """
@@ -187,12 +187,35 @@ class Game(AbstractGame):
         Returns:
             An integer from the action space.
         """
-        choice = input(
-            "Enter the column to play for the player {}: ".format(self.to_play())
-        )
-        while choice not in [str(action) for action in self.legal_actions()]:
-            choice = input("Enter another column : ")
-        return int(choice)
+        while True:
+            try:
+                row = int(
+                    input(
+                        "Enter the row (1, 2 or 3) to play for the player {}: ".format(
+                            self.to_play()
+                        )
+                    )
+                )
+                col = int(
+                    input(
+                        "Enter the column (1, 2 or 3) to play for the player {}: ".format(
+                            self.to_play()
+                        )
+                    )
+                )
+                choice = (row - 1) * 3 + (col - 1)
+                if (
+                    choice in self.legal_actions()
+                    and 1 <= row
+                    and 1 <= col
+                    and row <= 3
+                    and col <= 3
+                ):
+                    break
+            except:
+                pass
+            print("Wrong input, try again")
+        return choice
 
     def action_to_string(self, action_number):
         """
@@ -204,7 +227,9 @@ class Game(AbstractGame):
         Returns:
             String representing the action.
         """
-        return "Play column {}".format(action_number)
+        row = 3 - action_number // 3
+        col = action_number % 3 + 1
+        return "Play row {}, column {}".format(row, col)
 
 
 class TicTacToe:

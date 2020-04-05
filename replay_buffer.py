@@ -71,7 +71,7 @@ class ReplayBuffer:
             )
 
             index_batch.append([game_index, game_pos])
-            observation_batch.append(game_history.observation_history[game_pos])
+            observation_batch.append(game_history.get_stacked_observations(game_pos, self.config.stacked_observations))
             action_batch.append(actions)
             value_batch.append(values)
             reward_batch.append(rewards)
@@ -179,7 +179,7 @@ class ReplayBuffer:
                 if self.config.use_last_model_value:
                     # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
                     observation = torch.tensor(
-                        game_history.observation_history[bootstrap_index]
+                        game_history.get_stacked_observations(bootstrap_index, self.config.stacked_observations)
                     ).float()
                     last_step_value = models.support_to_scalar(
                         self.model.initial_inference(observation)[0],
