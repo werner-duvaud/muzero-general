@@ -7,4 +7,4 @@ ray
 psutil
 setproctitle
 aiohttp
-grpcio
+grpcio==1.27.2
