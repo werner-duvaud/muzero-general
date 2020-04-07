@@ -18,7 +18,7 @@ class MuZeroConfig:
         self.observation_shape = (1, 1, 8)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = [i for i in range(4)]  # Fixed list of all possible actions. You should only edit the length
         self.players = [i for i in range(1)]  # List of players. You should only edit the length
-        self.stacked_observations = 0  # Number of previous observation and previous actions to add to the current observation
+        self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
 
 
@@ -82,10 +82,10 @@ class MuZeroConfig:
 
 
         ### Replay Buffer
-        self.window_size = 500  # Number of self-play games to keep in the replay buffer
+        self.window_size = 1000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
-        self.use_last_model_value = False  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+        self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network

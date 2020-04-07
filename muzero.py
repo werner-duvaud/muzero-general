@@ -26,7 +26,7 @@ class MuZero:
     Example:
         >>> muzero = MuZero("cartpole")
         >>> muzero.train()
-        >>> muzero.test()
+        >>> muzero.test(render=True, opponent="self", muzero_player=None)
     """
 
     def __init__(self, game_name):
