@@ -173,8 +173,7 @@ class SelfPlay:
                     self.game.render()
 
                 game_history.store_search_statistics(root, self.config.action_space)
-                if not self.config.use_max_priority:
-                    game_history.priorities.append(priority)
+                game_history.priorities.append(priority)
 
                 # Next batch
                 game_history.action_history.append(action)
@@ -330,7 +329,7 @@ class MCTS:
         prior_score = pb_c * child.prior
 
         if child.visit_count > 0:
-            # mean value Q
+            # Mean value Q
             value_score = min_max_stats.normalize(
                 child.reward + self.config.discount * child.value()
             )

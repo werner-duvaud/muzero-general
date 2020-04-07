@@ -1,3 +1,4 @@
+import collections
 import copy
 
 import numpy
@@ -15,30 +16,41 @@ class ReplayBuffer:
 
     def __init__(self, config):
         self.config = config
-        self.buffer = []
-        self.game_priorities = []
+        self.buffer = {}
+        self.game_priorities = collections.deque(maxlen=self.config.window_size)
         self.max_recorded_game_priority = 1.0
         self.self_play_count = 0
+        self.total_samples = 0
 
-        self.model = models.MuZeroNetwork(self.config)
+        # Used only for the Reanalyze options
+        self.model = (
+            models.MuZeroNetwork(self.config)
+            if self.config.use_last_model_value
+            else None
+        )
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
     def save_game(self, game_history):
-        if len(self.buffer) > self.config.window_size:
-            self.buffer.pop(0)
-            self.game_priorities.pop(0)
-
         if self.config.use_max_priority:
-            game_history.priorities = (
-                numpy.ones(len(game_history.root_values))
-                * self.max_recorded_game_priority
+            game_history.priorities = numpy.full(
+                len(game_history.priorities), self.max_recorded_game_priority
             )
-        self.buffer.append(game_history)
+        else:
+            game_history.priorities = numpy.array(game_history.priorities)
+
+        self.buffer[self.self_play_count] = game_history
+        self.total_samples += len(game_history.priorities)
         self.game_priorities.append(numpy.mean(game_history.priorities))
+
         self.self_play_count += 1
+
+        if self.config.window_size < len(self.buffer):
+            del_id = self.self_play_count - len(self.buffer)
+            self.total_samples -= len(self.buffer[del_id].priorities)
+            del self.buffer[del_id]
 
     def get_self_play_count(self):
         return self.self_play_count
@@ -55,29 +67,29 @@ class ReplayBuffer:
             gradient_scale_batch,
         ) = ([], [], [], [], [], [], [], [])
 
-        total_samples = sum(
-            (len(game_history.priorities) for game_history in self.buffer)
-        )
-
         if self.config.use_last_model_value:
             self.model.set_weights(model_weights)
 
         for _ in range(self.config.batch_size):
-            game_index, game_history, game_prob = self.sample_game(self.buffer)
+            game_id, game_history, game_prob = self.sample_game(self.buffer)
             game_pos, pos_prob = self.sample_position(game_history)
 
             values, rewards, policies, actions = self.make_target(
                 game_history, game_pos
             )
 
-            index_batch.append([game_index, game_pos])
-            observation_batch.append(game_history.get_stacked_observations(game_pos, self.config.stacked_observations))
+            index_batch.append([game_id, game_pos])
+            observation_batch.append(
+                game_history.get_stacked_observations(
+                    game_pos, self.config.stacked_observations
+                )
+            )
             action_batch.append(actions)
             value_batch.append(values)
             reward_batch.append(rewards)
             policy_batch.append(policies)
             weight_batch.append(
-                (total_samples * game_prob * pos_prob) ** (-self.config.PER_beta)
+                (self.total_samples * game_prob * pos_prob) ** (-self.config.PER_beta)
             )
             gradient_scale_batch.append(
                 [
@@ -116,25 +128,21 @@ class ReplayBuffer:
         Sample game from buffer either uniformly or according to some priority.
         See paper appendix Training.
         """
-        game_probs = numpy.array(self.game_priorities) / sum(self.game_priorities)
-        game_index_candidates = numpy.arange(0, len(self.buffer), dtype=int)
-        game_index = numpy.random.choice(game_index_candidates, p=game_probs)
+        game_probs = numpy.array(self.game_priorities)
+        game_probs /= numpy.sum(game_probs)
+        game_index = numpy.random.choice(len(self.buffer), p=game_probs)
         game_prob = game_probs[game_index]
+        game_id = self.self_play_count - len(self.buffer) + game_index
 
-        return game_index, self.buffer[game_index], game_prob
+        return game_id, self.buffer[game_id], game_prob
 
     def sample_position(self, game_history):
         """
         Sample position from game either uniformly or according to some priority.
         See paper appendix Training.
         """
-        position_probs = numpy.array(game_history.priorities) / sum(
-            game_history.priorities
-        )
-        position_index_candidates = numpy.arange(0, len(position_probs), dtype=int)
-        position_index = numpy.random.choice(
-            position_index_candidates, p=position_probs
-        )
+        position_probs = game_history.priorities / sum(game_history.priorities)
+        position_index = numpy.random.choice(len(position_probs), p=position_probs)
         position_prob = position_probs[position_index]
 
         return position_index, position_prob
@@ -145,24 +153,27 @@ class ReplayBuffer:
         See Distributed Prioritized Experience Replay https://arxiv.org/abs/1803.00933
         """
         for i in range(len(index_info)):
-            game_index, game_pos = index_info[i]
+            game_id, game_pos = index_info[i]
 
-            # update position priorities
-            priority = priorities[i, :]
-            start_index = game_pos
-            end_index = min(
-                game_pos + len(priority), len(self.buffer[game_index].priorities)
-            )
-            self.buffer[game_index].priorities[start_index:end_index] = priority[
-                : end_index - start_index
-            ]
+            # The element could be removed since its selection and training
+            if game_id in self.buffer:
+                # Update position priorities
+                priority = priorities[i, :]
+                start_index = game_pos
+                end_index = min(
+                    game_pos + len(priority), len(self.buffer[game_id].priorities)
+                )
+                self.buffer[game_id].priorities[start_index:end_index] = priority[
+                    : end_index - start_index
+                ]
 
-            # update game priorities
-            self.game_priorities[game_index] = numpy.max(
-                self.buffer[game_index].priorities
-            )  # option: mean, sum, max
+                # Update game priorities
+                game_index = game_id - (self.self_play_count - len(self.buffer))
+                self.game_priorities[game_index] = numpy.max(
+                    self.buffer[game_id].priorities
+                )  # option: mean, sum, max
 
-            self.max_recorded_game_priority = numpy.max(self.game_priorities)
+                self.max_recorded_game_priority = numpy.max(self.game_priorities)
 
     def make_target(self, game_history, state_index):
         """
@@ -179,7 +190,9 @@ class ReplayBuffer:
                 if self.config.use_last_model_value:
                     # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
                     observation = torch.tensor(
-                        game_history.get_stacked_observations(bootstrap_index, self.config.stacked_observations)
+                        game_history.get_stacked_observations(
+                            bootstrap_index, self.config.stacked_observations
+                        )
                     ).float()
                     last_step_value = models.support_to_scalar(
                         self.model.initial_inference(observation)[0],
