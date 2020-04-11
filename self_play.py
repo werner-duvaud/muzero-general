@@ -61,6 +61,9 @@ class SelfPlay:
                 shared_storage.set_infos.remote(
                     "episode_length", len(game_history.action_history)
                 )
+                shared_storage.set_infos.remote(
+                    "mean_value", numpy.mean(game_history.root_values)
+                )
                 if 1 < len(self.config.players):
                     shared_storage.set_infos.remote(
                         "player_0_reward",

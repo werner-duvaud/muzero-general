@@ -23,11 +23,11 @@ class ReplayBuffer:
         self.total_samples = 0
 
         # Used only for the Reanalyze options
-        self.model = (
-            models.MuZeroNetwork(self.config)
-            if self.config.use_last_model_value
-            else None
-        )
+        self.model = None
+        if self.config.use_last_model_value:
+            self.model = models.MuZeroNetwork(self.config)
+            self.model.to(torch.device("cpu"))
+            self.model.eval()
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -193,7 +193,7 @@ class ReplayBuffer:
                         game_history.get_stacked_observations(
                             bootstrap_index, self.config.stacked_observations
                         )
-                    ).float()
+                    ).float().unsqueeze(0)
                     last_step_value = models.support_to_scalar(
                         self.model.initial_inference(observation)[0],
                         self.config.support_size,

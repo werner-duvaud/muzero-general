@@ -18,6 +18,7 @@ class SharedStorage:
             "player_0_reward": 0,
             "player_1_reward": 0,
             "episode_length": 0,
+            "mean_value": 0,
             "training_step": 0,
             "lr": 0,
             "total_loss": 0,

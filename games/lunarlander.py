@@ -56,7 +56,7 @@ class MuZeroConfig:
         self.encoding_size = 10
         self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
         self.fc_value_layers = [16]  # Define the hidden layers in the value network
-        self.fc_policy_layers = []  # Define the hidden layers in the policy network
+        self.fc_policy_layers = [8]  # Define the hidden layers in the policy network
         self.fc_representation_layers = []  # Define the hidden layers in the representation network
         self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         
@@ -98,7 +98,7 @@ class MuZeroConfig:
         ### Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
-        self.ratio = 1/100  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
+        self.ratio = 1/50  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
