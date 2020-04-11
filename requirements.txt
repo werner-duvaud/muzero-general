@@ -4,7 +4,4 @@ tensorboard
 gym
 box2d-py
 ray
-psutil
-setproctitle
-aiohttp
 grpcio==1.27.2

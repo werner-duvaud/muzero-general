@@ -114,15 +114,18 @@ class MuZero:
                     "1.Total reward/1.Total reward", infos["total_reward"], counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/2.Episode length", infos["episode_length"], counter,
+                    "1.Total reward/2.Mean value", infos["mean_value"], counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/3.Player 0 MuZero reward",
+                    "1.Total reward/3.Episode length", infos["episode_length"], counter,
+                )
+                writer.add_scalar(
+                    "1.Total reward/4.Player 0 MuZero reward",
                     infos["player_0_reward"],
                     counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/4.Player 1 Random reward",
+                    "1.Total reward/5.Player 1 Random reward",
                     infos["player_1_reward"],
                     counter,
                 )
