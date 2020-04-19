@@ -20,6 +20,10 @@ class MuZeroConfig:
         self.players = [i for i in range(2)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
+        ### Evaluate
+        self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
+        self.opponent = "expert"  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None / "random" / "expert" if implemented in the Game class
+
 
 
         ### Self-Play
@@ -217,6 +221,16 @@ class Game(AbstractGame):
             print("Wrong input, try again")
         return choice
 
+    def expert_agent(self):
+        """
+        Hard coded agent that MuZero faces to assess his progress in multiplayer games.
+        It doesn't influence training
+
+        Returns:
+            Action as an integer to take in the current game state
+        """
+        return self.env.expert_action()
+
     def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
@@ -300,6 +314,40 @@ class TicTacToe:
             return True
 
         return False
+    
+    def expert_action(self):
+        board = self.board
+        action = numpy.random.choice(self.legal_actions())
+        # Horizontal and vertical checks
+        for i in range(3):
+            if abs(sum(board[i, :])) == 2:
+                ind = numpy.where(board[i, :] == 0)[0][0]
+                action = numpy.ravel_multi_index((numpy.array([i]), numpy.array([ind])), (3, 3))[0]
+                if self.player * sum(board[i, :]) > 0:
+                    return action 
+
+            if abs(sum(board[:, i])) == 2:
+                ind = numpy.where(board[:, i] == 0)[0][0]
+                action = numpy.ravel_multi_index((numpy.array([ind]), numpy.array([i])), (3, 3))[0]
+                if self.player * sum(board[:, i]) > 0:
+                    return action
+
+        # Diagonal checks
+        diag = board.diagonal()
+        anti_diag = numpy.fliplr(board).diagonal()
+        if abs(sum(diag)) == 2:
+            ind = numpy.where(diag == 0)[0][0]
+            action = numpy.ravel_multi_index((numpy.array([ind]), numpy.array([ind])), (3, 3))[0]
+            if self.player * sum(diag) > 0:
+                return action
+
+        if abs(sum(anti_diag)) == 2:
+            ind = numpy.where(anti_diag == 0)[0][0]
+            action = numpy.ravel_multi_index((numpy.array([ind]), numpy.array([2 - ind])), (3, 3))[0]
+            if self.player * sum(anti_diag) > 0:
+                return action
+
+        return action
 
     def render(self):
         print(self.board[::-1])

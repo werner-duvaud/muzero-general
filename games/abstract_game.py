@@ -88,6 +88,17 @@ class AbstractGame(ABC):
         return int(choice)
 
     @abstractmethod
+    def expert_agent(self):
+        """
+        Hard coded agent that MuZero faces to assess his progress in multiplayer games.
+        It doesn't influence training
+
+        Returns:
+            Action as an integer to take in the current game state
+        """
+        pass
+    
+    @abstractmethod
     def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
