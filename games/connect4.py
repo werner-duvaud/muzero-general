@@ -20,6 +20,10 @@ class MuZeroConfig:
         self.players = [i for i in range(2)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
+        ### Evaluate
+        self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
+        self.opponent = "expert"  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None / "random" / "expert" if implemented in the Game class
+
 
 
         ### Self-Play
@@ -193,6 +197,16 @@ class Game(AbstractGame):
             choice = input("Enter another column : ")
         return int(choice)
 
+    def expert_agent(self):
+        """
+        Hard coded agent that MuZero faces to assess his progress in multiplayer games.
+        It doesn't influence training
+
+        Returns:
+            Action as an integer to take in the current game state
+        """
+        return self.env.expert_action()
+
     def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
@@ -295,6 +309,44 @@ class Connect4:
             return True
 
         return False
+
+    def expert_action(self):
+        board = self.board
+        action = numpy.random.choice(self.legal_actions())
+        for k in range(3):
+            for l in range(4):
+                sub_board = board[k:k+4, l:l+4]
+                # Horizontal and vertical checks
+                for i in range(4):
+                    if abs(sum(sub_board[i, :])) == 3:
+                        ind = numpy.where(sub_board[i, :] == 0)[0][0]
+                        if numpy.count_nonzero(board[:, ind+l]) == i+k:
+                            action = ind + l
+                            if self.player * sum(sub_board[i, :]) > 0:
+                                return action
+
+                    if abs(sum(sub_board[:, i])) == 3:
+                        action = i + l
+                        if self.player * sum(sub_board[:, i]) > 0:
+                            return action
+                # Diagonal checks
+                diag = sub_board.diagonal()
+                anti_diag = numpy.fliplr(sub_board).diagonal()
+                if abs(sum(diag)) == 3:
+                    ind = numpy.where(diag == 0)[0][0]
+                    if numpy.count_nonzero(board[:, ind+l]) == ind+k:
+                        action = ind + l 
+                        if self.player * sum(diag) > 0:
+                            return action
+
+                if abs(sum(anti_diag)) == 3:
+                    ind = numpy.where(anti_diag == 0)[0][0]
+                    if numpy.count_nonzero(board[:, 3-ind+l]) == ind+k:
+                        action = 3-ind+l
+                        if self.player * sum(anti_diag) > 0:
+                            return action
+
+        return action
 
     def render(self):
         print(self.board[::-1])

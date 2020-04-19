@@ -21,6 +21,10 @@ class MuZeroConfig:
         self.players = [i for i in range(2)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
+        ### Evaluate
+        self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
+        self.opponent = "random"  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None / "random" / "expert" if implemented in the Game class
+
 
 
         ### Self-Play
@@ -194,6 +198,16 @@ class Game(AbstractGame):
         while not valid:
             valid, action = self.env.human_input_to_action()
         return action
+    
+    def expert_agent(self):
+        """
+        Hard coded agent that MuZero faces to assess his progress in multiplayer games.
+        It doesn't influence training
+
+        Returns:
+            Action as an integer to take in the current game state
+        """
+        pass
 
     def action_to_string(self, action):
         """

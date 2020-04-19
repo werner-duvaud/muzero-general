@@ -35,26 +35,30 @@ class SelfPlay:
                 copy.deepcopy(ray.get(shared_storage.get_weights.remote()))
             )
 
-            # Take the best action (no exploration) in test mode
-            temperature = (
-                0
-                if test_mode
-                else self.config.visit_softmax_temperature_fn(
+            if not test_mode:
+                game_history = self.play_game(
+                    self.config.visit_softmax_temperature_fn(
                     trained_steps=ray.get(shared_storage.get_infos.remote())[
-                        "training_step"
-                    ]
+                    "training_step"]),
+                    self.config.temperature_threshold,
+                    False,
+                    "self",
+                    0,
                 )
-            )
-            game_history = self.play_game(
-                temperature,
-                self.config.temperature_threshold,
-                False,
-                "self" if not test_mode else "random",
-                0,
-            )
 
-            # Save to the shared storage
-            if test_mode:
+                replay_buffer.save_game.remote(game_history)
+
+            else:
+                # Take the best action (no exploration) in test mode
+                game_history = self.play_game(
+                    0,
+                    self.config.temperature_threshold,
+                    False,
+                    "self" if len(self.config.players) == 1 else self.config.opponent,
+                    self.config.muzero_player,
+                )
+
+                # Save to the shared storage
                 shared_storage.set_infos.remote(
                     "total_reward", sum(game_history.reward_history)
                 )
@@ -66,27 +70,26 @@ class SelfPlay:
                 )
                 if 1 < len(self.config.players):
                     shared_storage.set_infos.remote(
-                        "player_0_reward",
+                        "muzero_reward",
                         sum(
                             [
                                 reward
                                 for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i] == 1
+                                if game_history.to_play_history[i] == (1 - self.config.muzero_player)
                             ]
                         ),
                     )
                     shared_storage.set_infos.remote(
-                        "player_1_reward",
+                        "opponent_reward",
                         sum(
                             [
                                 reward
                                 for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i] == 0
+                                if game_history.to_play_history[i] == self.config.muzero_player
                             ]
                         ),
                     )
-            if not test_mode:
-                replay_buffer.save_game.remote(game_history)
+
 
             # Managing the self-play / training ratio
             if not test_mode and self.config.self_play_delay:
@@ -127,24 +130,22 @@ class SelfPlay:
                     -1, self.config.stacked_observations,
                 )
 
-                root, priority, tree_depth = MCTS(self.config).run(
-                    self.model,
-                    stacked_observations,
-                    self.game.legal_actions(),
-                    self.game.to_play(),
-                    False if temperature == 0 else True,
-                )
-
-                if render:
-                    print("Tree depth: {}".format(tree_depth))
-                    print(
-                        "Root value for player {0}: {1:.2f}".format(
-                            self.game.to_play(), root.value()
-                        )
-                    )
-
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
+                    root, priority, tree_depth = MCTS(self.config).run(
+                        self.model,
+                        stacked_observations,
+                        self.game.legal_actions(),
+                        self.game.to_play(),
+                        False if temperature == 0 else True,
+                    )
+                    if render:
+                        print("Tree depth: {}".format(tree_depth))
+                        print(
+                            "Root value for player {0}: {1:.2f}".format(
+                                self.game.to_play(), root.value()
+                            )
+                        )
                     action = self.select_action(
                         root,
                         temperature
@@ -152,20 +153,8 @@ class SelfPlay:
                         or len(game_history.action_history) < temperature_threshold
                         else 0,
                     )
-                elif opponent == "human":
-                    print(
-                        "Player {} turn. MuZero suggests {}".format(
-                            self.game.to_play(),
-                            self.game.action_to_string(self.select_action(root, 0)),
-                        )
-                    )
-                    action = self.game.human_to_action()
-                elif opponent == "random":
-                    action = numpy.random.choice(self.game.legal_actions())
-                else:
-                    raise ValueError(
-                        'Wrong argument: "opponent" argument should be "self", "human" or "random"'
-                    )
+                else : 
+                    action, root, tree_depth = self.select_opponent_action(opponent, stacked_observations)
 
                 observation, reward, done = self.game.step(action)
 
@@ -174,7 +163,7 @@ class SelfPlay:
                         "Played action: {}".format(self.game.action_to_string(action))
                     )
                     self.game.render()
-
+                    
                 game_history.store_search_statistics(root, self.config.action_space)
                 game_history.priorities.append(priority)
 
@@ -186,6 +175,40 @@ class SelfPlay:
 
         self.game.close()
         return game_history
+    
+    def select_opponent_action(self, opponent, stacked_observations):
+        """
+        Select opponent action to display on tensorboard 
+        """
+        if opponent == "human":
+            root, priority, tree_depth = MCTS(self.config).run(
+                self.model,
+                stacked_observations,
+                self.game.legal_actions(),
+                self.game.to_play(),
+                0,
+            )
+            print("Tree depth: {}".format(tree_depth))
+            print(
+                "Root value for player {0}: {1:.2f}".format(
+                    self.game.to_play(), root.value()
+                )
+            )
+            print(
+                "Player {} turn. MuZero suggests {}".format(
+                    self.game.to_play(),
+                    self.game.action_to_string(self.select_action(root, 0)),
+                )
+            )
+            return self.game.human_to_action(), root, tree_depth
+        elif opponent == "expert":
+            return self.game.expert_agent(), None, None
+        elif opponent == "random":
+            return numpy.random.choice(self.game.legal_actions()), None, None
+        else:
+            raise ValueError(
+                'Wrong argument: "opponent" argument should be "self", "human", "expert" or "random"'
+            )
 
     @staticmethod
     def select_action(node, temperature):
@@ -418,15 +441,18 @@ class GameHistory:
 
     def store_search_statistics(self, root, action_space):
         # Turn visit count from root into a policy
-        sum_visits = sum(child.visit_count for child in root.children.values())
-        self.child_visits.append(
-            [
-                root.children[a].visit_count / sum_visits if a in root.children else 0
-                for a in action_space
-            ]
-        )
+        if root is not None:
+            sum_visits = sum(child.visit_count for child in root.children.values())
+            self.child_visits.append(
+                [
+                    root.children[a].visit_count / sum_visits if a in root.children else 0
+                    for a in action_space
+                ]
+            )
 
-        self.root_values.append(root.value())
+            self.root_values.append(root.value())
+        else:
+            self.root_values.append(None)
 
     def get_stacked_observations(self, index, num_stacked_observations):
         """
