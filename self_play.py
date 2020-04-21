@@ -63,10 +63,10 @@ class SelfPlay:
                     "total_reward", sum(game_history.reward_history)
                 )
                 shared_storage.set_infos.remote(
-                    "episode_length", len(game_history.action_history)
+                    "episode_length", len(game_history.action_history) - 1
                 )
                 shared_storage.set_infos.remote(
-                    "mean_value", numpy.mean(game_history.root_values)
+                    "mean_value", numpy.mean([value for value in game_history.root_values if value])
                 )
                 if 1 < len(self.config.players):
                     shared_storage.set_infos.remote(
