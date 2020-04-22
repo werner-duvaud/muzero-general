@@ -106,7 +106,7 @@ class Trainer:
         ) = batch
 
         # Keep values as scalars for calculating the priorities for the prioritized replay
-        target_value_scalar = numpy.array(target_value)
+        target_value_scalar = numpy.array(target_value, dtype=numpy.float64)
         priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device
