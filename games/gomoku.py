@@ -53,9 +53,9 @@ class MuZeroConfig:
         self.blocks = 2  # Number of blocks in the ResNet
         self.channels = 8  # Number of channels in the ResNet
         self.reduced_channels = 8  # Number of channels before heads of dynamic and prediction networks
-        self.resnet_fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
-        self.resnet_fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
-        self.resnet_fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
+        self.resnet_fc_reward_layers = [5]  # Define the hidden layers in the reward head of the dynamic network
+        self.resnet_fc_value_layers = [5]  # Define the hidden layers in the value head of the prediction network
+        self.resnet_fc_policy_layers = [5]  # Define the hidden layers in the policy head of the prediction network
         
         # Fully Connected Network
         self.encoding_size = 32
@@ -69,7 +69,7 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 10  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
