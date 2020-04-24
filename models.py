@@ -1,4 +1,5 @@
 import math
+from abc import ABC, abstractmethod
 
 import torch
 
@@ -38,11 +39,31 @@ class MuZeroNetwork:
             )
 
 
+class AbstractNetwork(ABC, torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        pass
+
+    @abstractmethod
+    def initial_inference(self, observation):
+        pass
+
+    @abstractmethod
+    def recurrent_inference(self, encoded_state, action):
+        pass
+
+    def get_weights(self):
+        return {key: value.cpu() for key, value in self.state_dict().items()}
+
+    def set_weights(self, weights):
+        self.load_state_dict(weights)
+
+
 ##################################
 ######## Fully Connected #########
 
 
-class MuZeroFullyConnectedNetwork(torch.nn.Module):
+class MuZeroFullyConnectedNetwork(AbstractNetwork):
     def __init__(
         self,
         observation_shape,
@@ -74,13 +95,11 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
             encoding_size + self.action_space_size, fc_dynamics_layers, encoding_size
         )
         self.dynamics_reward_network = FullyConnectedNetwork(
-            encoding_size + self.action_space_size,
-            fc_reward_layers,
-            self.full_support_size,
+            encoding_size, fc_reward_layers, self.full_support_size,
         )
 
         self.prediction_policy_network = FullyConnectedNetwork(
-            encoding_size, [], self.action_space_size
+            encoding_size, fc_policy_layers, self.action_space_size
         )
         self.prediction_value_network = FullyConnectedNetwork(
             encoding_size, fc_value_layers, self.full_support_size,
@@ -117,6 +136,8 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
 
         next_encoded_state = self.dynamics_encoded_state_network(x)
 
+        reward = self.dynamics_reward_network(next_encoded_state)
+
         # Scale encoded state between [0, 1] (See paper appendix Training)
         min_next_encoded_state = next_encoded_state.min(1, keepdim=True)[0]
         max_next_encoded_state = next_encoded_state.max(1, keepdim=True)[0]
@@ -126,7 +147,6 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
             next_encoded_state - min_next_encoded_state
         ) / scale_next_encoded_state
 
-        reward = self.dynamics_reward_network(x)
         return next_encoded_state_normalized, reward
 
     def initial_inference(self, observation):
@@ -151,12 +171,6 @@ class MuZeroFullyConnectedNetwork(torch.nn.Module):
         next_encoded_state, reward = self.dynamics(encoded_state, action)
         policy_logits, value = self.prediction(next_encoded_state)
         return value, reward, policy_logits, next_encoded_state
-
-    def get_weights(self):
-        return {key: value.cpu() for key, value in self.state_dict().items()}
-
-    def set_weights(self, weights):
-        self.load_state_dict(weights)
 
 
 ###### End Fully Connected #######
@@ -258,10 +272,7 @@ class RepresentationNetwork(torch.nn.Module):
                 num_channels,
             )
         self.conv = conv3x3(
-            num_channels
-            if downsample
-            else observation_shape[0] * (stacked_observations + 1)
-            + stacked_observations,
+            observation_shape[0] * (stacked_observations + 1) + stacked_observations,
             num_channels,
         )
         self.bn = torch.nn.BatchNorm2d(num_channels)
@@ -274,16 +285,16 @@ class RepresentationNetwork(torch.nn.Module):
         if self.use_downsample:
             out = self.downsample(x)
         else:
-            out = x
-        out = self.conv(out)
-        out = self.bn(out)
-        out = self.relu(out)
+            out = self.conv(x)
+            out = self.bn(out)
+            out = self.relu(out)
+
         for block in self.resblocks:
             out = block(out)
         return out
 
 
-class DynamicNetwork(torch.nn.Module):
+class DynamicsNetwork(torch.nn.Module):
     def __init__(
         self,
         observation_shape,
@@ -367,7 +378,7 @@ class PredictionNetwork(torch.nn.Module):
         return policy, value
 
 
-class MuZeroResidualNetwork(torch.nn.Module):
+class MuZeroResidualNetwork(AbstractNetwork):
     def __init__(
         self,
         observation_shape,
@@ -403,7 +414,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
             downsample,
         )
 
-        self.dynamics_network = DynamicNetwork(
+        self.dynamics_network = DynamicsNetwork(
             observation_shape,
             num_blocks,
             num_channels + 1,
@@ -525,12 +536,6 @@ class MuZeroResidualNetwork(torch.nn.Module):
         next_encoded_state, reward = self.dynamics(encoded_state, action)
         policy_logits, value = self.prediction(next_encoded_state)
         return value, reward, policy_logits, next_encoded_state
-
-    def get_weights(self):
-        return {key: value.cpu() for key, value in self.state_dict().items()}
-
-    def set_weights(self, weights):
-        self.load_state_dict(weights)
 
 
 ########### End ResNet ###########

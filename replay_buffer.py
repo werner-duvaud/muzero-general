@@ -101,7 +101,7 @@ class ReplayBuffer:
                 * len(actions)
             )
 
-        weight_batch = numpy.array(weight_batch, dtype=numpy.float64) / max(weight_batch)
+        weight_batch = numpy.array(weight_batch, dtype=numpy.float32) / max(weight_batch)
 
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1

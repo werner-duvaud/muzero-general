@@ -25,14 +25,14 @@ class MuZeroConfig:
         self.players = [i for i in range(1)]  # List of players. You should only edit the length
         self.stacked_observations = 2  # Number of previous observations and previous actions to add to the current observation
 
-        ### Evaluate
+        # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
-        self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None / "random" / "expert" if implemented in the Game class
+        self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
 
 
         ### Self-Play
-        self.num_actors = 2  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 50000  # Maximum number of moves if game is not finished before
         self.num_simulations = 20  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
@@ -54,7 +54,7 @@ class MuZeroConfig:
 
         # Residual Network
         self.downsample = True  # Downsample observations before representation network (See paper appendix Network Architecture)
-        self.blocks = 1  # Number of blocks in the ResNet
+        self.blocks = 3  # Number of blocks in the ResNet
         self.channels = 128  # Number of channels in the ResNet
         self.reduced_channels = 16  # Number of channels before heads of dynamic and prediction networks
         self.resnet_fc_reward_layers = [16]  # Define the hidden layers in the reward head of the dynamic network
@@ -63,11 +63,11 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 10
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
         self.fc_value_layers = []  # Define the hidden layers in the value network
         self.fc_policy_layers = []  # Define the hidden layers in the policy network
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
 
 
 
@@ -152,15 +152,6 @@ class Game(AbstractGame):
         observation = numpy.moveaxis(observation, -1, 0)
         return observation, reward, done
 
-    def to_play(self):
-        """
-        Return the current player.
-
-        Returns:
-            The current player, it should be an element of the players list in the config. 
-        """
-        return 0
-
     def legal_actions(self):
         """
         Should return the legal actions at each turn, if it is not available, it can return
@@ -200,34 +191,3 @@ class Game(AbstractGame):
         self.env.render()
         input("Press enter to take a step ")
 
-    def human_to_action(self):
-        """
-        For multiplayer games, ask the user for a legal action
-        and return the corresponding action number.
-
-        Returns:
-            An integer from the action space.
-        """
-        pass
-
-    def expert_agent(self):
-        """
-        Hard coded agent that MuZero faces to assess his progress in multiplayer games.
-        It doesn't influence training
-
-        Returns:
-            Action as an integer to take in the current game state
-        """
-        pass
-
-    def action_to_string(self, action_number):
-        """
-        Convert an action number to a string representing the action.
-
-        Args:
-            action_number: an integer from the action space.
-
-        Returns:
-            String representing the action.
-        """
-        return str(action_number)
