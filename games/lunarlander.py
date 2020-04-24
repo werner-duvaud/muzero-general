@@ -20,9 +20,9 @@ class MuZeroConfig:
         self.players = [i for i in range(1)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
-        ### Evaluate
+        # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
-        self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None / "random" / "expert" if implemented in the Game class
+        self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
 
 
@@ -58,11 +58,11 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 10
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
         self.fc_value_layers = [16]  # Define the hidden layers in the value network
         self.fc_policy_layers = [8]  # Define the hidden layers in the policy network
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         
 
 
@@ -144,15 +144,6 @@ class Game(AbstractGame):
         observation, reward, done, _ = self.env.step(action)
         return numpy.array([[observation]]), reward/3, done
 
-    def to_play(self):
-        """
-        Return the current player.
-
-        Returns:
-            The current player, it should be an element of the players list in the config. 
-        """
-        return 0
-
     def legal_actions(self):
         """
         Should return the legal actions at each turn, if it is not available, it can return
@@ -187,26 +178,6 @@ class Game(AbstractGame):
         """
         self.env.render()
         input("Press enter to take a step ")
-
-    def human_to_action(self):
-        """
-        For multiplayer games, ask the user for a legal action
-        and return the corresponding action number.
-
-        Returns:
-            An integer from the action space.
-        """
-        pass
-
-    def expert_agent(self):
-        """
-        Hard coded agent that MuZero faces to assess his progress in multiplayer games.
-        It doesn't influence training
-
-        Returns:
-            Action as an integer to take in the current game state
-        """
-        pass
 
     def action_to_string(self, action_number):
         """

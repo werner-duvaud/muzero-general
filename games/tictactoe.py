@@ -4,7 +4,6 @@ import os
 import gym
 import numpy
 import torch
-
 from .abstract_game import AbstractGame
 
 
@@ -20,9 +19,9 @@ class MuZeroConfig:
         self.players = [i for i in range(2)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
-        ### Evaluate
+        # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
-        self.opponent = "expert"  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None / "random" / "expert" if implemented in the Game class
+        self.opponent = "expert"  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
 
 
@@ -58,11 +57,11 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 32
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
         self.fc_value_layers = []  # Define the hidden layers in the value network
         self.fc_policy_layers = []  # Define the hidden layers in the policy network
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
 
 
 
@@ -230,7 +229,7 @@ class Game(AbstractGame):
             Action as an integer to take in the current game state
         """
         return self.env.expert_action()
-
+        
     def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
@@ -264,9 +263,9 @@ class TicTacToe:
         col = action % 3
         self.board[row, col] = self.player
 
-        done = self.is_finished()
+        done = self.have_winner() or len(self.legal_actions()) == 0
 
-        reward = 1 if done and 0 < len(self.legal_actions()) else 0
+        reward = 1 if self.have_winner() else 0
 
         self.player *= -1
 
@@ -287,7 +286,7 @@ class TicTacToe:
                 legal.append(i)
         return legal
 
-    def is_finished(self):
+    def have_winner(self):
         # Horizontal and vertical checks
         for i in range(3):
             if (self.board[i, :] == self.player * numpy.ones(3).astype(int)).all():
@@ -309,12 +308,8 @@ class TicTacToe:
         ):
             return True
 
-        # No legal actions means a draw
-        if len(self.legal_actions()) == 0:
-            return True
-
         return False
-    
+
     def expert_action(self):
         board = self.board
         action = numpy.random.choice(self.legal_actions())

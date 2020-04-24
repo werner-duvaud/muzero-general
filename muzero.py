@@ -49,13 +49,12 @@ class MuZero:
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
-        # Weights used to initialize components
+        # Weights used to initialize workers
         self.muzero_weights = models.MuZeroNetwork(self.config).get_weights()
 
     def train(self):
         ray.init()
         os.makedirs(self.config.results_path, exist_ok=True)
-        writer = SummaryWriter(self.config.results_path)
 
         # Initialize workers
         training_worker = trainer.Trainer.options(
@@ -73,11 +72,6 @@ class MuZero:
             )
             for seed in range(self.config.num_actors)
         ]
-        test_worker = self_play.SelfPlay.remote(
-            copy.deepcopy(self.muzero_weights),
-            self.Game(self.config.seed + self.config.num_actors),
-            self.config,
-        )
 
         # Launch workers
         [
@@ -86,14 +80,36 @@ class MuZero:
             )
             for self_play_worker in self_play_workers
         ]
-        test_worker.continuous_self_play.remote(shared_storage_worker, None, True)
         training_worker.continuous_update_weights.remote(
             replay_buffer_worker, shared_storage_worker
         )
 
+        # Save performance in TensorBoard
+        self._logging_loop(shared_storage_worker, replay_buffer_worker)
+
+        self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
+        # End running actors
+        ray.shutdown()
+
+    def _logging_loop(self, shared_storage_worker, replay_buffer_worker):
+        """
+        Keep track of the training performance
+        """
+        # Launch the test worker to get performance metrics
+        test_worker = self_play.SelfPlay.remote(
+            copy.deepcopy(self.muzero_weights),
+            self.Game(self.config.seed + self.config.num_actors),
+            self.config,
+        )
+        test_worker.continuous_self_play.remote(shared_storage_worker, None, True)
+
+        # Write everything in TensorBoard
+        writer = SummaryWriter(self.config.results_path)
+
         print(
             "\nTraining...\nRun tensorboard --logdir ./results and go to http://localhost:6006/ to see in real time the training performance.\n"
         )
+
         # Save hyperparameters to TensorBoard
         hp_table = [
             "| {} | {} |".format(key, value)
@@ -103,12 +119,16 @@ class MuZero:
             "Hyperparameters",
             "| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table),
         )
-        # Loop for monitoring in real time the workers
+        # Save model representation
+        writer.add_text(
+            "Model summary",
+            str(models.MuZeroNetwork(self.config)).replace("\n", " \n\n"),
+        )
+        # Loop for updating the training performance
         counter = 0
         infos = ray.get(shared_storage_worker.get_infos.remote())
         try:
             while infos["training_step"] < self.config.training_steps:
-                # Get and save real time performance
                 infos = ray.get(shared_storage_worker.get_infos.remote())
                 writer.add_scalar(
                     "1.Total reward/1.Total reward", infos["total_reward"], counter,
@@ -120,9 +140,7 @@ class MuZero:
                     "1.Total reward/3.Episode length", infos["episode_length"], counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/4.MuZero reward",
-                    infos["muzero_reward"],
-                    counter,
+                    "1.Total reward/4.MuZero reward", infos["muzero_reward"], counter,
                 )
                 writer.add_scalar(
                     "1.Total reward/5.Opponent reward",
@@ -166,9 +184,6 @@ class MuZero:
             # Comment the line below to be able to stop the training but keep running
             # raise err
             pass
-        self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
-        # End running actors
-        ray.shutdown()
 
     def test(self, render, opponent, muzero_player):
         """
@@ -187,7 +202,7 @@ class MuZero:
         ray.init()
         self_play_workers = self_play.SelfPlay.remote(
             copy.deepcopy(self.muzero_weights),
-            self.Game(self.config.seed + self.config.num_actors),
+            self.Game(numpy.random.randint(1000)),
             self.config,
         )
         history = ray.get(
@@ -232,6 +247,7 @@ if __name__ == "__main__":
             "Load pretrained model",
             "Render some self play games",
             "Play against MuZero",
+            "Test the game manually",
             "Exit",
         ]
         print()
@@ -254,6 +270,21 @@ if __name__ == "__main__":
             muzero.test(render=True, opponent="self", muzero_player=None)
         elif choice == 3:
             muzero.test(render=True, opponent="human", muzero_player=0)
+        elif choice == 4:
+            env = muzero.Game()
+            env.reset()
+            env.render()
+
+            done = False
+            while not done:
+                action = env.human_to_action()
+                observation, reward, done = env.step(action)
+                print(
+                    "\nAction: {}\nReward: {}".format(
+                        env.action_to_string(action), reward
+                    )
+                )
+                env.render()
         else:
             break
         print("\nDone")

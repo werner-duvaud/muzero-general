@@ -23,7 +23,6 @@ class AbstractGame(ABC):
         """
         pass
 
-    @abstractmethod
     def to_play(self):
         """
         Return the current player.
@@ -31,7 +30,7 @@ class AbstractGame(ABC):
         Returns:
             The current player, it should be an element of the players list in the config. 
         """
-        pass
+        return 0
 
     @abstractmethod
     def legal_actions(self):
@@ -57,7 +56,6 @@ class AbstractGame(ABC):
         """
         pass
 
-    @abstractmethod
     def close(self):
         """
         Properly close the game.
@@ -71,7 +69,6 @@ class AbstractGame(ABC):
         """
         pass
 
-    @abstractmethod
     def human_to_action(self):
         """
         For multiplayer games, ask the user for a legal action
@@ -87,7 +84,6 @@ class AbstractGame(ABC):
             choice = input("Enter another action : ")
         return int(choice)
 
-    @abstractmethod
     def expert_agent(self):
         """
         Hard coded agent that MuZero faces to assess his progress in multiplayer games.
@@ -96,9 +92,8 @@ class AbstractGame(ABC):
         Returns:
             Action as an integer to take in the current game state
         """
-        pass
+        raise NotImplementedError
     
-    @abstractmethod
     def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.

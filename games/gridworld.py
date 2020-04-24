@@ -7,6 +7,11 @@ import torch
 
 from .abstract_game import AbstractGame
 
+try:
+    import gym_minigrid
+except ModuleNotFoundError:
+    raise ModuleNotFoundError('Please run "pip install gym_minigrid"')
+
 
 class MuZeroConfig:
     def __init__(self):
@@ -15,8 +20,8 @@ class MuZeroConfig:
 
 
         ### Game
-        self.observation_shape = (1, 1, 4)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
-        self.action_space = [i for i in range(2)]  # Fixed list of all possible actions. You should only edit the length
+        self.observation_shape = (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
+        self.action_space = [i for i in range(3)]  # Fixed list of all possible actions. You should only edit the length
         self.players = [i for i in range(1)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
@@ -27,9 +32,9 @@ class MuZeroConfig:
 
 
         ### Self-Play
-        self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 500  # Maximum number of moves if game is not finished before
-        self.num_simulations = 50  # Number of future moves self-simulated
+        self.num_actors = 4  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.max_moves = 15  # Maximum number of moves if game is not finished before
+        self.num_simulations = 20  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping temperature to 0 (ie playing according to the max)
 
@@ -61,14 +66,14 @@ class MuZeroConfig:
         self.fc_representation_layers = []  # Define the hidden layers in the representation network
         self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
-        self.fc_value_layers = []  # Define the hidden layers in the value network
-        self.fc_policy_layers = []  # Define the hidden layers in the policy network
+        self.fc_value_layers = [16]  # Define the hidden layers in the value network
+        self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
 
 
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 5000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 30000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
@@ -79,20 +84,20 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.05  # Initial learning rate
-        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
+        self.lr_init = 0.005  # Initial learning rate
+        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
 
 
 
         ### Replay Buffer
-        self.window_size = 100  # Number of self-play games to keep in the replay buffer
+        self.window_size = 5000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
-        self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
-        self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+        self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
+        self.use_last_model_value = False  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
 
         # Prioritized Replay (See paper appendix Training)
-        self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
+        self.PER = False  # Select in priority the elements in the replay buffer which are unexpected for the network
         self.use_max_priority = False  # Use the n-step TD error as initial priority. Better for large replay buffer
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
@@ -127,7 +132,8 @@ class Game(AbstractGame):
     """
 
     def __init__(self, seed=None):
-        self.env = gym.make("CartPole-v1")
+        self.env = gym.make('MiniGrid-Empty-Random-6x6-v0')
+        self.env = gym_minigrid.wrappers.ImgObsWrapper(self.env)
         if seed is not None:
             self.env.seed(seed)
 
@@ -142,7 +148,7 @@ class Game(AbstractGame):
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done, _ = self.env.step(action)
-        return numpy.array([[observation]]), reward, done
+        return numpy.array(observation), reward, done
 
     def legal_actions(self):
         """
@@ -155,7 +161,7 @@ class Game(AbstractGame):
         Returns:
             An array of integers, subset of the action space.
         """
-        return [i for i in range(2)]
+        return [i for i in range(3)]
 
     def reset(self):
         """
@@ -164,7 +170,7 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        return numpy.array([[self.env.reset()]])
+        return numpy.array(self.env.reset())
 
     def close(self):
         """
@@ -190,7 +196,11 @@ class Game(AbstractGame):
             String representing the action.
         """
         actions = {
-            0: "Push cart to the left",
-            1: "Push cart to the right",
+            0: "Turn left",
+            1: "Turn right",
+            2: "Move forward",
+            3: "Pick up an object",
+            4: "Drop the object being carried",
+            5: "Toggle (open doors, interact with objects)",
         }
         return "{}. {}".format(action_number, actions[action_number])

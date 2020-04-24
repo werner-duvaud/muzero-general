@@ -110,7 +110,7 @@ class Trainer:
         priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device
-        weight_batch = torch.tensor(weight_batch).float().to(device)
+        weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
         observation_batch = torch.tensor(observation_batch).float().to(device)
         action_batch = torch.tensor(action_batch).float().to(device).unsqueeze(-1)
         target_value = torch.tensor(target_value).float().to(device)

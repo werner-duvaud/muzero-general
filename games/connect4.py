@@ -20,9 +20,9 @@ class MuZeroConfig:
         self.players = [i for i in range(2)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
-        ### Evaluate
+        # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
-        self.opponent = "expert"  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None / "random" / "expert" if implemented in the Game class
+        self.opponent = "expert"  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
 
 
@@ -31,7 +31,7 @@ class MuZeroConfig:
         self.max_moves = 50  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
-        self.temperature_threshold = 25  # Number of moves before dropping temperature to 0 (ie playing according to the max)
+        self.temperature_threshold = None  # Number of moves before dropping temperature to 0 (ie playing according to the max)
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
@@ -49,7 +49,7 @@ class MuZeroConfig:
         
         # Residual Network
         self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
-        self.blocks = 2  # Number of blocks in the ResNet
+        self.blocks = 3  # Number of blocks in the ResNet
         self.channels = 16  # Number of channels in the ResNet
         self.reduced_channels = 16  # Number of channels before heads of dynamic and prediction networks
         self.resnet_fc_reward_layers = [8]  # Define the hidden layers in the reward head of the dynamic network
@@ -58,11 +58,11 @@ class MuZeroConfig:
         
         # Fully Connected Network
         self.encoding_size = 32
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [64]  # Define the hidden layers in the dynamics network
         self.fc_reward_layers = [64]  # Define the hidden layers in the reward network
         self.fc_value_layers = []  # Define the hidden layers in the value network
         self.fc_policy_layers = []  # Define the hidden layers in the policy network
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [64]  # Define the hidden layers in the dynamics network
 
 
 
@@ -86,14 +86,14 @@ class MuZeroConfig:
 
 
         ### Replay Buffer
-        self.window_size = 3000  # Number of self-play games to keep in the replay buffer
+        self.window_size = 10000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 20  # Number of game moves to keep for every batch element
         self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
-        self.use_last_model_value = False  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+        self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
-        self.use_max_priority = True  # Use the n-step TD error as initial priority. Better for large replay buffer
+        self.use_max_priority = False  # Use the n-step TD error as initial priority. Better for large replay buffer
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
@@ -239,9 +239,9 @@ class Connect4:
                 self.board[i][action] = self.player
                 break
 
-        done = self.is_finished()
+        done = self.have_winner() or len(self.legal_actions()) == 0
 
-        reward = 1 if done and 0 < len(self.legal_actions()) else 0
+        reward = 1 if self.have_winner() else 0
 
         self.player *= -1
 
@@ -260,7 +260,7 @@ class Connect4:
                 legal.append(i)
         return legal
 
-    def is_finished(self):
+    def have_winner(self):
         # Horizontal check
         for i in range(4):
             for j in range(6):
@@ -305,9 +305,6 @@ class Connect4:
                 ):
                     return True
 
-        if len(self.legal_actions()) == 0:
-            return True
-
         return False
 
     def expert_action(self):
@@ -347,6 +344,6 @@ class Connect4:
                             return action
 
         return action
-
+        
     def render(self):
         print(self.board[::-1])

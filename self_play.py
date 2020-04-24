@@ -38,8 +38,10 @@ class SelfPlay:
             if not test_mode:
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
-                    trained_steps=ray.get(shared_storage.get_infos.remote())[
-                    "training_step"]),
+                        trained_steps=ray.get(shared_storage.get_infos.remote())[
+                            "training_step"
+                        ]
+                    ),
                     self.config.temperature_threshold,
                     False,
                     "self",
@@ -66,7 +68,8 @@ class SelfPlay:
                     "episode_length", len(game_history.action_history) - 1
                 )
                 shared_storage.set_infos.remote(
-                    "mean_value", numpy.mean([value for value in game_history.root_values if value])
+                    "mean_value",
+                    numpy.mean([value for value in game_history.root_values if value]),
                 )
                 if 1 < len(self.config.players):
                     shared_storage.set_infos.remote(
@@ -75,7 +78,8 @@ class SelfPlay:
                             [
                                 reward
                                 for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i] == (1 - self.config.muzero_player)
+                                if game_history.to_play_history[i]
+                                == (1 - self.config.muzero_player)
                             ]
                         ),
                     )
@@ -85,11 +89,11 @@ class SelfPlay:
                             [
                                 reward
                                 for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i] == self.config.muzero_player
+                                if game_history.to_play_history[i]
+                                == self.config.muzero_player
                             ]
                         ),
                     )
-
 
             # Managing the self-play / training ratio
             if not test_mode and self.config.self_play_delay:
@@ -139,13 +143,6 @@ class SelfPlay:
                         self.game.to_play(),
                         False if temperature == 0 else True,
                     )
-                    if render:
-                        print("Tree depth: {}".format(tree_depth))
-                        print(
-                            "Root value for player {0}: {1:.2f}".format(
-                                self.game.to_play(), root.value()
-                            )
-                        )
                     action = self.select_action(
                         root,
                         temperature
@@ -153,8 +150,18 @@ class SelfPlay:
                         or len(game_history.action_history) < temperature_threshold
                         else 0,
                     )
-                else : 
-                    action, root, tree_depth = self.select_opponent_action(opponent, stacked_observations)
+
+                    if render:
+                        print("Tree depth: {}".format(tree_depth))
+                        print(
+                            "Root value for player {0}: {1:.2f}".format(
+                                self.game.to_play(), root.value()
+                            )
+                        )
+                else:
+                    action, root, tree_depth = self.select_opponent_action(
+                        opponent, stacked_observations
+                    )
 
                 observation, reward, done = self.game.step(action)
 
@@ -163,7 +170,7 @@ class SelfPlay:
                         "Played action: {}".format(self.game.action_to_string(action))
                     )
                     self.game.render()
-                    
+
                 game_history.store_search_statistics(root, self.config.action_space)
                 game_history.priorities.append(priority)
 
@@ -175,10 +182,10 @@ class SelfPlay:
 
         self.game.close()
         return game_history
-    
+
     def select_opponent_action(self, opponent, stacked_observations):
         """
-        Select opponent action to display on tensorboard 
+        Select opponent action for evaluating MuZero level.
         """
         if opponent == "human":
             root, priority, tree_depth = MCTS(self.config).run(
@@ -334,11 +341,18 @@ class MCTS:
         """
         Select the child with the highest UCB score.
         """
-        _, action, child = max(
-            (self.ucb_score(node, child, min_max_stats), action, child)
+        max_ucb = max(
+            self.ucb_score(node, child, min_max_stats)
             for action, child in node.children.items()
         )
-        return action, child
+        action = numpy.random.choice(
+            [
+                action
+                for action, child in node.children.items()
+                if self.ucb_score(node, child, min_max_stats) == max_ucb
+            ]
+        )
+        return action, node.children[action]
 
     def ucb_score(self, parent, child, min_max_stats):
         """
@@ -403,6 +417,7 @@ class Node:
         self.to_play = to_play
         self.reward = reward
         self.hidden_state = hidden_state
+
         policy = {}
         for a in actions:
             try:
@@ -445,7 +460,9 @@ class GameHistory:
             sum_visits = sum(child.visit_count for child in root.children.values())
             self.child_visits.append(
                 [
-                    root.children[a].visit_count / sum_visits if a in root.children else 0
+                    root.children[a].visit_count / sum_visits
+                    if a in root.children
+                    else 0
                     for a in action_space
                 ]
             )
