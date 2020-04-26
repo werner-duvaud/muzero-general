@@ -39,6 +39,7 @@ Testing Lunar Lander :
 
 * Cartpole      (Tested with the fully connected network)
 * Lunar Lander  (Tested in deterministic mode with the fully connected network)
+* Gridworld     (Tested with the fully connected network)
 * Tic-tac-toe   (Tested with the fully connected network and the residual network)
 * Connect4      (Slightly tested with the residual network)
 * Gomoku
