@@ -53,7 +53,9 @@ class Trainer:
 
         # Training loop
         while True:
-            index_batch, batch = ray.get(replay_buffer.get_batch.remote(self.model.get_weights()))
+            index_batch, batch = ray.get(
+                replay_buffer.get_batch.remote(self.model.get_weights())
+            )
             self.update_lr()
             (
                 priorities,
@@ -106,7 +108,7 @@ class Trainer:
         ) = batch
 
         # Keep values as scalars for calculating the priorities for the prioritized replay
-        target_value_scalar = numpy.array(target_value, dtype=numpy.float64)
+        target_value_scalar = numpy.array(target_value, dtype=numpy.float32)
         priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device
@@ -125,7 +127,9 @@ class Trainer:
         # gradient_scale_batch: batch, num_unroll_steps+1
 
         target_value = models.scalar_to_support(target_value, self.config.support_size)
-        target_reward = models.scalar_to_support(target_reward, self.config.support_size)
+        target_reward = models.scalar_to_support(
+            target_reward, self.config.support_size
+        )
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
