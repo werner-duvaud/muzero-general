@@ -2,6 +2,7 @@ import copy
 import importlib
 import os
 import time
+import pickle
 
 import numpy
 import ray
@@ -52,7 +53,7 @@ class MuZero:
         # Weights used to initialize workers
         self.muzero_weights = models.MuZeroNetwork(self.config).get_weights()
 
-    def train(self):
+    def train(self, replay_buffer_path=None):
         ray.init()
         os.makedirs(self.config.results_path, exist_ok=True)
 
@@ -64,6 +65,17 @@ class MuZero:
             copy.deepcopy(self.muzero_weights), self.game_name, self.config,
         )
         replay_buffer_worker = replay_buffer.ReplayBuffer.remote(self.config)
+
+        # Pre-load buffer if pulling from persistent storage
+        if replay_buffer_path is not None:
+            if os.path.exists(replay_buffer_path):
+                buffer = pickle.load(open(path, 'rb'))
+                for game_history in buffer:
+                    replay_buffer_worker.save_game.remote(buffer[game_history])
+                print("Loaded {} games from replay buffer.".format(len(buffer)))
+            else:
+                print("Warning: Replay buffer path '{}' doesn't exist.  Using empty buffer.".format(replay_buffer_path))
+
         self_play_workers = [
             self_play.SelfPlay.remote(
                 copy.deepcopy(self.muzero_weights),
@@ -88,6 +100,11 @@ class MuZero:
         self._logging_loop(shared_storage_worker, replay_buffer_worker)
 
         self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
+
+        # Persist replay buffer to disk
+        print("\n\nPersisting replay buffer games to disk...")
+        ray.get(replay_buffer_worker.persist_buffer.remote())
+
         # End running actors
         ray.shutdown()
 
@@ -260,7 +277,8 @@ if __name__ == "__main__":
             choice = input("Invalid input, enter a number listed above: ")
         choice = int(choice)
         if choice == 0:
-            muzero.train()
+            path = input("Enter path for existing replay buffer, or ENTER if none: ")
+            muzero.train(path if len(path.strip()) > 0 else None)
         elif choice == 1:
             path = input("Enter a path to the model.weights: ")
             while not os.path.isfile(path):
