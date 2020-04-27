@@ -1,5 +1,7 @@
 import collections
 import copy
+import pickle
+import os
 
 import numpy
 import ray
@@ -51,6 +53,9 @@ class ReplayBuffer:
             del_id = self.self_play_count - len(self.buffer)
             self.total_samples -= len(self.buffer[del_id].priorities)
             del self.buffer[del_id]
+
+    def persist_buffer(self):
+        pickle.dump(self.buffer, open(os.path.join(self.config.results_path, 'replay_buffer.pkl'), 'wb'))
 
     def get_self_play_count(self):
         return self.self_play_count
