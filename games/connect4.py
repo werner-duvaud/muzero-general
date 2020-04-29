@@ -28,13 +28,13 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = 50  # Maximum number of moves if game is not finished before
-        self.num_simulations = 50  # Number of future moves self-simulated
+        self.max_moves = 42  # Maximum number of moves if game is not finished before
+        self.num_simulations = 200  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping temperature to 0 (ie playing according to the max)
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25
+        self.root_dirichlet_alpha = 0.3
         self.root_exploration_fraction = 0.25
 
         # UCB formula
@@ -49,12 +49,12 @@ class MuZeroConfig:
         
         # Residual Network
         self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
-        self.blocks = 3  # Number of blocks in the ResNet
-        self.channels = 16  # Number of channels in the ResNet
-        self.reduced_channels = 16  # Number of channels before heads of dynamic and prediction networks
-        self.resnet_fc_reward_layers = [8]  # Define the hidden layers in the reward head of the dynamic network
-        self.resnet_fc_value_layers = [8]  # Define the hidden layers in the value head of the prediction network
-        self.resnet_fc_policy_layers = [8]  # Define the hidden layers in the policy head of the prediction network
+        self.blocks = 6  # Number of blocks in the ResNet
+        self.channels = 64  # Number of channels in the ResNet
+        self.reduced_channels = 2  # Number of channels before heads of dynamic and prediction networks
+        self.resnet_fc_reward_layers = [32]  # Define the hidden layers in the reward head of the dynamic network
+        self.resnet_fc_value_layers = [32]  # Define the hidden layers in the value head of the prediction network
+        self.resnet_fc_policy_layers = [32]  # Define the hidden layers in the policy head of the prediction network
         
         # Fully Connected Network
         self.encoding_size = 32
@@ -69,8 +69,8 @@ class MuZeroConfig:
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
         self.training_steps = 100000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 64  # Number of parts of games to train on at each training step
-        self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
+        self.batch_size = 256  # Number of parts of games to train on at each training step
+        self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -79,7 +79,7 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.01  # Initial learning rate
+        self.lr_init = 0.001  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
 
@@ -87,8 +87,8 @@ class MuZeroConfig:
 
         ### Replay Buffer
         self.window_size = 10000  # Number of self-play games to keep in the replay buffer
-        self.num_unroll_steps = 20  # Number of game moves to keep for every batch element
-        self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
+        self.num_unroll_steps = 42  # Number of game moves to keep for every batch element
+        self.td_steps = 42  # Number of steps in the future to take into account for calculating the target value
         self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
 
         # Prioritized Replay (See paper appendix Training)
