@@ -9,12 +9,12 @@
 A commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) implementation of MuZero based on the Google DeepMind [paper](https://arxiv.org/abs/1911.08265) and the associated [pseudocode](https://arxiv.org/src/1911.08265v2/anc/pseudocode.py).
 It is designed to be easily adaptable for every games or reinforcement learning environments (like [gym](https://github.com/openai/gym)). You only need to edit the [game file](https://github.com/werner-duvaud/muzero-general/tree/master/games) with the parameters and the game class. Please refer to the [documentation](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) and the [example](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py).
 
-MuZero is a model based reinforcement learning algorithm, successor of AlphaZero. It learns to master games without knowing the rules. It only knows actions and then learn to play and master the game. It is at least more efficient than similar algorithms like [AlphaZero](https://arxiv.org/abs/1712.01815), [SimPLe](https://arxiv.org/abs/1903.00374) and [World Models](https://arxiv.org/abs/1803.10122). See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works).
+MuZero is a model based reinforcement learning algorithm, successor of AlphaZero. It learns to master games without knowing the rules. It only knows actions and then learn to play and master the game. It is at least more efficient than similar algorithms like [AlphaZero](https://arxiv.org/abs/1712.01815), [SimPLe](https://arxiv.org/abs/1903.00374) and [World Models](https://worldmodels.github.io). See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works).
 
 ## Features
 
 * [x] Residual Network and Fully connected network in [PyTorch](https://github.com/pytorch/pytorch)
-* [x] Multi-Threaded with [Ray](https://github.com/ray-project/ray)
+* [x] Multi-Threaded/Asynchronous mode with [Ray](https://github.com/ray-project/ray)
 * [x] CPU/GPU support
 * [x] TensorBoard real-time monitoring
 * [x] Model weights automatically saved at checkpoints
@@ -25,15 +25,25 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 * [x] [Pretrained weights](https://github.com/werner-duvaud/muzero-general/tree/master/results) available
 * [ ] Windows support (Workaround: Use the [notebook](https://github.com/werner-duvaud/muzero-general/blob/master/notebook.ipynb) in Google Colab)
 
+### Further improvements
+These improvements are active research, they are personal ideas and go beyond MuZero paper. We are open to contributions and other ideas.
+
+* [ ] Better hyperparameters tuning and improve stability
+* [ ] Continuous action space
+* [ ] End user tool to exploit the results
+* [ ] Support stochastic environments
+* [ ] Better integration with more than two player games
+* [ ] Latest RL tricks (Never Give Up,  Adaptive Exploration, ...)
+
 ## Demo
 
 All performances are tracked and displayed in real time in TensorBoard :
 
-![cartpole training summary](https://github.com/werner-duvaud/muzero-general/blob/master/docs/cartpole_training_summary.png)
+![cartpole training summary](https://github.com/werner-duvaud/muzero-general/blob/master/docs/cartpole-training-summary.png)
 
 Testing Lunar Lander :
 
-![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/lunarlander_training_preview.png)
+![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/lunarlander-training-preview.png)
 
 ## Games already implemented
 
@@ -50,6 +60,8 @@ Tests are done on Ubuntu with 16 GB RAM / Intel i7 / GTX 1050Ti Max-Q. We make s
 ## Code structure
 
 ![code structure](https://github.com/werner-duvaud/muzero-general/blob/master/docs/how-it-works-werner-duvaud.png)
+
+See also: [MuZero network summary](https://github.com/werner-duvaud/muzero-general/blob/master/docs/muzero-network-werner-duvaud.png)
 
 ## Getting started
 ### Installation

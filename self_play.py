@@ -136,7 +136,7 @@ class SelfPlay:
 
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
-                    root, priority, tree_depth = MCTS(self.config).run(
+                    root, tree_depth = MCTS(self.config).run(
                         self.model,
                         stacked_observations,
                         self.game.legal_actions(),
@@ -172,7 +172,6 @@ class SelfPlay:
                     self.game.render()
 
                 game_history.store_search_statistics(root, self.config.action_space)
-                game_history.priorities.append(priority)
 
                 # Next batch
                 game_history.action_history.append(action)
@@ -188,7 +187,7 @@ class SelfPlay:
         Select opponent action for evaluating MuZero level.
         """
         if opponent == "human":
-            root, priority, tree_depth = MCTS(self.config).run(
+            root, tree_depth = MCTS(self.config).run(
                 self.model,
                 stacked_observations,
                 self.game.legal_actions(),
@@ -329,13 +328,7 @@ class MCTS:
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
 
-        priority = (
-            None
-            if self.config.use_max_priority
-            else numpy.abs(root_predicted_value - root.value()) ** self.config.PER_alpha
-        )
-
-        return root, priority, max_tree_depth
+        return root, max_tree_depth
 
     def select_child(self, node, min_max_stats):
         """

@@ -39,6 +39,17 @@ class ReplayBuffer:
                 len(game_history.priorities), self.max_recorded_game_priority
             )
         else:
+            # Initial priorities for the prioritized replay (See paper appendix Training)
+            for i, root_values in enumerate(game_history.root_values):
+                priority = (
+                    numpy.abs(
+                        game_history.root_values[i]
+                        - self.compute_value(game_history, i)
+                    )
+                    ** self.config.PER_alpha
+                )
+                game_history.priorities.append(priority)
+
             game_history.priorities = numpy.array(
                 game_history.priorities, dtype=numpy.float32
             )
@@ -160,7 +171,7 @@ class ReplayBuffer:
         See Distributed Prioritized Experience Replay https://arxiv.org/abs/1803.00933
         """
         min_priorities = numpy.min(priorities)
-        if not min_priorities or numpy.isnan(min_priorities) or min_priorities < 1e-10:
+        if not min_priorities or numpy.isnan(min_priorities) or min_priorities < 1e-5:
             print(
                 "Warning : Extreme values ({}) in game priorities. Could be underfitting or overfitting.".format(
                     min_priorities
@@ -191,6 +202,45 @@ class ReplayBuffer:
 
                     self.max_recorded_game_priority = numpy.max(self.game_priorities)
 
+    def compute_value(self, game_history, index):
+        # The value target is the discounted root value of the search tree td_steps into the
+        # future, plus the discounted sum of all rewards until then.
+        bootstrap_index = index + self.config.td_steps
+        if bootstrap_index < len(game_history.root_values):
+            if self.config.use_last_model_value:
+                # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+                observation = (
+                    torch.tensor(
+                        game_history.get_stacked_observations(
+                            bootstrap_index, self.config.stacked_observations
+                        )
+                    )
+                    .float()
+                    .unsqueeze(0)
+                )
+                last_step_value = models.support_to_scalar(
+                    self.model.initial_inference(observation)[0],
+                    self.config.support_size,
+                ).item()
+            else:
+                last_step_value = game_history.root_values[bootstrap_index]
+
+            value = last_step_value * self.config.discount ** self.config.td_steps
+        else:
+            value = 0
+
+        for i, reward in enumerate(
+            game_history.reward_history[index + 1 : bootstrap_index + 1]
+        ):
+            value += (
+                reward
+                if game_history.to_play_history[index]
+                == game_history.to_play_history[index + 1 + i]
+                else -reward
+            ) * self.config.discount ** i
+
+        return value
+
     def make_target(self, game_history, state_index):
         """
         Generate targets for every unroll steps.
@@ -199,41 +249,7 @@ class ReplayBuffer:
         for current_index in range(
             state_index, state_index + self.config.num_unroll_steps + 1
         ):
-            # The value target is the discounted root value of the search tree td_steps into the
-            # future, plus the discounted sum of all rewards until then.
-            bootstrap_index = current_index + self.config.td_steps
-            if bootstrap_index < len(game_history.root_values):
-                if self.config.use_last_model_value:
-                    # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
-                    observation = (
-                        torch.tensor(
-                            game_history.get_stacked_observations(
-                                bootstrap_index, self.config.stacked_observations
-                            )
-                        )
-                        .float()
-                        .unsqueeze(0)
-                    )
-                    last_step_value = models.support_to_scalar(
-                        self.model.initial_inference(observation)[0],
-                        self.config.support_size,
-                    ).item()
-                else:
-                    last_step_value = game_history.root_values[bootstrap_index]
-
-                value = last_step_value * self.config.discount ** self.config.td_steps
-            else:
-                value = 0
-
-            for i, reward in enumerate(
-                game_history.reward_history[current_index + 1 : bootstrap_index + 1]
-            ):
-                value += (
-                    reward
-                    if game_history.to_play_history[current_index]
-                    == game_history.to_play_history[current_index + 1 + i]
-                    else -reward
-                ) * self.config.discount ** i
+            value = self.compute_value(game_history, current_index)
 
             if current_index < len(game_history.root_values):
                 target_values.append(value)
