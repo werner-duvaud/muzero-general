@@ -36,16 +36,13 @@ class ReplayBuffer:
     def save_game(self, game_history):
         if self.config.use_max_priority:
             game_history.priorities = numpy.full(
-                len(game_history.priorities), self.max_recorded_game_priority
+                len(game_history.root_values), self.max_recorded_game_priority
             )
         else:
             # Initial priorities for the prioritized replay (See paper appendix Training)
-            for i, root_values in enumerate(game_history.root_values):
+            for i, root_value in enumerate(game_history.root_values):
                 priority = (
-                    numpy.abs(
-                        game_history.root_values[i]
-                        - self.compute_value(game_history, i)
-                    )
+                    numpy.abs(root_value - self.compute_value(game_history, i))
                     ** self.config.PER_alpha
                 )
                 game_history.priorities.append(priority)
