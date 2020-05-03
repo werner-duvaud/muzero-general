@@ -118,7 +118,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         min_encoded_state = encoded_state.min(1, keepdim=True)[0]
         max_encoded_state = encoded_state.max(1, keepdim=True)[0]
         scale_encoded_state = max_encoded_state - min_encoded_state
-        scale_encoded_state[scale_encoded_state == 0] = 1
+        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
         encoded_state_normalized = (
             encoded_state - min_encoded_state
         ) / scale_encoded_state
@@ -142,7 +142,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         min_next_encoded_state = next_encoded_state.min(1, keepdim=True)[0]
         max_next_encoded_state = next_encoded_state.max(1, keepdim=True)[0]
         scale_next_encoded_state = max_next_encoded_state - min_next_encoded_state
-        scale_next_encoded_state[scale_next_encoded_state == 0] = 1
+        scale_next_encoded_state[scale_next_encoded_state < 1e-5] += 1e-5
         next_encoded_state_normalized = (
             next_encoded_state - min_next_encoded_state
         ) / scale_next_encoded_state
@@ -193,18 +193,17 @@ class ResidualBlock(torch.nn.Module):
         super().__init__()
         self.conv1 = conv3x3(num_channels, num_channels, stride)
         self.bn1 = torch.nn.BatchNorm2d(num_channels)
-        self.relu = torch.nn.ReLU()
         self.conv2 = conv3x3(num_channels, num_channels)
         self.bn2 = torch.nn.BatchNorm2d(num_channels)
 
     def forward(self, x):
         out = self.conv1(x)
         out = self.bn1(out)
-        out = self.relu(out)
+        out = torch.nn.functional.relu(out)
         out = self.conv2(out)
         out = self.bn2(out)
         out += x
-        out = self.relu(out)
+        out = torch.nn.functional.relu(out)
         return out
 
 
@@ -276,7 +275,6 @@ class RepresentationNetwork(torch.nn.Module):
             num_channels,
         )
         self.bn = torch.nn.BatchNorm2d(num_channels)
-        self.relu = torch.nn.ReLU()
         self.resblocks = torch.nn.ModuleList(
             [ResidualBlock(num_channels) for _ in range(num_blocks)]
         )
@@ -287,7 +285,7 @@ class RepresentationNetwork(torch.nn.Module):
         else:
             out = self.conv(x)
             out = self.bn(out)
-            out = self.relu(out)
+            out = torch.nn.functional.relu(out)
 
         for block in self.resblocks:
             out = block(out)
@@ -297,7 +295,6 @@ class RepresentationNetwork(torch.nn.Module):
 class DynamicsNetwork(torch.nn.Module):
     def __init__(
         self,
-        observation_shape,
         num_blocks,
         num_channels,
         reduced_channels,
@@ -306,10 +303,8 @@ class DynamicsNetwork(torch.nn.Module):
         block_output_size,
     ):
         super().__init__()
-        self.observation_shape = observation_shape
         self.conv = conv3x3(num_channels, num_channels - 1)
         self.bn = torch.nn.BatchNorm2d(num_channels - 1)
-        self.relu = torch.nn.ReLU()
         self.resblocks = torch.nn.ModuleList(
             [ResidualBlock(num_channels - 1) for _ in range(num_blocks)]
         )
@@ -326,7 +321,7 @@ class DynamicsNetwork(torch.nn.Module):
     def forward(self, x):
         out = self.conv(x)
         out = self.bn(out)
-        out = self.relu(out)
+        out = torch.nn.functional.relu(out)
         for block in self.resblocks:
             out = block(out)
         state = out
@@ -339,7 +334,6 @@ class DynamicsNetwork(torch.nn.Module):
 class PredictionNetwork(torch.nn.Module):
     def __init__(
         self,
-        observation_shape,
         action_space_size,
         num_blocks,
         num_channels,
@@ -350,7 +344,6 @@ class PredictionNetwork(torch.nn.Module):
         block_output_size,
     ):
         super().__init__()
-        self.observation_shape = observation_shape
         self.resblocks = torch.nn.ModuleList(
             [ResidualBlock(num_channels) for _ in range(num_blocks)]
         )
@@ -415,7 +408,6 @@ class MuZeroResidualNetwork(AbstractNetwork):
         )
 
         self.dynamics_network = DynamicsNetwork(
-            observation_shape,
             num_blocks,
             num_channels + 1,
             reduced_channels,
@@ -425,7 +417,6 @@ class MuZeroResidualNetwork(AbstractNetwork):
         )
 
         self.prediction_network = PredictionNetwork(
-            observation_shape,
             action_space_size,
             num_blocks,
             num_channels,
@@ -463,7 +454,7 @@ class MuZeroResidualNetwork(AbstractNetwork):
             .unsqueeze(-1)
         )
         scale_encoded_state = max_encoded_state - min_encoded_state
-        scale_encoded_state[scale_encoded_state == 0] = 1
+        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
         encoded_state_normalized = (
             encoded_state - min_encoded_state
         ) / scale_encoded_state
@@ -509,7 +500,7 @@ class MuZeroResidualNetwork(AbstractNetwork):
             .unsqueeze(-1)
         )
         scale_next_encoded_state = max_next_encoded_state - min_next_encoded_state
-        scale_next_encoded_state[scale_next_encoded_state == 0] = 1
+        scale_next_encoded_state[scale_next_encoded_state < 1e-5] += 1e-5
         next_encoded_state_normalized = (
             next_encoded_state - min_next_encoded_state
         ) / scale_next_encoded_state
