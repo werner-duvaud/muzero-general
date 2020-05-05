@@ -222,8 +222,8 @@ class Game(AbstractGame):
 
 class TwentyOne:
     def __init__(self):
-        self.player_hand = randint(1,13)
-        self.dealer_hand = randint(1,13)
+        self.player_hand = self.deal_card_value()
+        self.dealer_hand = self.deal_card_value()
 
         self.player = 1
 
