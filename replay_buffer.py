@@ -34,26 +34,31 @@ class ReplayBuffer:
         torch.manual_seed(self.config.seed)
 
     def save_game(self, game_history):
-        if self.config.use_max_priority:
-            game_history.priorities = numpy.full(
-                len(game_history.root_values), self.max_recorded_game_priority
-            )
+        if game_history.priorities is not None:
+            # Avoid read only array when loading replay buffer from pickle
+            game_history.priorities = game_history.priorities.copy()
         else:
-            # Initial priorities for the prioritized replay (See paper appendix Training)
-            for i, root_value in enumerate(game_history.root_values):
-                priority = (
-                    numpy.abs(root_value - self.compute_value(game_history, i))
-                    ** self.config.PER_alpha
+            if self.config.use_max_priority:
+                game_history.priorities = numpy.full(
+                    len(game_history.root_values), self.max_recorded_game_priority
                 )
-                game_history.priorities.append(priority)
+            else:
+                # Initial priorities for the prioritized replay (See paper appendix Training)
+                for i, root_value in enumerate(game_history.root_values):
+                    priorities = []
+                    priority = (
+                        numpy.abs(
+                            root_value - self.compute_target_value(game_history, i)
+                        )
+                        ** self.config.PER_alpha
+                    )
+                    priorities.append(priority)
 
-            game_history.priorities = numpy.array(
-                game_history.priorities, dtype=numpy.float32
-            )
+                game_history.priorities = numpy.array(priorities, dtype=numpy.float32)
 
         self.buffer[self.self_play_count] = game_history
         self.total_samples += len(game_history.priorities)
-        self.game_priorities.append(numpy.mean(game_history.priorities))
+        self.game_priorities.append(numpy.max(game_history.priorities))
 
         self.self_play_count += 1
 
@@ -182,7 +187,6 @@ class ReplayBuffer:
                 if game_id in self.buffer:
                     # Update position priorities
                     priority = priorities[i, :]
-
                     start_index = game_pos
                     end_index = min(
                         game_pos + len(priority), len(self.buffer[game_id].priorities)
@@ -199,7 +203,7 @@ class ReplayBuffer:
 
                     self.max_recorded_game_priority = numpy.max(self.game_priorities)
 
-    def compute_value(self, game_history, index):
+    def compute_target_value(self, game_history, index):
         # The value target is the discounted root value of the search tree td_steps into the
         # future, plus the discounted sum of all rewards until then.
         bootstrap_index = index + self.config.td_steps
@@ -246,7 +250,7 @@ class ReplayBuffer:
         for current_index in range(
             state_index, state_index + self.config.num_unroll_steps + 1
         ):
-            value = self.compute_value(game_history, current_index)
+            value = self.compute_target_value(game_history, current_index)
 
             if current_index < len(game_history.root_values):
                 target_values.append(value)

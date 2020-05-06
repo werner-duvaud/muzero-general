@@ -93,7 +93,7 @@ class MuZeroConfig:
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
-        self.use_max_priority = True  # Use the n-step TD error as initial priority. Better for large replay buffer
+        self.use_max_priority = True  # If False, use the n-step TD error as initial priority. Better for large replay buffer
         self.PER_alpha = 1.0  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
