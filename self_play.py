@@ -78,8 +78,8 @@ class SelfPlay:
                             [
                                 reward
                                 for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i]
-                                == (1 - self.config.muzero_player)
+                                if game_history.to_play_history[i-1]
+                                == self.config.muzero_player
                             ]
                         ),
                     )
@@ -89,8 +89,8 @@ class SelfPlay:
                             [
                                 reward
                                 for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i]
-                                == self.config.muzero_player
+                                if game_history.to_play_history[i-1]
+                                != self.config.muzero_player
                             ]
                         ),
                     )
