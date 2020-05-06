@@ -52,7 +52,9 @@ class MuZeroConfig:
         self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
         self.blocks = 6  # Number of blocks in the ResNet
         self.channels = 128  # Number of channels in the ResNet
-        self.reduced_channels = 4  # Number of channels before heads of dynamic and prediction networks
+        self.reduced_channels_reward = 2  # Number of channels in reward head
+        self.reduced_channels_value = 2  # Number of channels in value head
+        self.reduced_channels_policy = 4  # Number of channels in policy head
         self.resnet_fc_reward_layers = [64]  # Define the hidden layers in the reward head of the dynamic network
         self.resnet_fc_value_layers = [64]  # Define the hidden layers in the value head of the prediction network
         self.resnet_fc_policy_layers = [64]  # Define the hidden layers in the policy head of the prediction network
