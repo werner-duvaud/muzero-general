@@ -445,7 +445,7 @@ class GameHistory:
         self.to_play_history = []
         self.child_visits = []
         self.root_values = []
-        self.priorities = []
+        self.priorities = None
 
     def store_search_statistics(self, root, action_space):
         # Turn visit count from root into a policy
