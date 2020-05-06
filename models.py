@@ -26,7 +26,9 @@ class MuZeroNetwork:
                 len(config.action_space),
                 config.blocks,
                 config.channels,
-                config.reduced_channels,
+                config.reduced_channels_reward,
+                config.reduced_channels_value,
+                config.reduced_channels_policy,
                 config.resnet_fc_reward_layers,
                 config.resnet_fc_value_layers,
                 config.resnet_fc_policy_layers,
@@ -297,10 +299,10 @@ class DynamicsNetwork(torch.nn.Module):
         self,
         num_blocks,
         num_channels,
-        reduced_channels,
+        reduced_channels_reward,
         fc_reward_layers,
         full_support_size,
-        block_output_size,
+        block_output_size_reward,
     ):
         super().__init__()
         self.conv = conv3x3(num_channels, num_channels - 1)
@@ -309,10 +311,10 @@ class DynamicsNetwork(torch.nn.Module):
             [ResidualBlock(num_channels - 1) for _ in range(num_blocks)]
         )
 
-        self.conv1x1 = torch.nn.Conv2d(num_channels - 1, reduced_channels, 1)
-        self.block_output_size = block_output_size
+        self.conv1x1_reward = torch.nn.Conv2d(num_channels - 1, reduced_channels_reward, 1)
+        self.block_output_size_reward = block_output_size_reward
         self.fc = FullyConnectedNetwork(
-            self.block_output_size,
+            self.block_output_size_reward,
             fc_reward_layers,
             full_support_size,
             activation=None,
@@ -325,8 +327,8 @@ class DynamicsNetwork(torch.nn.Module):
         for block in self.resblocks:
             out = block(out)
         state = out
-        out = self.conv1x1(out)
-        out = out.view(-1, self.block_output_size)
+        out = self.conv1x1_reward(out)
+        out = out.view(-1, self.block_output_size_reward)
         reward = self.fc(out)
         return state, reward
 
@@ -337,24 +339,28 @@ class PredictionNetwork(torch.nn.Module):
         action_space_size,
         num_blocks,
         num_channels,
-        reduced_channels,
+        reduced_channels_value,
+        reduced_channels_policy,
         fc_value_layers,
         fc_policy_layers,
         full_support_size,
-        block_output_size,
+        block_output_size_value,
+        block_output_size_policy
     ):
         super().__init__()
         self.resblocks = torch.nn.ModuleList(
             [ResidualBlock(num_channels) for _ in range(num_blocks)]
         )
 
-        self.conv1x1 = torch.nn.Conv2d(num_channels, reduced_channels, 1)
-        self.block_output_size = block_output_size
+        self.conv1x1_value = torch.nn.Conv2d(num_channels, reduced_channels_value, 1)
+        self.conv1x1_policy = torch.nn.Conv2d(num_channels, reduced_channels_policy, 1)
+        self.block_output_size_value = block_output_size_value
+        self.block_output_size_policy = block_output_size_policy
         self.fc_value = FullyConnectedNetwork(
-            self.block_output_size, fc_value_layers, full_support_size, activation=None,
+            self.block_output_size_value, fc_value_layers, full_support_size, activation=None,
         )
         self.fc_policy = FullyConnectedNetwork(
-            self.block_output_size,
+            self.block_output_size_policy,
             fc_policy_layers,
             action_space_size,
             activation=None,
@@ -364,10 +370,12 @@ class PredictionNetwork(torch.nn.Module):
         out = x
         for block in self.resblocks:
             out = block(out)
-        out = self.conv1x1(out)
-        out = out.view(-1, self.block_output_size)
-        value = self.fc_value(out)
-        policy = self.fc_policy(out)
+        value = self.conv1x1_value(out)
+        policy = self.conv1x1_policy(out)
+        value = value.view(-1, self.block_output_size_value)
+        policy = policy.view(-1, self.block_output_size_policy)
+        value = self.fc_value(value)
+        policy = self.fc_policy(policy)
         return policy, value
 
 
@@ -379,7 +387,9 @@ class MuZeroResidualNetwork(AbstractNetwork):
         action_space_size,
         num_blocks,
         num_channels,
-        reduced_channels,
+        reduced_channels_reward,
+        reduced_channels_value,
+        reduced_channels_policy,
         fc_reward_layers,
         fc_value_layers,
         fc_policy_layers,
@@ -389,14 +399,34 @@ class MuZeroResidualNetwork(AbstractNetwork):
         super().__init__()
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
-        block_output_size = (
+        block_output_size_reward = (
             (
-                reduced_channels
+                reduced_channels_reward
                 * (observation_shape[1] // 16)
                 * (observation_shape[2] // 16)
             )
             if downsample
-            else (reduced_channels * observation_shape[1] * observation_shape[2])
+            else (reduced_channels_reward * observation_shape[1] * observation_shape[2])
+        )
+
+        block_output_size_value = (
+            (
+                reduced_channels_value
+                * (observation_shape[1] // 16)
+                * (observation_shape[2] // 16)
+            )
+            if downsample
+            else (reduced_channels_value * observation_shape[1] * observation_shape[2])
+        )
+
+        block_output_size_policy = (
+            (
+                reduced_channels_policy
+                * (observation_shape[1] // 16)
+                * (observation_shape[2] // 16)
+            )
+            if downsample
+            else (reduced_channels_policy * observation_shape[1] * observation_shape[2])
         )
 
         self.representation_network = RepresentationNetwork(
@@ -410,21 +440,23 @@ class MuZeroResidualNetwork(AbstractNetwork):
         self.dynamics_network = DynamicsNetwork(
             num_blocks,
             num_channels + 1,
-            reduced_channels,
+            reduced_channels_reward,
             fc_reward_layers,
             self.full_support_size,
-            block_output_size,
+            block_output_size_reward,
         )
 
         self.prediction_network = PredictionNetwork(
             action_space_size,
             num_blocks,
             num_channels,
-            reduced_channels,
+            reduced_channels_value,
+            reduced_channels_policy,
             fc_value_layers,
             fc_policy_layers,
             self.full_support_size,
-            block_output_size,
+            block_output_size_value,
+            block_output_size_policy,
         )
 
     def prediction(self, encoded_state):
