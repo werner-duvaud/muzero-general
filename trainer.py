@@ -103,6 +103,7 @@ class Trainer:
             target_value,
             target_reward,
             target_policy,
+            policy_actions_batch,
             weight_batch,
             gradient_scale_batch,
         ) = batch
@@ -118,6 +119,7 @@ class Trainer:
         target_value = torch.tensor(target_value).float().to(device)
         target_reward = torch.tensor(target_reward).float().to(device)
         target_policy = torch.tensor(target_policy).float().to(device)
+        policy_actions_batch = torch.tensor(policy_actions_batch).float().to(device)
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
@@ -134,17 +136,39 @@ class Trainer:
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
         ## Generate predictions
-        value, reward, policy_logits, hidden_state = self.model.initial_inference(
+        value, reward, policy_params, hidden_state = self.model.initial_inference(
             observation_batch
         )
-        predictions = [(value, reward, policy_logits)]
+
+        log_probs = []
+        for batch_i in range(len(policy_actions_batch)):
+            log_probs.append(
+                models.get_log_prob(
+                    policy_params[batch_i, 0],
+                    policy_params[batch_i, 1],
+                    policy_actions_batch[batch_i, 0],
+                )
+            )
+
+        predictions = [(value, reward, torch.stack(log_probs))]
         for i in range(1, action_batch.shape[1]):
-            value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+            value, reward, policy_params, hidden_state = self.model.recurrent_inference(
                 hidden_state, action_batch[:, i]
             )
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             hidden_state.register_hook(lambda grad: grad * 0.5)
-            predictions.append((value, reward, policy_logits))
+
+            log_probs = []
+            for batch_i in range(len(policy_actions_batch)):
+                log_probs.append(
+                    models.get_log_prob(
+                        policy_params[batch_i, 0],
+                        policy_params[batch_i, 1],
+                        policy_actions_batch[batch_i, i],
+                    )
+                )
+
+            predictions.append((value, reward, torch.stack(log_probs)))
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
 
         ## Compute losses
@@ -257,7 +281,6 @@ class Trainer:
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
-        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(
-            1
-        )
+        policy_loss = (-target_policy * policy_logits).sum(1)
+
         return value_loss, reward_loss, policy_loss

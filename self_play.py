@@ -171,6 +171,8 @@ class SelfPlay:
                     )
                     self.game.render()
 
+                # print("Action range: {}".format(max(root.children.keys()) - min(root.children.keys())))
+                # print("Num actions: {}".format(len(root.children)))
                 game_history.store_search_statistics(root, self.config.action_space)
 
                 # Next batch
@@ -271,7 +273,7 @@ class MCTS:
         (
             root_predicted_value,
             reward,
-            policy_logits,
+            policy_params,
             hidden_state,
         ) = model.initial_inference(observation)
         root_predicted_value = models.support_to_scalar(
@@ -279,7 +281,7 @@ class MCTS:
         ).item()
         reward = models.support_to_scalar(reward, self.config.support_size).item()
         root.expand(
-            legal_actions, to_play, reward, policy_logits, hidden_state,
+            legal_actions, to_play, reward, policy_params, hidden_state,
         )
         if add_exploration_noise:
             root.add_exploration_noise(
@@ -310,9 +312,9 @@ class MCTS:
             # Inside the search tree we use the dynamics function to obtain the next hidden
             # state given an action and the previous hidden state
             parent = search_path[-2]
-            value, reward, policy_logits, hidden_state = model.recurrent_inference(
+            value, reward, policy_params, hidden_state = model.recurrent_inference(
                 parent.hidden_state,
-                torch.tensor([[action]]).to(parent.hidden_state.device),
+                torch.tensor([[action]]).float().to(parent.hidden_state.device),
             )
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
@@ -320,7 +322,7 @@ class MCTS:
                 self.config.action_space,
                 virtual_to_play,
                 reward,
-                policy_logits,
+                policy_params,
                 hidden_state,
             )
 
@@ -334,6 +336,13 @@ class MCTS:
         """
         Select the child with the highest UCB score.
         """
+        # Progressive widening (See https://hal.archives-ouvertes.fr/hal-00542673v2/document)
+        C = 1
+        alpha = 0.5
+        while len(node.children) < math.ceil(C * node.visit_count ** alpha):
+            action = models.sample_action(node.mu, node.sigma).item()
+            node.children[action] = Node()
+
         max_ucb = max(
             self.ucb_score(node, child, min_max_stats)
             for action, child in node.children.items()
@@ -359,7 +368,8 @@ class MCTS:
         )
         pb_c *= math.sqrt(parent.visit_count) / (child.visit_count + 1)
 
-        prior_score = pb_c * child.prior
+        # Uniform prior for continuous action space
+        prior_score = pb_c * (1 / len(parent.children))
 
         if child.visit_count > 0:
             # Mean value Q
@@ -385,14 +395,17 @@ class MCTS:
 
 
 class Node:
-    def __init__(self, prior):
+    def __init__(self, prior=1):
         self.visit_count = 0
         self.to_play = -1
-        self.prior = prior
+        self.prior = prior # Unused prior for continuous action space
         self.value_sum = 0
         self.children = {}
         self.hidden_state = None
         self.reward = 0
+
+        self.mu = None
+        self.sigma = None
 
     def expanded(self):
         return len(self.children) > 0
@@ -402,7 +415,7 @@ class Node:
             return 0
         return self.value_sum / self.visit_count
 
-    def expand(self, actions, to_play, reward, policy_logits, hidden_state):
+    def expand(self, actions, to_play, reward, policy_params, hidden_state):
         """
         We expand a node using the value, reward and policy prediction obtained from the
         neural network.
@@ -411,15 +424,10 @@ class Node:
         self.reward = reward
         self.hidden_state = hidden_state
 
-        policy = {}
-        for a in actions:
-            try:
-                policy[a] = 1 / sum(torch.exp(policy_logits[0] - policy_logits[0][a]))
-            except OverflowError:
-                print("Warning: prior has been approximated")
-                policy[a] = 0.0
-        for action, p in policy.items():
-            self.children[action] = Node(p)
+        self.mu, self.sigma = policy_params[0][0], policy_params[0][1]
+
+        action = models.sample_action(self.mu, self.sigma).item()
+        self.children[action] = Node()
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
@@ -445,6 +453,7 @@ class GameHistory:
         self.to_play_history = []
         self.child_visits = []
         self.root_values = []
+        self.root_actions = []
         self.priorities = None
 
     def store_search_statistics(self, root, action_space):
@@ -453,16 +462,16 @@ class GameHistory:
             sum_visits = sum(child.visit_count for child in root.children.values())
             self.child_visits.append(
                 [
-                    root.children[a].visit_count / sum_visits
-                    if a in root.children
-                    else 0
-                    for a in action_space
+                    root.children[a].visit_count / sum_visits if a in root.children else 0
+                    for a in root.children.keys()
                 ]
             )
 
             self.root_values.append(root.value())
+            self.root_actions.append(list(root.children.keys()))
         else:
             self.root_values.append(None)
+            self.root_actions.append(None)
 
     def get_stacked_observations(self, index, num_stacked_observations):
         """

@@ -94,14 +94,14 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         )
 
         self.dynamics_encoded_state_network = FullyConnectedNetwork(
-            encoding_size + self.action_space_size, fc_dynamics_layers, encoding_size
+            encoding_size + 1, fc_dynamics_layers, encoding_size
         )
         self.dynamics_reward_network = FullyConnectedNetwork(
             encoding_size, fc_reward_layers, self.full_support_size,
         )
 
         self.prediction_policy_network = FullyConnectedNetwork(
-            encoding_size, fc_policy_layers, self.action_space_size
+            encoding_size, fc_policy_layers, 2
         )
         self.prediction_value_network = FullyConnectedNetwork(
             encoding_size, fc_value_layers, self.full_support_size,
@@ -128,13 +128,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
 
     def dynamics(self, encoded_state, action):
         # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
-        action_one_hot = (
-            torch.zeros((action.shape[0], self.action_space_size))
-            .to(action.device)
-            .float()
-        )
-        action_one_hot.scatter_(1, action.long(), 1.0)
-        x = torch.cat((encoded_state, action_one_hot), dim=1)
+        x = torch.cat((encoded_state, action), dim=1)
 
         next_encoded_state = self.dynamics_encoded_state_network(x)
 
@@ -634,3 +628,18 @@ def scalar_to_support(x, support_size):
     indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
     return logits
+
+def sample_action(mu, sigma):
+    mu = torch.tanh(mu)
+    sigma = torch.exp(sigma)
+
+    m = torch.distributions.normal.Normal(mu, sigma)
+    return m.sample()
+
+def get_log_prob(mu, sigma, action):
+    mu = torch.tanh(mu)
+    sigma = torch.exp(sigma)
+
+    m = torch.distributions.normal.Normal(mu, sigma)
+    log_prob = m.log_prob(action)
+    return log_prob

@@ -81,9 +81,10 @@ class ReplayBuffer:
             reward_batch,
             value_batch,
             policy_batch,
+            policy_actions_batch,
             weight_batch,
             gradient_scale_batch,
-        ) = ([], [], [], [], [], [], [], [])
+        ) = ([], [], [], [], [], [], [], [], [])
 
         if self.config.use_last_model_value:
             self.model.set_weights(model_weights)
@@ -92,7 +93,7 @@ class ReplayBuffer:
             game_id, game_history, game_prob = self.sample_game(self.buffer)
             game_pos, pos_prob = self.sample_position(game_history)
 
-            values, rewards, policies, actions = self.make_target(
+            values, rewards, policies, actions, target_policies_actions = self.make_target(
                 game_history, game_pos
             )
 
@@ -106,6 +107,7 @@ class ReplayBuffer:
             value_batch.append(values)
             reward_batch.append(rewards)
             policy_batch.append(policies)
+            policy_actions_batch.append(target_policies_actions)
             weight_batch.append(
                 (self.total_samples * game_prob * pos_prob) ** (-self.config.PER_beta)
             )
@@ -138,6 +140,7 @@ class ReplayBuffer:
                 value_batch,
                 reward_batch,
                 policy_batch,
+                policy_actions_batch,
                 weight_batch,
                 gradient_scale_batch,
             ),
@@ -246,7 +249,7 @@ class ReplayBuffer:
         """
         Generate targets for every unroll steps.
         """
-        target_values, target_rewards, target_policies, actions = [], [], [], []
+        target_values, target_rewards, target_policies, actions, target_policies_actions = [], [], [], [], []
         for current_index in range(
             state_index, state_index + self.config.num_unroll_steps + 1
         ):
@@ -256,6 +259,7 @@ class ReplayBuffer:
                 target_values.append(value)
                 target_rewards.append(game_history.reward_history[current_index])
                 target_policies.append(game_history.child_visits[current_index])
+                target_policies_actions.append(game_history.root_actions[current_index])
                 actions.append(game_history.action_history[current_index])
             elif current_index == len(game_history.root_values):
                 target_values.append(0)
@@ -267,6 +271,7 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
+                target_policies_actions.append(2*numpy.random.uniform(0, 1, len(game_history.child_visits[0]))-1)
                 actions.append(game_history.action_history[current_index])
             else:
                 # States past the end of games are treated as absorbing states
@@ -279,6 +284,7 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
+                target_policies_actions.append(2*numpy.random.uniform(0, 1, len(game_history.child_visits[0]))-1)
                 actions.append(numpy.random.choice(game_history.action_history))
 
-        return target_values, target_rewards, target_policies, actions
+        return target_values, target_rewards, target_policies, actions, target_policies_actions

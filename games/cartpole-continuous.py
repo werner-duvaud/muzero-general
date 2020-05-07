@@ -1,4 +1,5 @@
 import datetime
+import math
 import os
 
 import gym
@@ -51,9 +52,7 @@ class MuZeroConfig:
         self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
         self.blocks = 1  # Number of blocks in the ResNet
         self.channels = 2  # Number of channels in the ResNet
-        self.reduced_channels_reward = 2  # Number of channels in reward head
-        self.reduced_channels_value = 2  # Number of channels in value head
-        self.reduced_channels_policy = 2  # Number of channels in policy head
+        self.reduced_channels = 2  # Number of channels before heads of dynamic and prediction networks
         self.resnet_fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
         self.resnet_fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
         self.resnet_fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
@@ -72,7 +71,7 @@ class MuZeroConfig:
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
         self.training_steps = 5000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
-        self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
+        self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
@@ -82,20 +81,20 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.05  # Initial learning rate
-        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
+        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
 
 
 
         ### Replay Buffer
-        self.window_size = 100  # Number of self-play games to keep in the replay buffer
+        self.window_size = 500  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
         self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
-        self.use_max_priority = False  # If False, use the n-step TD error as initial priority. Better for large replay buffer
+        self.use_max_priority = True  # Use the n-step TD error as initial priority. Better for large replay buffer
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
@@ -104,7 +103,7 @@ class MuZeroConfig:
         ### Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
-        self.ratio = None  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
+        self.ratio = 1/2  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
@@ -116,11 +115,11 @@ class MuZeroConfig:
             Positive float.
         """
         if trained_steps < 0.5 * self.training_steps:
-            return 1.0
+            return 1
         elif trained_steps < 0.75 * self.training_steps:
-            return 0.5
+            return 0.1
         else:
-            return 0.25
+            return 0.01
 
 
 class Game(AbstractGame):
@@ -129,7 +128,7 @@ class Game(AbstractGame):
     """
 
     def __init__(self, seed=None):
-        self.env = gym.make("CartPole-v1")
+        self.env = ContinuousCartPoleEnv()
         if seed is not None:
             self.env.seed(seed)
 
@@ -143,6 +142,8 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
+        action = -1 if action < -1 else action
+        action = 1 if action > 1 else action
         observation, reward, done, _ = self.env.step(action)
         return numpy.array([[observation]]), reward, done
 
@@ -181,18 +182,151 @@ class Game(AbstractGame):
         self.env.render()
         input("Press enter to take a step ")
 
-    def action_to_string(self, action_number):
-        """
-        Convert an action number to a string representing the action.
 
-        Args:
-            action_number: an integer from the action space.
+class ContinuousCartPoleEnv(gym.Env):
+    metadata = {
+        'render.modes': ['human', 'rgb_array'],
+        'video.frames_per_second': 50
+    }
 
-        Returns:
-            String representing the action.
-        """
-        actions = {
-            0: "Push cart to the left",
-            1: "Push cart to the right",
-        }
-        return "{}. {}".format(action_number, actions[action_number])
+    def __init__(self):
+        self.gravity = 9.8
+        self.masscart = 1.0
+        self.masspole = 0.1
+        self.total_mass = (self.masspole + self.masscart)
+        self.length = 0.5  # actually half the pole's length
+        self.polemass_length = (self.masspole * self.length)
+        self.force_mag = 30.0
+        self.tau = 0.02  # seconds between state updates
+        self.min_action = -1.0
+        self.max_action = 1.0
+
+        # Angle at which to fail the episode
+        self.theta_threshold_radians = 12 * 2 * math.pi / 360
+        self.x_threshold = 2.4
+
+        # Angle limit set to 2 * theta_threshold_radians so failing observation
+        # is still within bounds
+        high = numpy.array([
+            self.x_threshold * 2,
+            numpy.finfo(numpy.float32).max,
+            self.theta_threshold_radians * 2,
+            numpy.finfo(numpy.float32).max])
+
+        self.action_space = gym.spaces.Box(
+            low=self.min_action,
+            high=self.max_action,
+            shape=(1,)
+        )
+        self.observation_space = gym.spaces.Box(-high, high)
+
+        self.seed()
+        self.viewer = None
+        self.state = None
+
+        self.steps_beyond_done = None
+
+    def seed(self, seed=None):
+        self.np_random, seed = gym.utils.seeding.np_random(seed)
+        return [seed]
+
+    def stepPhysics(self, force):
+        x, x_dot, theta, theta_dot = self.state
+        costheta = math.cos(theta)
+        sintheta = math.sin(theta)
+        temp = (force + self.polemass_length * theta_dot * theta_dot * sintheta) / self.total_mass
+        thetaacc = (self.gravity * sintheta - costheta * temp) / \
+            (self.length * (4.0/3.0 - self.masspole * costheta * costheta / self.total_mass))
+        xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
+        x = x + self.tau * x_dot
+        x_dot = x_dot + self.tau * xacc
+        theta = theta + self.tau * theta_dot
+        theta_dot = theta_dot + self.tau * thetaacc
+        return (x, x_dot, theta, theta_dot)
+
+    def step(self, action):
+        # assert self.action_space.contains(action), \
+        #     "%r (%s) invalid" % (action, type(action))
+        # Cast action to float to strip np trappings
+        force = self.force_mag * float(action)
+        self.state = self.stepPhysics(force)
+        x, x_dot, theta, theta_dot = self.state
+        done = x < -self.x_threshold \
+            or x > self.x_threshold \
+            or theta < -self.theta_threshold_radians \
+            or theta > self.theta_threshold_radians
+        done = bool(done)
+
+        if not done:
+            reward = 1.0
+        elif self.steps_beyond_done is None:
+            # Pole just fell!
+            self.steps_beyond_done = 0
+            reward = 1.0
+        else:
+            if self.steps_beyond_done == 0:
+                gym.logger.warn("""
+                You are calling 'step()' even though this environment has already returned
+                done = True. You should always call 'reset()' once you receive 'done = True'
+                Any further steps are undefined behavior.
+                """)
+            self.steps_beyond_done += 1
+            reward = 0.0
+
+        return numpy.array(self.state), reward, done, {}
+
+    def reset(self):
+        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
+        self.steps_beyond_done = None
+        return numpy.array(self.state)
+
+    def render(self, mode='human'):
+        screen_width = 600
+        screen_height = 400
+
+        world_width = self.x_threshold * 2
+        scale = screen_width /world_width
+        carty = 100  # TOP OF CART
+        polewidth = 10.0
+        polelen = scale * 1.0
+        cartwidth = 50.0
+        cartheight = 30.0
+
+        if self.viewer is None:
+            from gym.envs.classic_control import rendering
+            self.viewer = rendering.Viewer(screen_width, screen_height)
+            l, r, t, b = -cartwidth / 2, cartwidth / 2, cartheight / 2, -cartheight / 2
+            axleoffset = cartheight / 4.0
+            cart = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+            self.carttrans = rendering.Transform()
+            cart.add_attr(self.carttrans)
+            self.viewer.add_geom(cart)
+            l, r, t, b = -polewidth / 2, polewidth / 2, polelen-polewidth / 2, -polewidth / 2
+            pole = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+            pole.set_color(.8, .6, .4)
+            self.poletrans = rendering.Transform(translation=(0, axleoffset))
+            pole.add_attr(self.poletrans)
+            pole.add_attr(self.carttrans)
+            self.viewer.add_geom(pole)
+            self.axle = rendering.make_circle(polewidth / 2)
+            self.axle.add_attr(self.poletrans)
+            self.axle.add_attr(self.carttrans)
+            self.axle.set_color(.5, .5, .8)
+            self.viewer.add_geom(self.axle)
+            self.track = rendering.Line((0, carty), (screen_width, carty))
+            self.track.set_color(0, 0, 0)
+            self.viewer.add_geom(self.track)
+
+        if self.state is None:
+            return None
+
+        x = self.state
+        cartx = x[0] * scale + screen_width / 2.0  # MIDDLE OF CART
+        self.carttrans.set_translation(cartx, carty)
+        self.poletrans.set_rotation(-x[2])
+
+        return self.viewer.render(return_rgb_array=(mode == 'rgb_array'))
+
+    def close(self):
+        if self.viewer:
+            self.viewer.close()
