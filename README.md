@@ -88,6 +88,7 @@ tensorboard --logdir ./results
 * Werner Duvaud
 * Aurèle Hainaut
 * Paul Lenoir
+* [Contributors](https://github.com/werner-duvaud/muzero-general/graphs/contributors)
 
 
 ## Getting involved
