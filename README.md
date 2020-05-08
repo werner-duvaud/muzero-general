@@ -29,7 +29,7 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 These improvements are active research, they are personal ideas and go beyond MuZero paper. We are open to contributions and other ideas.
 
 * [ ] Better hyperparameters tuning and improve stability
-* [ ] Continuous action space
+* [x] [Continuous action space](https://github.com/werner-duvaud/muzero-general/tree/continuous)
 * [ ] End user tool to exploit the results
 * [ ] Support stochastic environments
 * [ ] Better integration with more than two player games
@@ -88,3 +88,10 @@ tensorboard --logdir ./results
 * Werner Duvaud
 * Aurèle Hainaut
 * Paul Lenoir
+
+
+## Getting involved
+
+* [GitHub Issues](https://github.com/werner-duvaud/muzero-general/issues): For reporting bugs.
+* [Pull Requests](https://github.com/werner-duvaud/muzero-general/pulls): For submitting code contributions.
+* [Discord server](https://discord.gg/GB2vwsF): For discussions about development or any general questions.
