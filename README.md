@@ -53,6 +53,7 @@ Testing Lunar Lander :
 * Tic-tac-toe   (Tested with the fully connected network and the residual network)
 * Connect4      (Slightly tested with the residual network)
 * Gomoku
+* Twenty-One / Blackjack    (Tested with the residual network)
 * Atari Breakout
 
 Tests are done on Ubuntu with 16 GB RAM / Intel i7 / GTX 1050Ti Max-Q. We make sure to obtain a progression and a level which ensures that it has learned. But we do not systematically reach a human level. For certain environments, we notice a regression after a certain time. The proposed configurations are certainly not optimal and we do not focus for now on the optimization of hyperparameters. Any help is welcome.

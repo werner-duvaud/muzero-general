@@ -5,9 +5,9 @@ card 21. This is a good example of showing how it can provide a good solution
 to even luck based games.
 '''
 
-from random import randint
 import datetime
 import os
+from random import randint
 
 import gym
 import numpy
@@ -15,18 +15,26 @@ import torch
 
 from .abstract_game import AbstractGame
 
+
 class MuZeroConfig:
     def __init__(self):
         self.seed = 0  # Seed for numpy, torch and the game
 
+
+
+        ### Game
         self.observation_shape = (3,3,3) # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = [i for i in range(2)] # Fixed list of all possible actions. You should only edit the length
         self.players = [i for i in range(1)] # List of players. You should only edit the length
         self.stacked_observations = 0 # Number of previous observations and previous actions to add to the current observation
 
+        # Evaluate
         self.muzero_player = 0 # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
         self.opponent = None # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
+
+
+        ### Self-Play
         self.num_actors = 4 # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 21 # Maximum number of moves if game is not finished before
         self.num_simulations = 21 # Number of future moves self-simulated
@@ -37,22 +45,27 @@ class MuZeroConfig:
         self.root_dirichlet_alpha = 0.25
         self.root_exploration_fraction = 0.25
 
+        # UCB formula
         self.pb_c_base = 19652
         self.pb_c_init = 1.25
+
+
 
         ### Network
         self.network = "resnet"  # "resnet" / "fullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
-        
+
         # Residual Network
         self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
         self.blocks = 2  # Number of blocks in the ResNet
         self.channels = 32  # Number of channels in the ResNet
-        self.reduced_channels = 32  # Number of channels before heads of dynamic and prediction networks
+        self.reduced_channels_reward = 32  # Number of channels in reward head
+        self.reduced_channels_value = 32  # Number of channels in value head
+        self.reduced_channels_policy = 32  # Number of channels in policy head
         self.resnet_fc_reward_layers = [16]  # Define the hidden layers in the reward head of the dynamic network
         self.resnet_fc_value_layers = [16]  # Define the hidden layers in the value head of the prediction network
         self.resnet_fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
-        
+
         # Fully Connected Network
         self.encoding_size = 32
         self.fc_representation_layers = [16]  # Define the hidden layers in the representation network
@@ -60,6 +73,7 @@ class MuZeroConfig:
         self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
         self.fc_value_layers = [16]  # Define the hidden layers in the value network
         self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
+
 
 
         ### Training
@@ -89,7 +103,7 @@ class MuZeroConfig:
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
-        self.use_max_priority = False  # Use the n-step TD error as initial priority. Better for large replay buffer
+        self.use_max_priority = False  # If False, use the n-step TD error as initial priority. Better for large replay buffer
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
@@ -99,6 +113,7 @@ class MuZeroConfig:
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
+
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -119,8 +134,6 @@ class Game(AbstractGame):
     """
     Game wrapper.
     """
-
-    player = 1
 
     def __init__(self, seed=None):
         self.env = TwentyOne()
@@ -153,7 +166,7 @@ class Game(AbstractGame):
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
         
         For complex game where calculating legal moves is too long, the idea is to define the legal actions
-        equal to the action space but to return a negative reward if the action is illegal.        
+        equal to the action space but to return a negative reward if the action is illegal.
 
         Returns:
             An array of integers, subset of the action space.
@@ -169,21 +182,12 @@ class Game(AbstractGame):
         """
         return self.env.reset()
 
-    def close(self):
-        """
-        Properly close the game.
-        """
-        pass
-
     def render(self):
         """
         Display the game observation.
         """
         self.env.render()
         input("Press enter to take a step ")
-
-    def encode_board(self):
-        return self.env.encode_board()
 
     def human_to_action(self):
         """
@@ -198,16 +202,6 @@ class Game(AbstractGame):
             choice = input("Enter either (0) Hit or (1) Stand : ")
         return int(choice)
 
-    def expert_agent(self):
-        """
-        Hard coded agent that MuZero faces to assess his progress in multiplayer games.
-        It doesn't influence training
-
-        Returns:
-            Action as an integer to take in the current game state
-        """
-        return self.env.expert_action()
-
     def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
@@ -218,7 +212,11 @@ class Game(AbstractGame):
         Returns:
             String representing the action.
         """
-        return "Player {}".format(self.player)
+        actions = {
+            0: "Hit",
+            1: "Stand",
+        }
+        return "{}. {}".format(action_number, actions[action_number])
 
 class TwentyOne:
     def __init__(self):
@@ -236,10 +234,10 @@ class TwentyOne:
         self.player = 1
         return self.get_observation()
 
-    '''
+    """
     Action: 0 = Hit
     Action: 1 = Stand
-    '''
+    """
     def step(self, action):
 
         if action == 0:
@@ -248,11 +246,11 @@ class TwentyOne:
         done = self.is_busted() or action == 1 or self.player_hand == 21
 
         reward = 0
-        
+
         if done:
             self.dealer_plays()    
             reward = self.get_reward(True)
-        
+
         return self.get_observation(), self.get_reward(done), done
 
     def get_observation(self):
