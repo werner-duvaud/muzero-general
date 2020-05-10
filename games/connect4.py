@@ -170,12 +170,6 @@ class Game(AbstractGame):
         """
         return self.env.reset()
 
-    def close(self):
-        """
-        Properly close the game.
-        """
-        pass
-
     def render(self):
         """
         Display the game observation.

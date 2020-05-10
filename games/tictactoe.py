@@ -4,6 +4,7 @@ import os
 import gym
 import numpy
 import torch
+
 from .abstract_game import AbstractGame
 
 
@@ -83,6 +84,7 @@ class MuZeroConfig:
         self.lr_init = 0.01  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
+
 
 
         ### Replay Buffer
@@ -167,12 +169,6 @@ class Game(AbstractGame):
             Initial observation of the game.
         """
         return self.env.reset()
-
-    def close(self):
-        """
-        Properly close the game.
-        """
-        pass
 
     def render(self):
         """
