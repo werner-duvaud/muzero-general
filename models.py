@@ -317,7 +317,6 @@ class DynamicsNetwork(torch.nn.Module):
             self.block_output_size_reward,
             fc_reward_layers,
             full_support_size,
-            activation=None,
         )
 
     def forward(self, x):
@@ -357,13 +356,12 @@ class PredictionNetwork(torch.nn.Module):
         self.block_output_size_value = block_output_size_value
         self.block_output_size_policy = block_output_size_policy
         self.fc_value = FullyConnectedNetwork(
-            self.block_output_size_value, fc_value_layers, full_support_size, activation=None,
+            self.block_output_size_value, fc_value_layers, full_support_size
         )
         self.fc_policy = FullyConnectedNetwork(
             self.block_output_size_policy,
             fc_policy_layers,
             action_space_size,
-            activation=None,
         )
 
     def forward(self, x):

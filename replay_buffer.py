@@ -44,8 +44,8 @@ class ReplayBuffer:
                 )
             else:
                 # Initial priorities for the prioritized replay (See paper appendix Training)
+                priorities = []
                 for i, root_value in enumerate(game_history.root_values):
-                    priorities = []
                     priority = (
                         numpy.abs(
                             root_value - self.compute_target_value(game_history, i)
