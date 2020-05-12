@@ -1,9 +1,9 @@
-'''
+"""
 This is a very simple form of twenty one. Ace only counts as value 1 not 1 or
 11 for simplicity. This means that there is no such thing as a natural or two
 card 21. This is a good example of showing how it can provide a good solution
 to even luck based games.
-'''
+"""
 
 import datetime
 import os
