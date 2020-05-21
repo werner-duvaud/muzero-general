@@ -28,7 +28,7 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 ### Further improvements
 These improvements are active research, they are personal ideas and go beyond MuZero paper. We are open to contributions and other ideas.
 
-* [ ] Better hyperparameters tuning and improve stability
+* [ ] [Better hyperparameters tuning and improve stability](https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization)
 * [x] [Continuous action space](https://github.com/werner-duvaud/muzero-general/tree/continuous)
 * [ ] End user tool to exploit the results
 * [ ] Support stochastic environments
