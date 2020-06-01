@@ -78,7 +78,7 @@ class SelfPlay:
                             [
                                 reward
                                 for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i-1]
+                                if game_history.to_play_history[i - 1]
                                 == self.config.muzero_player
                             ]
                         ),
@@ -89,7 +89,7 @@ class SelfPlay:
                             [
                                 reward
                                 for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i-1]
+                                if game_history.to_play_history[i - 1]
                                 != self.config.muzero_player
                             ]
                         ),
@@ -364,7 +364,9 @@ class MCTS:
         if child.visit_count > 0:
             # Mean value Q
             value_score = min_max_stats.normalize(
-                child.reward + self.config.discount * child.value()
+                child.reward
+                + self.config.discount
+                * (child.value() if len(self.config.players) == 1 else -child.value())
             )
         else:
             value_score = 0
@@ -379,9 +381,15 @@ class MCTS:
         for node in reversed(search_path):
             node.value_sum += value if node.to_play == to_play else -value
             node.visit_count += 1
-            min_max_stats.update(node.reward + self.config.discount * node.value())
+            min_max_stats.update(
+                node.reward
+                + self.config.discount
+                * (node.value() if len(self.config.players) == 1 else -node.value())
+            )
 
-            value = node.reward + self.config.discount * value
+            value = (
+                -node.reward if node.to_play == to_play else node.reward
+            ) + self.config.discount * value
 
 
 class Node:

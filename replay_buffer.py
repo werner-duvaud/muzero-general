@@ -224,7 +224,12 @@ class ReplayBuffer:
                     self.config.support_size,
                 ).item()
             else:
-                last_step_value = game_history.root_values[bootstrap_index]
+                last_step_value = (
+                    game_history.root_values[bootstrap_index]
+                    if game_history.to_play_history[bootstrap_index]
+                    == game_history.to_play_history[index]
+                    else -game_history.root_values[bootstrap_index]
+                )
 
             value = last_step_value * self.config.discount ** self.config.td_steps
         else:

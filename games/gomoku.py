@@ -11,6 +11,8 @@ from .abstract_game import AbstractGame
 
 class MuZeroConfig:
     def __init__(self):
+        # More help is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
+
         self.seed = 0  # Seed for numpy, torch and the game
 
 

@@ -10,6 +10,8 @@ from .abstract_game import AbstractGame
 
 class MuZeroConfig:
     def __init__(self):
+        # More help is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
+
         self.seed = 0  # Seed for numpy, torch and the game
 
 
@@ -76,12 +78,12 @@ class MuZeroConfig:
         self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
-        self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
+        self.optimizer = "SGD"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.001  # Initial learning rate
+        self.lr_init = 0.02  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
 
