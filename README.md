@@ -31,8 +31,8 @@ These improvements are active research, they are personal ideas and go beyond Mu
 * [ ] [Better hyperparameters tuning and improve stability](https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization)
 * [x] [Continuous action space](https://github.com/werner-duvaud/muzero-general/tree/continuous)
 * [ ] End user tool to exploit the results
-* [ ] Support stochastic environments
-* [ ] Better integration with more than two player games
+* [ ] Support of stochastic environments
+* [ ] Support of more than two player games
 * [ ] Latest RL tricks (Never Give Up,  Adaptive Exploration, ...)
 
 ## Demo
