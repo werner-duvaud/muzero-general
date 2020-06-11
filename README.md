@@ -91,7 +91,17 @@ tensorboard --logdir ./results
 * Paul Lenoir
 * [Contributors](https://github.com/werner-duvaud/muzero-general/graphs/contributors)
 
-
+Please use this bibtex if you want to cite this repository (master branch) in your publications:
+```bash
+@misc{muzero-general,
+  author       = {Duvaud, Hainaut},
+  title        = {MuZero General: Open Reimplementation of MuZero},
+  year         = {2019},
+  publisher    = {GitHub},
+  journal      = {GitHub repository},
+  howpublished = {\url{https://github.com/werner-duvaud/muzero-general}},
+}
+```
 ## Getting involved
 
 * [GitHub Issues](https://github.com/werner-duvaud/muzero-general/issues): For reporting bugs.
