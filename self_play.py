@@ -38,7 +38,7 @@ class SelfPlay:
             if not test_mode:
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
-                        trained_steps=ray.get(shared_storage.get_infos.remote())[
+                        trained_steps=ray.get(shared_storage.get_info.remote())[
                             "training_step"
                         ]
                     ),
@@ -61,18 +61,18 @@ class SelfPlay:
                 )
 
                 # Save to the shared storage
-                shared_storage.set_infos.remote(
+                shared_storage.set_info.remote(
                     "total_reward", sum(game_history.reward_history)
                 )
-                shared_storage.set_infos.remote(
+                shared_storage.set_info.remote(
                     "episode_length", len(game_history.action_history) - 1
                 )
-                shared_storage.set_infos.remote(
+                shared_storage.set_info.remote(
                     "mean_value",
                     numpy.mean([value for value in game_history.root_values if value]),
                 )
                 if 1 < len(self.config.players):
-                    shared_storage.set_infos.remote(
+                    shared_storage.set_info.remote(
                         "muzero_reward",
                         sum(
                             [
@@ -83,7 +83,7 @@ class SelfPlay:
                             ]
                         ),
                     )
-                    shared_storage.set_infos.remote(
+                    shared_storage.set_info.remote(
                         "opponent_reward",
                         sum(
                             [
@@ -101,9 +101,7 @@ class SelfPlay:
             if not test_mode and self.config.ratio:
                 while (
                     ray.get(replay_buffer.get_self_play_count.remote())
-                    / max(
-                        1, ray.get(shared_storage.get_infos.remote())["training_step"]
-                    )
+                    / max(1, ray.get(shared_storage.get_info.remote())["training_step"])
                     > self.config.ratio
                 ):
                     time.sleep(0.5)
@@ -136,7 +134,7 @@ class SelfPlay:
 
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
-                    root, tree_depth = MCTS(self.config).run(
+                    root, mcts_info = MCTS(self.config).run(
                         self.model,
                         stacked_observations,
                         self.game.legal_actions(),
@@ -152,14 +150,14 @@ class SelfPlay:
                     )
 
                     if render:
-                        print("Tree depth: {}".format(tree_depth))
+                        print("Tree depth: {}".format(mcts_info["max_tree_depth"]))
                         print(
-                            "Root value for player {0}: {1:.2f}".format(
+                            "Root value for player {}: {:.2f}".format(
                                 self.game.to_play(), root.value()
                             )
                         )
                 else:
-                    action, root, tree_depth = self.select_opponent_action(
+                    action, root = self.select_opponent_action(
                         opponent, stacked_observations
                     )
 
@@ -187,16 +185,16 @@ class SelfPlay:
         Select opponent action for evaluating MuZero level.
         """
         if opponent == "human":
-            root, tree_depth = MCTS(self.config).run(
+            root, mcts_info = MCTS(self.config).run(
                 self.model,
                 stacked_observations,
                 self.game.legal_actions(),
                 self.game.to_play(),
                 0,
             )
-            print("Tree depth: {}".format(tree_depth))
+            print("Tree depth: {}".format(mcts_info["max_tree_depth"]))
             print(
-                "Root value for player {0}: {1:.2f}".format(
+                "Root value for player {}: {:.2f}".format(
                     self.game.to_play(), root.value()
                 )
             )
@@ -206,11 +204,11 @@ class SelfPlay:
                     self.game.action_to_string(self.select_action(root, 0)),
                 )
             )
-            return self.game.human_to_action(), root, tree_depth
+            return self.game.human_to_action(), root
         elif opponent == "expert":
-            return self.game.expert_agent(), None, None
+            return self.game.expert_agent(), None
         elif opponent == "random":
-            return numpy.random.choice(self.game.legal_actions()), None, None
+            return numpy.random.choice(self.game.legal_actions()), None
         else:
             raise ValueError(
                 'Wrong argument: "opponent" argument should be "self", "human", "expert" or "random"'
@@ -254,33 +252,46 @@ class MCTS:
     def __init__(self, config):
         self.config = config
 
-    def run(self, model, observation, legal_actions, to_play, add_exploration_noise):
+    def run(
+        self,
+        model,
+        observation,
+        legal_actions,
+        to_play,
+        add_exploration_noise,
+        override_root_with=None,
+    ):
         """
         At the root of the search tree we use the representation function to obtain a
         hidden state given the current observation.
         We then run a Monte Carlo Tree Search using only action sequences and the model
         learned by the network.
         """
-        root = Node(0)
-        observation = (
-            torch.tensor(observation)
-            .float()
-            .unsqueeze(0)
-            .to(next(model.parameters()).device)
-        )
-        (
-            root_predicted_value,
-            reward,
-            policy_logits,
-            hidden_state,
-        ) = model.initial_inference(observation)
-        root_predicted_value = models.support_to_scalar(
-            root_predicted_value, self.config.support_size
-        ).item()
-        reward = models.support_to_scalar(reward, self.config.support_size).item()
-        root.expand(
-            legal_actions, to_play, reward, policy_logits, hidden_state,
-        )
+        if override_root_with:
+            root = override_root_with
+            root_predicted_value = None
+        else:
+            root = Node(0)
+            observation = (
+                torch.tensor(observation)
+                .float()
+                .unsqueeze(0)
+                .to(next(model.parameters()).device)
+            )
+            (
+                root_predicted_value,
+                reward,
+                policy_logits,
+                hidden_state,
+            ) = model.initial_inference(observation)
+            root_predicted_value = models.support_to_scalar(
+                root_predicted_value, self.config.support_size
+            ).item()
+            reward = models.support_to_scalar(reward, self.config.support_size).item()
+            root.expand(
+                legal_actions, to_play, reward, policy_logits, hidden_state,
+            )
+
         if add_exploration_noise:
             root.add_exploration_noise(
                 dirichlet_alpha=self.config.root_dirichlet_alpha,
@@ -328,7 +339,11 @@ class MCTS:
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
 
-        return root, max_tree_depth
+        extra_info = {
+            "max_tree_depth": max_tree_depth,
+            "root_predicted_value": root_predicted_value,
+        }
+        return root, extra_info
 
     def select_child(self, node, min_max_stats):
         """
@@ -422,7 +437,11 @@ class Node:
         policy = {}
         for a in actions:
             try:
-                policy[a] = 1 / sum(torch.exp(policy_logits[0] - policy_logits[0][a]))
+                policy[a] = (
+                    (1 / sum(torch.exp(policy_logits[0] - policy_logits[0][a])))
+                    .detach()
+                    .numpy()
+                )
             except OverflowError:
                 print("Warning: prior has been approximated")
                 policy[a] = 0.0

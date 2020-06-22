@@ -10,7 +10,7 @@ from .abstract_game import AbstractGame
 
 class MuZeroConfig:
     def __init__(self):
-        # More help is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
+        # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
 
         self.seed = 0  # Seed for numpy, torch and the game
 
@@ -33,7 +33,7 @@ class MuZeroConfig:
         self.max_moves = 500  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
-        self.temperature_threshold = None  # Number of moves before dropping temperature to 0 (ie playing according to the max)
+        self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
         # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
@@ -62,17 +62,17 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 8
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_representation_layers = [16]  # Define the hidden layers in the representation network
         self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
-        self.fc_value_layers = []  # Define the hidden layers in the value network
-        self.fc_policy_layers = []  # Define the hidden layers in the policy network
+        self.fc_value_layers = [16]  # Define the hidden layers in the value network
+        self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
 
 
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 5000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 20000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
@@ -90,7 +90,7 @@ class MuZeroConfig:
 
 
         ### Replay Buffer
-        self.window_size = 100  # Number of self-play games to keep in the replay buffer
+        self.window_size = 500  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
         self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
@@ -106,7 +106,7 @@ class MuZeroConfig:
         ### Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
-        self.ratio = None  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
+        self.ratio = 1/30  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
 
 
     def visit_softmax_temperature_fn(self, trained_steps):

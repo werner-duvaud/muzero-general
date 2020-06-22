@@ -4,3 +4,4 @@ tensorboard
 gym
 box2d-py
 ray
+seaborn
