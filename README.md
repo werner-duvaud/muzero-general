@@ -14,11 +14,12 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 ## Features
 
 * [x] Residual Network and Fully connected network in [PyTorch](https://github.com/pytorch/pytorch)
-* [x] Multi-Threaded/Asynchronous mode with [Ray](https://github.com/ray-project/ray)
+* [x] Multi-Threaded/Asynchronous/[Cluster](https://docs.ray.io/en/latest/cluster-index.html) with [Ray](https://github.com/ray-project/ray)
 * [x] CPU/GPU support
+* [ ] Multi GPU support (To Do)
 * [x] TensorBoard real-time monitoring
 * [x] Model weights automatically saved at checkpoints
-* [x] Single and multiplayer mode
+* [x] Single and two player mode
 * [x] Commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation)
 * [x] Easily adaptable for new games
 * [x] [Examples](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py) of board games, Gym and Atari games (See [list of implemented games](https://github.com/werner-duvaud/muzero-general#games-already-implemented))
@@ -30,10 +31,10 @@ These improvements are active research, they are personal ideas and go beyond Mu
 
 * [ ] [Better hyperparameters tuning and improve stability](https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization)
 * [x] [Continuous action space](https://github.com/werner-duvaud/muzero-general/tree/continuous)
-* [ ] End user tool to exploit the results
+* [x] Tool to understand the learned model
 * [ ] Support of stochastic environments
 * [ ] Support of more than two player games
-* [ ] Latest RL tricks (Never Give Up,  Adaptive Exploration, ...)
+* [ ] RL tricks (Never Give Up,  Adaptive Exploration, ...)
 
 ## Demo
 
@@ -102,6 +103,7 @@ Please use this bibtex if you want to cite this repository (master branch) in yo
   howpublished = {\url{https://github.com/werner-duvaud/muzero-general}},
 }
 ```
+
 ## Getting involved
 
 * [GitHub Issues](https://github.com/werner-duvaud/muzero-general/issues): For reporting bugs.

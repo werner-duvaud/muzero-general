@@ -83,7 +83,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
 
-        self.representation_network = FullyConnectedNetwork(
+        self.representation_network = mlp(
             observation_shape[0]
             * observation_shape[1]
             * observation_shape[2]
@@ -93,17 +93,17 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
             encoding_size,
         )
 
-        self.dynamics_encoded_state_network = FullyConnectedNetwork(
+        self.dynamics_encoded_state_network = mlp(
             encoding_size + self.action_space_size, fc_dynamics_layers, encoding_size
         )
-        self.dynamics_reward_network = FullyConnectedNetwork(
+        self.dynamics_reward_network = mlp(
             encoding_size, fc_reward_layers, self.full_support_size,
         )
 
-        self.prediction_policy_network = FullyConnectedNetwork(
+        self.prediction_policy_network = mlp(
             encoding_size, fc_policy_layers, self.action_space_size
         )
-        self.prediction_value_network = FullyConnectedNetwork(
+        self.prediction_value_network = mlp(
             encoding_size, fc_value_layers, self.full_support_size,
         )
 
@@ -155,11 +155,13 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         encoded_state = self.representation(observation)
         policy_logits, value = self.prediction(encoded_state)
         # reward equal to 0 for consistency
-        reward = (
-            torch.zeros(1, self.full_support_size)
-            .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
-            .repeat(len(observation), 1)
-            .to(observation.device)
+        reward = torch.log(
+            (
+                torch.zeros(1, self.full_support_size)
+                .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
+                .repeat(len(observation), 1)
+                .to(observation.device)
+            )
         )
 
         return (
@@ -311,12 +313,12 @@ class DynamicsNetwork(torch.nn.Module):
             [ResidualBlock(num_channels - 1) for _ in range(num_blocks)]
         )
 
-        self.conv1x1_reward = torch.nn.Conv2d(num_channels - 1, reduced_channels_reward, 1)
+        self.conv1x1_reward = torch.nn.Conv2d(
+            num_channels - 1, reduced_channels_reward, 1
+        )
         self.block_output_size_reward = block_output_size_reward
-        self.fc = FullyConnectedNetwork(
-            self.block_output_size_reward,
-            fc_reward_layers,
-            full_support_size,
+        self.fc = mlp(
+            self.block_output_size_reward, fc_reward_layers, full_support_size,
         )
 
     def forward(self, x):
@@ -344,7 +346,7 @@ class PredictionNetwork(torch.nn.Module):
         fc_policy_layers,
         full_support_size,
         block_output_size_value,
-        block_output_size_policy
+        block_output_size_policy,
     ):
         super().__init__()
         self.resblocks = torch.nn.ModuleList(
@@ -355,13 +357,11 @@ class PredictionNetwork(torch.nn.Module):
         self.conv1x1_policy = torch.nn.Conv2d(num_channels, reduced_channels_policy, 1)
         self.block_output_size_value = block_output_size_value
         self.block_output_size_policy = block_output_size_policy
-        self.fc_value = FullyConnectedNetwork(
+        self.fc_value = mlp(
             self.block_output_size_value, fc_value_layers, full_support_size
         )
-        self.fc_policy = FullyConnectedNetwork(
-            self.block_output_size_policy,
-            fc_policy_layers,
-            action_space_size,
+        self.fc_policy = mlp(
+            self.block_output_size_policy, fc_policy_layers, action_space_size,
         )
 
     def forward(self, x):
@@ -540,11 +540,13 @@ class MuZeroResidualNetwork(AbstractNetwork):
         encoded_state = self.representation(observation)
         policy_logits, value = self.prediction(encoded_state)
         # reward equal to 0 for consistency
-        reward = (
-            torch.zeros(1, self.full_support_size)
-            .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
-            .repeat(len(observation), 1)
-            .to(observation.device)
+        reward = torch.log(
+            (
+                torch.zeros(1, self.full_support_size)
+                .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
+                .repeat(len(observation), 1)
+                .to(observation.device)
+            )
         )
         return (
             value,
@@ -563,28 +565,19 @@ class MuZeroResidualNetwork(AbstractNetwork):
 ##################################
 
 
-class FullyConnectedNetwork(torch.nn.Module):
-    def __init__(self, input_size, layer_sizes, output_size, activation=None):
-        super().__init__()
-        size_list = [input_size] + layer_sizes
-        layers = []
-        if 1 < len(size_list):
-            for i in range(len(size_list) - 1):
-                layers.extend(
-                    [
-                        torch.nn.Linear(size_list[i], size_list[i + 1]),
-                        torch.nn.LeakyReLU(),
-                    ]
-                )
-        layers.append(torch.nn.Linear(size_list[-1], output_size))
-        if activation:
-            layers.append(activation)
-        self.layers = torch.nn.ModuleList(layers)
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return x
+def mlp(
+    input_size,
+    layer_sizes,
+    output_size,
+    output_activation=torch.nn.Identity,
+    activation=torch.nn.ELU,
+):
+    sizes = [input_size] + layer_sizes + [output_size]
+    layers = []
+    for i in range(len(sizes) - 1):
+        act = activation if i < len(sizes) - 2 else output_activation
+        layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), act()]
+    return torch.nn.Sequential(*layers)
 
 
 def support_to_scalar(logits, support_size):

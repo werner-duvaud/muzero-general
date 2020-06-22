@@ -72,14 +72,14 @@ class Trainer:
             # Save to the shared storage
             if self.training_step % self.config.checkpoint_interval == 0:
                 shared_storage_worker.set_weights.remote(self.model.get_weights())
-            shared_storage_worker.set_infos.remote("training_step", self.training_step)
-            shared_storage_worker.set_infos.remote(
+            shared_storage_worker.set_info.remote("training_step", self.training_step)
+            shared_storage_worker.set_info.remote(
                 "lr", self.optimizer.param_groups[0]["lr"]
             )
-            shared_storage_worker.set_infos.remote("total_loss", total_loss)
-            shared_storage_worker.set_infos.remote("value_loss", value_loss)
-            shared_storage_worker.set_infos.remote("reward_loss", reward_loss)
-            shared_storage_worker.set_infos.remote("policy_loss", policy_loss)
+            shared_storage_worker.set_info.remote("total_loss", total_loss)
+            shared_storage_worker.set_info.remote("value_loss", value_loss)
+            shared_storage_worker.set_info.remote("reward_loss", reward_loss)
+            shared_storage_worker.set_info.remote("policy_loss", policy_loss)
 
             # Managing the self-play / training ratio
             if self.config.training_delay:

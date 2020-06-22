@@ -14,6 +14,7 @@ import replay_buffer
 import self_play
 import shared_storage
 import trainer
+import diagnose_model
 
 
 class MuZero:
@@ -144,25 +145,25 @@ class MuZero:
         )
         # Loop for updating the training performance
         counter = 0
-        infos = ray.get(shared_storage_worker.get_infos.remote())
+        info = ray.get(shared_storage_worker.get_info.remote())
         try:
-            while infos["training_step"] < self.config.training_steps:
-                infos = ray.get(shared_storage_worker.get_infos.remote())
+            while info["training_step"] < self.config.training_steps:
+                info = ray.get(shared_storage_worker.get_info.remote())
                 writer.add_scalar(
-                    "1.Total reward/1.Total reward", infos["total_reward"], counter,
+                    "1.Total reward/1.Total reward", info["total_reward"], counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/2.Mean value", infos["mean_value"], counter,
+                    "1.Total reward/2.Mean value", info["mean_value"], counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/3.Episode length", infos["episode_length"], counter,
+                    "1.Total reward/3.Episode length", info["episode_length"], counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/4.MuZero reward", infos["muzero_reward"], counter,
+                    "1.Total reward/4.MuZero reward", info["muzero_reward"], counter,
                 )
                 writer.add_scalar(
                     "1.Total reward/5.Opponent reward",
-                    infos["opponent_reward"],
+                    info["opponent_reward"],
                     counter,
                 )
                 writer.add_scalar(
@@ -171,28 +172,28 @@ class MuZero:
                     counter,
                 )
                 writer.add_scalar(
-                    "2.Workers/2.Training steps", infos["training_step"], counter
+                    "2.Workers/2.Training steps", info["training_step"], counter
                 )
                 writer.add_scalar(
                     "2.Workers/3.Self played games per training step ratio",
                     ray.get(replay_buffer_worker.get_self_play_count.remote())
-                    / max(1, infos["training_step"]),
+                    / max(1, info["training_step"]),
                     counter,
                 )
-                writer.add_scalar("2.Workers/4.Learning rate", infos["lr"], counter)
+                writer.add_scalar("2.Workers/4.Learning rate", info["lr"], counter)
                 writer.add_scalar(
-                    "3.Loss/1.Total weighted loss", infos["total_loss"], counter
+                    "3.Loss/1.Total weighted loss", info["total_loss"], counter
                 )
-                writer.add_scalar("3.Loss/Value loss", infos["value_loss"], counter)
-                writer.add_scalar("3.Loss/Reward loss", infos["reward_loss"], counter)
-                writer.add_scalar("3.Loss/Policy loss", infos["policy_loss"], counter)
+                writer.add_scalar("3.Loss/Value loss", info["value_loss"], counter)
+                writer.add_scalar("3.Loss/Reward loss", info["reward_loss"], counter)
+                writer.add_scalar("3.Loss/Policy loss", info["policy_loss"], counter)
                 print(
-                    "Last test reward: {0:.2f}. Training step: {1}/{2}. Played games: {3}. Loss: {4:.2f}".format(
-                        infos["total_reward"],
-                        infos["training_step"],
+                    "Last test reward: {:.2f}. Training step: {}/{}. Played games: {}. Loss: {:.2f}".format(
+                        info["total_reward"],
+                        info["training_step"],
                         self.config.training_steps,
                         ray.get(replay_buffer_worker.get_self_play_count.remote()),
-                        infos["total_loss"],
+                        info["total_loss"],
                     ),
                     end="\r",
                 )
@@ -250,6 +251,20 @@ class MuZero:
                     )
                 )
 
+    def diagnose_model(self, horizon):
+        """
+        Play a game only with the learned model then play the same trajectory in the real
+        environment and display information.
+
+        Args:
+            horizon: number of timesteps for which we collect information.
+        """
+        game = self.Game(self.config.seed)
+        obs = game.reset()
+        diagnose_model.DiagnoseModel(
+            self.muzero_weights, self.config
+        ).compare_virtual_with_real_trajectories(obs, game, horizon)
+
 
 if __name__ == "__main__":
     print("\nWelcome to MuZero! Here's a list of games:")
@@ -275,6 +290,7 @@ if __name__ == "__main__":
         options = [
             "Train",
             "Load pretrained model",
+            "Diagnose model",
             "Render some self play games",
             "Play against MuZero",
             "Test the game manually",
@@ -306,10 +322,12 @@ if __name__ == "__main__":
                 weights_path=weights_path, replay_buffer_path=replay_buffer_path
             )
         elif choice == 2:
-            muzero.test(render=True, opponent="self", muzero_player=None)
+            muzero.diagnose_model(30)
         elif choice == 3:
-            muzero.test(render=True, opponent="human", muzero_player=0)
+            muzero.test(render=True, opponent="self", muzero_player=None)
         elif choice == 4:
+            muzero.test(render=True, opponent="human", muzero_player=0)
+        elif choice == 5:
             env = muzero.Game()
             env.reset()
             env.render()

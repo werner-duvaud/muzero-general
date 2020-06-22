@@ -13,7 +13,7 @@ class SharedStorage:
         self.config = config
         self.game_name = game_name
         self.weights = weights
-        self.infos = {
+        self.info = {
             "total_reward": 0,
             "muzero_reward": 0,
             "opponent_reward": 0,
@@ -37,8 +37,8 @@ class SharedStorage:
 
         torch.save(self.weights, path)
 
-    def get_infos(self):
-        return self.infos
+    def get_info(self):
+        return self.info
 
-    def set_infos(self, key, value):
-        self.infos[key] = value
+    def set_info(self, key, value):
+        self.info[key] = value
