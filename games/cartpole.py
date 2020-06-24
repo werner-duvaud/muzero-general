@@ -62,11 +62,11 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 8
-        self.fc_representation_layers = [16]  # Define the hidden layers in the representation network
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
         self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
         self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
-        self.fc_value_layers = [16]  # Define the hidden layers in the value network
-        self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
+        self.fc_value_layers = []  # Define the hidden layers in the value network
+        self.fc_policy_layers = []  # Define the hidden layers in the policy network
 
 
 
@@ -83,7 +83,7 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.05  # Initial learning rate
+        self.lr_init = 0.02  # Initial learning rate
         self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
 
