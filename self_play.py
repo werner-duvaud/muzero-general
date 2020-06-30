@@ -210,7 +210,7 @@ class SelfPlay:
         elif opponent == "random":
             return numpy.random.choice(self.game.legal_actions()), None
         else:
-            raise ValueError(
+            raise NotImplementedError(
                 'Wrong argument: "opponent" argument should be "self", "human", "expert" or "random"'
             )
 
@@ -393,18 +393,26 @@ class MCTS:
         At the end of a simulation, we propagate the evaluation all the way up the tree
         to the root.
         """
-        for node in reversed(search_path):
-            node.value_sum += value if node.to_play == to_play else -value
-            node.visit_count += 1
-            min_max_stats.update(
-                node.reward
-                + self.config.discount
-                * (node.value() if len(self.config.players) == 1 else -node.value())
-            )
+        if len(self.config.players) == 1:
+            for node in reversed(search_path):
+                node.value_sum += value
+                node.visit_count += 1
+                min_max_stats.update(node.reward + self.config.discount * node.value())
 
-            value = (
-                -node.reward if node.to_play == to_play else node.reward
-            ) + self.config.discount * value
+                value = node.reward + self.config.discount * value
+
+        elif len(self.config.players) == 2:
+            for node in reversed(search_path):
+                node.value_sum += value if node.to_play == to_play else -value
+                node.visit_count += 1
+                min_max_stats.update(node.reward + self.config.discount * -node.value())
+
+                value = (
+                    -node.reward if node.to_play == to_play else node.reward
+                ) + self.config.discount * value
+
+        else:
+            raise NotImplementedError("More than two player mode not implemented.")
 
 
 class Node:

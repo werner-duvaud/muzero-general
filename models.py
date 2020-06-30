@@ -36,7 +36,7 @@ class MuZeroNetwork:
                 config.downsample,
             )
         else:
-            raise ValueError(
+            raise NotImplementedError(
                 'The network parameter should be "fullyconnected" or "resnet".'
             )
 
