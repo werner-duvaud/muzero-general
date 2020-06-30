@@ -42,7 +42,7 @@ class Trainer:
                 weight_decay=self.config.weight_decay,
             )
         else:
-            raise ValueError(
+            raise NotImplementedError(
                 "{} is not implemented. You can change the optimizer manually in trainer.py."
             )
 
