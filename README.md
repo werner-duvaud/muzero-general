@@ -1,15 +1,19 @@
 <p>
-<img src="https://img.shields.io/badge/licence-MIT-green">
+<img src="https://img.shields.io/badge/plateform-Linux%20%7C%20Mac%20%7C%20Windows%20(soon)-929292">
+<img src="https://img.shields.io/badge/python-%3E%3D%203.6-0064BF">
 <img src="https://img.shields.io/badge/dependencies-up%20to%20date-brightgreen">
-<a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
+<a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
+<img src="https://img.shields.io/badge/licence-MIT-green">
+<a href="https://discord.gg/GB2vwsF"><img src="https://img.shields.io/badge/discord-join-6E60EF"></a>
 </p>
 
 # MuZero General
 
-A commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) implementation of MuZero based on the Google DeepMind [paper](https://arxiv.org/abs/1911.08265) and the associated [pseudocode](https://arxiv.org/src/1911.08265v2/anc/pseudocode.py).
+A commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) implementation of MuZero based on the Google DeepMind [paper](https://arxiv.org/abs/1911.08265) (Nov 2019) and the associated [pseudocode](https://arxiv.org/src/1911.08265v2/anc/pseudocode.py).
 It is designed to be easily adaptable for every games or reinforcement learning environments (like [gym](https://github.com/openai/gym)). You only need to edit the [game file](https://github.com/werner-duvaud/muzero-general/tree/master/games) with the parameters and the game class. Please refer to the [documentation](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) and the [example](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py).
 
-MuZero is a model based reinforcement learning algorithm, successor of AlphaZero. It learns to master games without knowing the rules. It only knows actions and then learn to play and master the game. It is at least more efficient than similar algorithms like [AlphaZero](https://arxiv.org/abs/1712.01815), [SimPLe](https://arxiv.org/abs/1903.00374) and [World Models](https://worldmodels.github.io). See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works).
+MuZero is a state of the art RL algorithm for board games (Chess, Go, ...) and Atari games.
+It is the successor to [AlphaZero](https://arxiv.org/abs/1712.01815) but without any knowledge of the environment underlying dynamics. MuZero learns a model of the environment and uses an internal representation that contains only the useful information for predicting the reward, value, policy and transitions. MuZero is also close to [Value prediction networks](https://arxiv.org/abs/1707.03497). See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works).
 
 ## Features
 
@@ -24,14 +28,14 @@ MuZero is a model based reinforcement learning algorithm, successor of AlphaZero
 * [x] Easily adaptable for new games
 * [x] [Examples](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py) of board games, Gym and Atari games (See [list of implemented games](https://github.com/werner-duvaud/muzero-general#games-already-implemented))
 * [x] [Pretrained weights](https://github.com/werner-duvaud/muzero-general/tree/master/results) available
-* [ ] Windows support (Workaround: Use the [notebook](https://github.com/werner-duvaud/muzero-general/blob/master/notebook.ipynb) in Google Colab)
+* [ ] Windows support (Experimental / Workaround: Use the [notebook](https://github.com/werner-duvaud/muzero-general/blob/master/notebook.ipynb) in [Google Colab](https://colab.research.google.com))
 
 ### Further improvements
 These improvements are active research, they are personal ideas and go beyond MuZero paper. We are open to contributions and other ideas.
 
-* [ ] [Better hyperparameters tuning and improve stability](https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization)
+* [x] [Hyperparameter search](https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization)
 * [x] [Continuous action space](https://github.com/werner-duvaud/muzero-general/tree/continuous)
-* [x] Tool to understand the learned model
+* [x] [Tool to understand the learned model](https://github.com/werner-duvaud/muzero-general/blob/master/diagnose_model.py)
 * [ ] Support of stochastic environments
 * [ ] Support of more than two player games
 * [ ] RL tricks (Never Give Up,  Adaptive Exploration, ...)

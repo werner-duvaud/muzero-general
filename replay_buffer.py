@@ -19,8 +19,9 @@ class ReplayBuffer:
         self.buffer = {}
         self.game_priorities = collections.deque(maxlen=self.config.window_size)
         self.max_recorded_game_priority = 1.0
-        self.self_play_count = 0
         self.total_samples = 0
+        self.num_played_games = 0
+        self.num_played_steps = 0
 
         # Used only for the Reanalyze options
         self.model = None
@@ -56,19 +57,23 @@ class ReplayBuffer:
 
                 game_history.priorities = numpy.array(priorities, dtype=numpy.float32)
 
-        self.buffer[self.self_play_count] = game_history
+        self.buffer[self.num_played_games] = game_history
         self.total_samples += len(game_history.priorities)
         self.game_priorities.append(numpy.max(game_history.priorities))
 
-        self.self_play_count += 1
+        self.num_played_games += 1
+        self.num_played_steps += len(game_history.observation_history) - 1
 
         if self.config.window_size < len(self.buffer):
-            del_id = self.self_play_count - len(self.buffer)
+            del_id = self.num_played_games - len(self.buffer)
             self.total_samples -= len(self.buffer[del_id].priorities)
             del self.buffer[del_id]
 
-    def get_self_play_count(self):
-        return self.self_play_count
+    def get_info(self):
+        return {
+            "num_played_games": self.num_played_games,
+            "num_played_steps": self.num_played_steps,
+        }
 
     def get_buffer(self):
         return self.buffer
@@ -152,7 +157,7 @@ class ReplayBuffer:
         game_probs /= numpy.sum(game_probs)
         game_index = numpy.random.choice(len(self.buffer), p=game_probs)
         game_prob = game_probs[game_index]
-        game_id = self.self_play_count - len(self.buffer) + game_index
+        game_id = self.num_played_games - len(self.buffer) + game_index
 
         return game_id, self.buffer[game_id], game_prob
 
@@ -172,36 +177,28 @@ class ReplayBuffer:
         Update game and position priorities with priorities calculated during the training.
         See Distributed Prioritized Experience Replay https://arxiv.org/abs/1803.00933
         """
-        min_priorities = numpy.min(priorities)
-        if not min_priorities or numpy.isnan(min_priorities) or min_priorities < 1e-5:
-            print(
-                "Warning : Extreme values ({}) in game priorities. Could be underfitting or overfitting.".format(
-                    min_priorities
+        for i in range(len(index_info)):
+            game_id, game_pos = index_info[i]
+
+            # The element could have been removed since its selection and training
+            if next(iter(self.buffer)) <= game_id:
+                # Update position priorities
+                priority = priorities[i, :]
+                start_index = game_pos
+                end_index = min(
+                    game_pos + len(priority), len(self.buffer[game_id].priorities)
                 )
-            )
-        else:
-            for i in range(len(index_info)):
-                game_id, game_pos = index_info[i]
+                self.buffer[game_id].priorities[start_index:end_index] = priority[
+                    : end_index - start_index
+                ]
 
-                # The element could be removed since its selection and training
-                if game_id in self.buffer:
-                    # Update position priorities
-                    priority = priorities[i, :]
-                    start_index = game_pos
-                    end_index = min(
-                        game_pos + len(priority), len(self.buffer[game_id].priorities)
-                    )
-                    self.buffer[game_id].priorities[start_index:end_index] = priority[
-                        : end_index - start_index
-                    ]
+                # Update game priorities
+                game_index = game_id - (self.num_played_games - len(self.buffer))
+                self.game_priorities[game_index] = numpy.max(
+                    self.buffer[game_id].priorities
+                )  # option: mean, sum, max
 
-                    # Update game priorities
-                    game_index = game_id - (self.self_play_count - len(self.buffer))
-                    self.game_priorities[game_index] = numpy.max(
-                        self.buffer[game_id].priorities
-                    )  # option: mean, sum, max
-
-                    self.max_recorded_game_priority = numpy.max(self.game_priorities)
+                self.max_recorded_game_priority = numpy.max(self.game_priorities)
 
     def compute_target_value(self, game_history, index):
         # The value target is the discounted root value of the search tree td_steps into the
@@ -284,6 +281,6 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
-                actions.append(numpy.random.choice(game_history.action_history))
+                actions.append(numpy.random.choice(self.config.action_space))
 
         return target_values, target_rewards, target_policies, actions

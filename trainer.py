@@ -25,8 +25,11 @@ class Trainer:
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
-        self.model.to(torch.device(config.training_device))
+        self.model.to(torch.device(self.config.training_device))
         self.model.train()
+
+        if "cuda" not in self.config.training_device:
+            print("You are not training on GPU.")
 
         if self.config.optimizer == "SGD":
             self.optimizer = torch.optim.SGD(
@@ -48,11 +51,11 @@ class Trainer:
 
     def continuous_update_weights(self, replay_buffer, shared_storage_worker):
         # Wait for the replay buffer to be filled
-        while ray.get(replay_buffer.get_self_play_count.remote()) < 1:
+        while ray.get(replay_buffer.get_info.remote())["num_played_games"] < 1:
             time.sleep(0.1)
 
         # Training loop
-        while True:
+        while self.training_step < self.config.training_steps:
             index_batch, batch = ray.get(
                 replay_buffer.get_batch.remote(self.model.get_weights())
             )
@@ -86,9 +89,12 @@ class Trainer:
                 time.sleep(self.config.training_delay)
             if self.config.ratio:
                 while (
-                    ray.get(replay_buffer.get_self_play_count.remote())
-                    / max(1, self.training_step)
-                    < self.config.ratio
+                    self.training_step
+                    / max(
+                        1, ray.get(replay_buffer.get_info.remote())["num_played_steps"]
+                    )
+                    > self.config.ratio
+                    and self.training_step < self.config.training_steps
                 ):
                     time.sleep(0.5)
 

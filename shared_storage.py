@@ -9,9 +9,8 @@ class SharedStorage:
     Class which run in a dedicated thread to store the network weights and some information.
     """
 
-    def __init__(self, weights, game_name, config):
+    def __init__(self, weights, config):
         self.config = config
-        self.game_name = game_name
         self.weights = weights
         self.info = {
             "total_reward": 0,
@@ -35,7 +34,8 @@ class SharedStorage:
         if not path:
             path = os.path.join(self.config.results_path, "model.weights")
 
-        torch.save(self.weights, path)
+        if self.config.save_weights:
+            torch.save(self.weights, path)
 
     def get_info(self):
         return self.info
