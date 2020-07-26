@@ -15,9 +15,9 @@ class SelfPlay:
     Class which run in a dedicated thread to play games and save them to the replay-buffer.
     """
 
-    def __init__(self, initial_weights, game, config):
+    def __init__(self, initial_weights, Game, config, seed):
         self.config = config
-        self.game = game
+        self.game = Game(seed)
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -30,7 +30,10 @@ class SelfPlay:
         self.model.eval()
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
-        while True:
+        while (
+            ray.get(shared_storage.get_info.remote())["training_step"]
+            < self.config.training_steps
+        ):
             self.model.set_weights(
                 copy.deepcopy(ray.get(shared_storage.get_weights.remote()))
             )
@@ -75,23 +78,19 @@ class SelfPlay:
                     shared_storage.set_info.remote(
                         "muzero_reward",
                         sum(
-                            [
-                                reward
-                                for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i - 1]
-                                == self.config.muzero_player
-                            ]
+                            reward
+                            for i, reward in enumerate(game_history.reward_history)
+                            if game_history.to_play_history[i - 1]
+                            == self.config.muzero_player
                         ),
                     )
                     shared_storage.set_info.remote(
                         "opponent_reward",
                         sum(
-                            [
-                                reward
-                                for i, reward in enumerate(game_history.reward_history)
-                                if game_history.to_play_history[i - 1]
-                                != self.config.muzero_player
-                            ]
+                            reward
+                            for i, reward in enumerate(game_history.reward_history)
+                            if game_history.to_play_history[i - 1]
+                            != self.config.muzero_player
                         ),
                     )
 
@@ -100,9 +99,13 @@ class SelfPlay:
                 time.sleep(self.config.self_play_delay)
             if not test_mode and self.config.ratio:
                 while (
-                    ray.get(replay_buffer.get_self_play_count.remote())
-                    / max(1, ray.get(shared_storage.get_info.remote())["training_step"])
-                    > self.config.ratio
+                    ray.get(shared_storage.get_info.remote())["training_step"]
+                    / max(
+                        1, ray.get(replay_buffer.get_info.remote())["num_played_steps"]
+                    )
+                    < self.config.ratio
+                    and ray.get(shared_storage.get_info.remote())["training_step"]
+                    < self.config.training_steps
                 ):
                     time.sleep(0.5)
 
@@ -139,7 +142,7 @@ class SelfPlay:
                         stacked_observations,
                         self.game.legal_actions(),
                         self.game.to_play(),
-                        False if temperature == 0 else True,
+                        True,
                     )
                     action = self.select_action(
                         root,
@@ -150,11 +153,9 @@ class SelfPlay:
                     )
 
                     if render:
-                        print("Tree depth: {}".format(mcts_info["max_tree_depth"]))
+                        print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                         print(
-                            "Root value for player {}: {:.2f}".format(
-                                self.game.to_play(), root.value()
-                            )
+                            f"Root value for player {self.game.to_play()}: {root.value():.2f}"
                         )
                 else:
                     action, root = self.select_opponent_action(
@@ -164,9 +165,7 @@ class SelfPlay:
                 observation, reward, done = self.game.step(action)
 
                 if render:
-                    print(
-                        "Played action: {}".format(self.game.action_to_string(action))
-                    )
+                    print(f"Played action: {self.game.action_to_string(action)}")
                     self.game.render()
 
                 game_history.store_search_statistics(root, self.config.action_space)
@@ -190,19 +189,12 @@ class SelfPlay:
                 stacked_observations,
                 self.game.legal_actions(),
                 self.game.to_play(),
-                0,
+                True,
             )
-            print("Tree depth: {}".format(mcts_info["max_tree_depth"]))
+            print(f'Tree depth: {mcts_info["max_tree_depth"]}')
+            print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
             print(
-                "Root value for player {}: {:.2f}".format(
-                    self.game.to_play(), root.value()
-                )
-            )
-            print(
-                "Player {} turn. MuZero suggests {}".format(
-                    self.game.to_play(),
-                    self.game.action_to_string(self.select_action(root, 0)),
-                )
+                "Player {self.game.to_play()} turn. MuZero suggests {self.game.action_to_string(self.select_action(root, 0))}"
             )
             return self.game.human_to_action(), root
         elif opponent == "expert":

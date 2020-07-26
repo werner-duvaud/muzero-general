@@ -77,9 +77,7 @@ class AbstractGame(ABC):
         Returns:
             An integer from the action space.
         """
-        choice = input(
-            "Enter the action to play for the player {}: ".format(self.to_play())
-        )
+        choice = input(f"Enter the action to play for the player {self.to_play()}: ")
         while choice not in [str(action) for action in self.legal_actions()]:
             choice = input("Enter another action : ")
         return int(choice)
@@ -93,7 +91,7 @@ class AbstractGame(ABC):
             Action as an integer to take in the current game state
         """
         raise NotImplementedError
-    
+
     def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.

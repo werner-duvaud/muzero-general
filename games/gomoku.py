@@ -19,8 +19,8 @@ class MuZeroConfig:
 
         ### Game
         self.observation_shape = (3, 11, 11)  # Dimensions of the game observation, must be 3 (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
-        self.action_space = [i for i in range(11 * 11)]  # Fixed list of all possible actions. You should only edit the length
-        self.players = [i for i in range(2)]  # List of players. You should only edit the length
+        self.action_space = list(range(11 * 11))  # Fixed list of all possible actions. You should only edit the length
+        self.players = list(range(2))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
         # Evaluate
@@ -32,7 +32,7 @@ class MuZeroConfig:
         ### Self-Play
         self.num_actors = 2  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = 121  # Maximum number of moves if game is not finished before
-        self.num_simulations = 400  # Number of future moves self-simulated
+        self.num_simulations = 400  # Number of future moves self-simulated, should be higher than the number of actions
         self.discount = 1  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
@@ -73,6 +73,7 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
+        self.save_weights = False  # Save the weights in results_path as model.weights
         self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 512  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 50  # Number of training steps before using the model for self-playing
@@ -107,7 +108,7 @@ class MuZeroConfig:
         ### Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
-        self.ratio = 8  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
+        self.ratio = 1  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
@@ -202,7 +203,7 @@ class Game(AbstractGame):
         while not valid:
             valid, action = self.env.human_input_to_action()
         return action
-    
+
     def action_to_string(self, action):
         """
         Convert an action number to a string representing the action.

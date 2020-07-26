@@ -77,9 +77,7 @@ class Trajectoryinfo:
         print(name, self.prior_policies, "\n")
         plt.figure(self.title + name)
         ax = seaborn.heatmap(
-            self.prior_policies,
-            mask=numpy.isnan(self.prior_policies),
-            annot=True,
+            self.prior_policies, mask=numpy.isnan(self.prior_policies), annot=True,
         )
         ax.set(xlabel="Action", ylabel="Timestep")
         ax.set_title(name)
@@ -228,7 +226,6 @@ class DiagnoseModel:
                 virtual_to_play = self.config.players[0]
 
             # Generate new root
-            # TODO: Test keeping the old root
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                 root.hidden_state,
                 torch.tensor([[action]]).to(root.hidden_state.device),
@@ -252,7 +249,7 @@ class DiagnoseModel:
             )
 
         if plot:
-            self.plot_trajectory(trajectory_info)
+            trajectory_info.plot_trajectory()
 
         return trajectory_info
 
@@ -286,9 +283,7 @@ class DiagnoseModel:
                 action = SelfPlay.select_action(root, 0)
                 if trajectory_divergence_index is None:
                     trajectory_divergence_index = i
-                    real_trajectory_end_reason = "Virtual trajectory reached an illegal move at timestep {}.".format(
-                        trajectory_divergence_index
-                    )
+                    real_trajectory_end_reason = f"Virtual trajectory reached an illegal move at timestep {trajectory_divergence_index}."
 
             observation, reward, done = game.step(action)
             root, mcts_info = MCTS(self.config).run(
@@ -310,6 +305,9 @@ class DiagnoseModel:
             trajectory_divergence_index,
         )
 
+    def close_all(self):
+        plt.close("all")
+
     def plot_mcts(self, root, plot=True):
         """
         Plot the MCTS, pdf file is saved in the current directory.
@@ -317,7 +315,7 @@ class DiagnoseModel:
         try:
             from graphviz import Digraph
         except ModuleNotFoundError:
-            raise ModuleNotFoundError("Please install graphviz to get the MCTS plot")
+            print("Please install graphviz to get the MCTS plot.")
             return None
 
         graph = Digraph(comment="MCTS", engine="neato")
@@ -329,9 +327,7 @@ class DiagnoseModel:
             node_id = id
             graph.node(
                 str(node_id),
-                label="Action: {}\nValue: {:.2f}\nVisit count: {}\nPrior: {:.2f}\nReward: {:.2f}".format(
-                    action, node.value(), node.visit_count, node.prior, node.reward
-                ),
+                label=f"Action: {action}\nValue: {node.value():.2f}\nVisit count: {node.visit_count}\nPrior: {node.prior:.2f}\nReward: {node.reward:.2f}",
                 color="orange" if best else "black",
             )
             id += 1
@@ -345,15 +341,18 @@ class DiagnoseModel:
             else:
                 best = False
             for action, child in node.children.items():
-                traverse(
-                    child,
-                    action,
-                    node_id,
-                    True if best and child.visit_count == best_visit_count else False,
-                )
+                if child.visit_count != 0:
+                    traverse(
+                        child,
+                        action,
+                        node_id,
+                        True
+                        if best and child.visit_count == best_visit_count
+                        else False,
+                    )
 
         traverse(root, None, None, True)
         graph.node(str(0), color="red")
-        print(graph.source)
+        # print(graph.source)
         graph.render("mcts", view=plot, cleanup=True, format="pdf")
         return graph
