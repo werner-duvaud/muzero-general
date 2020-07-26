@@ -405,7 +405,7 @@ if __name__ == "__main__":
             "Render some self play games",
             "Play against MuZero",
             "Test the game manually",
-            "Hyperparameters search",
+            "Hyperparameter search",
             "Exit",
         ]
         print()
