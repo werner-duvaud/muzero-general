@@ -26,7 +26,7 @@ class SelfPlay:
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
-        self.model.to(torch.device("cpu"))
+        self.model.to(torch.device(self.config.selfplay_device))
         self.model.eval()
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
@@ -109,6 +109,8 @@ class SelfPlay:
                 ):
                     time.sleep(0.5)
 
+        self.close_game()
+
     def play_game(
         self, temperature, temperature_threshold, render, opponent, muzero_player
     ):
@@ -131,6 +133,12 @@ class SelfPlay:
             while (
                 not done and len(game_history.action_history) <= self.config.max_moves
             ):
+                assert (
+                    len(numpy.array(observation).shape) == 3
+                ), f"Observation should be 3 dimensionnal instead of {len(numpy.array(observation).shape)} dimensionnal. Got observation of shape: {numpy.array(observation).shape}"
+                assert (
+                    numpy.array(observation).shape == self.config.observation_shape
+                ), f"Observation should match the observation_shape defined in MuZeroConfig. Expected {self.config.observation_shape} but got {numpy.array(observation).shape}."
                 stacked_observations = game_history.get_stacked_observations(
                     -1, self.config.stacked_observations,
                 )
@@ -176,8 +184,10 @@ class SelfPlay:
                 game_history.reward_history.append(reward)
                 game_history.to_play_history.append(self.game.to_play())
 
-        self.game.close()
         return game_history
+
+    def close_game(self):
+        self.game.close()
 
     def select_opponent_action(self, opponent, stacked_observations):
         """
@@ -194,12 +204,19 @@ class SelfPlay:
             print(f'Tree depth: {mcts_info["max_tree_depth"]}')
             print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
             print(
-                "Player {self.game.to_play()} turn. MuZero suggests {self.game.action_to_string(self.select_action(root, 0))}"
+                f"Player {self.game.to_play()} turn. MuZero suggests {self.game.action_to_string(self.select_action(root, 0))}"
             )
             return self.game.human_to_action(), root
         elif opponent == "expert":
             return self.game.expert_agent(), None
         elif opponent == "random":
+            assert (
+                self.game.legal_actions()
+            ), f"Legal actions should not be an empty array. Got {self.game.legal_actions()}."
+            assert set(self.game.legal_actions()).issubset(
+                set(self.config.action_space)
+            ), "Legal actions should be a subset of the action space."
+
             return numpy.random.choice(self.game.legal_actions()), None
         else:
             raise NotImplementedError(
@@ -214,7 +231,7 @@ class SelfPlay:
         in the config.
         """
         visit_counts = numpy.array(
-            [child.visit_count for child in node.children.values()]
+            [child.visit_count for child in node.children.values()], dtype="int32"
         )
         actions = [action for action in node.children.keys()]
         if temperature == 0:
@@ -280,6 +297,12 @@ class MCTS:
                 root_predicted_value, self.config.support_size
             ).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
+            assert (
+                legal_actions
+            ), f"Legal actions should not be an empty array. Got {legal_actions}."
+            assert set(legal_actions).issubset(
+                set(self.config.action_space)
+            ), "Legal actions should be a subset of the action space."
             root.expand(
                 legal_actions, to_play, reward, policy_logits, hidden_state,
             )
@@ -434,17 +457,10 @@ class Node:
         self.reward = reward
         self.hidden_state = hidden_state
 
-        policy = {}
-        for a in actions:
-            try:
-                policy[a] = (
-                    (1 / sum(torch.exp(policy_logits[0] - policy_logits[0][a])))
-                    .detach()
-                    .numpy()
-                )
-            except OverflowError:
-                print("Warning: prior has been approximated")
-                policy[a] = 0.0
+        policy_values = torch.softmax(
+            torch.tensor([policy_logits[0][a] for a in actions]), dim=0
+        ).tolist()
+        policy = {a: policy_values[i] for i, a in enumerate(actions)}
         for action, p in policy.items():
             self.children[action] = Node(p)
 
