@@ -29,7 +29,7 @@ class Trainer:
         self.model.train()
 
         if "cuda" not in self.config.training_device:
-            print("You are not training on GPU.")
+            print("You are not training on GPU.\n")
 
         if self.config.optimizer == "SGD":
             self.optimizer = torch.optim.SGD(
@@ -114,7 +114,7 @@ class Trainer:
         ) = batch
 
         # Keep values as scalars for calculating the priorities for the prioritized replay
-        target_value_scalar = numpy.array(target_value, dtype=numpy.float32)
+        target_value_scalar = numpy.array(target_value, dtype="float32")
         priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device

@@ -30,9 +30,11 @@ class MuZeroConfig:
 
 
         ### Self-Play
-        self.num_actors = 2  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_workers = 2  # Number of simultaneous threads/workers self-playing to feed the replay buffer
+        self.selfplay_device = "cpu"  # "cpu" / "cuda"
+        self.selfplay_num_gpus = 0  # Number of GPUs per actor to use for the selfplay, it can be fractional, don't fortget to take the training worker, the test worker and the other selfplay workers into account. (ex: if you have 1 GPU and num_workers=1 -> selfplay_num_gpus=1/3 because 1/3 for the training, 1/3 for test worker selfplay and 1/3 for this selfplay worker)
         self.max_moves = 121  # Maximum number of moves if game is not finished before
-        self.num_simulations = 400  # Number of future moves self-simulated, should be higher than the number of actions
+        self.num_simulations = 400  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
@@ -78,7 +80,8 @@ class MuZeroConfig:
         self.batch_size = 512  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 50  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
-        self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
+        self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available. "cpu" / "cuda"
+        self.training_num_gpus = 1  # Number of GPUs to use for the training, it can be fractional, don't fortget to take the test worker and the selfplay workers into account
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
@@ -218,7 +221,7 @@ class Game(AbstractGame):
 class Gomoku:
     def __init__(self):
         self.board_size = 11
-        self.board = numpy.zeros((self.board_size, self.board_size)).astype(int)
+        self.board = numpy.zeros((self.board_size, self.board_size), dtype="int32")
         self.player = 1
         self.board_markers = [
             chr(x) for x in range(ord("A"), ord("A") + self.board_size)
@@ -228,7 +231,7 @@ class Gomoku:
         return 0 if self.player == 1 else 1
 
     def reset(self):
-        self.board = numpy.zeros((self.board_size, self.board_size)).astype(int)
+        self.board = numpy.zeros((self.board_size, self.board_size), dtype="int32")
         self.player = 1
         return self.get_observation()
 
@@ -248,7 +251,7 @@ class Gomoku:
     def get_observation(self):
         board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
         board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
-        board_to_play = numpy.full((11, 11), self.player).astype(float)
+        board_to_play = numpy.full((11, 11), self.player, dtype="int32")
         return numpy.array([board_player1, board_player2, board_to_play])
 
     def legal_actions(self):

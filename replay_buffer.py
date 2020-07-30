@@ -55,7 +55,7 @@ class ReplayBuffer:
                     )
                     priorities.append(priority)
 
-                game_history.priorities = numpy.array(priorities, dtype=numpy.float32)
+                game_history.priorities = numpy.array(priorities, dtype="float32")
 
         self.buffer[self.num_played_games] = game_history
         self.total_samples += len(game_history.priorities)
@@ -124,9 +124,7 @@ class ReplayBuffer:
                 * len(actions)
             )
 
-        weight_batch = numpy.array(weight_batch, dtype=numpy.float32) / max(
-            weight_batch
-        )
+        weight_batch = numpy.array(weight_batch, dtype="float32") / max(weight_batch)
 
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1
@@ -153,7 +151,7 @@ class ReplayBuffer:
         Sample game from buffer either uniformly or according to some priority.
         See paper appendix Training.
         """
-        game_probs = numpy.array(self.game_priorities, dtype=numpy.float32)
+        game_probs = numpy.array(self.game_priorities, dtype="float32")
         game_probs /= numpy.sum(game_probs)
         game_index = numpy.random.choice(len(self.buffer), p=game_probs)
         game_prob = game_probs[game_index]

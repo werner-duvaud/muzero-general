@@ -31,7 +31,7 @@ class MuZero:
     Example:
         >>> muzero = MuZero("cartpole")
         >>> muzero.train()
-        >>> muzero.test(render=True, opponent="self", muzero_player=None)
+        >>> muzero.test(render=True)
     """
 
     def __init__(self, game_name, config=None):
@@ -62,7 +62,7 @@ class MuZero:
 
         ray.init(ignore_reinit_error=True)
 
-    def train(self, num_gpus=1, log_in_tensorboard=True):
+    def train(self, log_in_tensorboard=True):
         """
         Spawn ray actors and launch the training.
 
@@ -71,10 +71,13 @@ class MuZero:
 
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.            
         """
-        os.makedirs(self.config.results_path, exist_ok=True)
+        if log_in_tensorboard or self.config.save_weights:
+            os.makedirs(self.config.results_path, exist_ok=True)
         # Initialize workers
         self.training_worker = trainer.Trainer.options(
-            num_gpus=num_gpus if "cuda" in self.config.training_device else 0
+            num_gpus=self.config.training_num_gpus
+            if "cuda" in self.config.training_device
+            else 0
         ).remote(copy.deepcopy(self.muzero_weights), self.config)
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
             copy.deepcopy(self.muzero_weights), self.config,
@@ -88,13 +91,17 @@ class MuZero:
                 )
             print(f"\nLoaded {len(self.replay_buffer)} games from replay buffer.")
         self.self_play_workers = [
-            self_play.SelfPlay.remote(
+            self_play.SelfPlay.options(
+                num_gpus=self.config.selfplay_num_gpus
+                if "cuda" in self.config.selfplay_device
+                else 0
+            ).remote(
                 copy.deepcopy(self.muzero_weights),
                 self.Game,
                 self.config,
                 self.config.seed + seed,
             )
-            for seed in range(self.config.num_actors)
+            for seed in range(self.config.num_workers)
         ]
 
         # Launch workers
@@ -113,7 +120,7 @@ class MuZero:
 
     def terminate(self):
         """
-        Kill the running actors if exists.
+        Kill the running actors if exist.
         """
         print("Shutting down workers ...")
         ray.kill(self.replay_buffer_worker)
@@ -127,11 +134,15 @@ class MuZero:
         Keep track of the training performance.
         """
         # Launch the test worker to get performance metrics
-        test_worker = self_play.SelfPlay.remote(
+        test_worker = self_play.SelfPlay.options(
+            num_gpus=self.config.selfplay_num_gpus
+            if "cuda" in self.config.selfplay_device
+            else 0
+        ).remote(
             copy.deepcopy(self.muzero_weights),
             self.Game,
             self.config,
-            self.config.seed + self.config.num_actors,
+            self.config.seed + self.config.num_workers,
         )
         test_worker.continuous_self_play.remote(self.shared_storage_worker, None, True)
 
@@ -209,8 +220,8 @@ class MuZero:
         except KeyboardInterrupt:
             ray.kill(test_worker)
             ray.kill(self.training_worker)
-            for actor in self.self_play_workers:
-                ray.kill(actor)
+            for worker in self.self_play_workers:
+                ray.kill(worker)
 
         self.muzero_weights = ray.get(self.shared_storage_worker.get_weights.remote())
         self.replay_buffer = ray.get(self.replay_buffer_worker.get_buffer.remote())
@@ -222,7 +233,7 @@ class MuZero:
             open(os.path.join(self.config.results_path, "replay_buffer.pkl"), "wb"),
         )
 
-    def test(self, render, opponent, muzero_player, num_tests=1):
+    def test(self, render, opponent=None, muzero_player=None, num_tests=1):
         """
         Test the model in a dedicated thread.
 
@@ -235,7 +246,11 @@ class MuZero:
             muzero_player (int): Integer with the player number of MuZero in case of multiplayer
             games, None let MuZero play all players turn by turn.
         """
-        self_play_worker = self_play.SelfPlay.remote(
+        self_play_worker = self_play.SelfPlay.options(
+            num_gpus=self.config.selfplay_num_gpus
+            if "cuda" in self.config.selfplay_device
+            else 0
+        ).remote(
             copy.deepcopy(
                 ray.get(self.shared_storage_worker.get_weights.remote())
                 if hasattr(self, "shared_storage_worker")
@@ -251,10 +266,15 @@ class MuZero:
             results.append(
                 ray.get(
                     self_play_worker.play_game.remote(
-                        0, 0, render, opponent, muzero_player
+                        0,
+                        0,
+                        render,
+                        opponent if opponent else self.config.opponent,
+                        muzero_player if muzero_player else self.config.muzero_player,
                     )
                 )
             )
+        ray.get(self_play_worker.close_game.remote())
         return numpy.mean([sum(history.reward_history) for history in results])
 
     def load_model(self, weights_path=None, replay_buffer_path=None):
@@ -300,7 +320,9 @@ class MuZero:
         dm.close_all()
 
 
-def hyperparameter_search(game_name, parametrization, budget, parallel_experiments):
+def hyperparameter_search(
+    game_name, parametrization, budget, parallel_experiments, num_tests
+):
     """
     Search for hyperparameters by launching parallel experiments.
 
@@ -313,6 +335,8 @@ def hyperparameter_search(game_name, parametrization, budget, parallel_experimen
         budget (int): Number of experience to launch in total.
 
         parallel_experiments (int): Number of experience to launch in parallel.
+
+        num_tests (int): Number of games to average for evaluating an experiment.
     """
     optimizer = nevergrad.optimizers.OnePlusOne(
         parametrization=parametrization, budget=budget
@@ -320,20 +344,19 @@ def hyperparameter_search(game_name, parametrization, budget, parallel_experimen
 
     try:
         running_experiments = []
+        best_training = None
+        # Launch initial experiments
         for i in range(parallel_experiments):
             if 0 < budget:
                 param = optimizer.ask()
                 print(f"Launching new experiment: {param.value}")
                 muzero = MuZero(game_name, param.value)
                 muzero.param = param
-                muzero.train(1 / parallel_experiments, False)
+                muzero.train(False)
                 running_experiments.append(muzero)
                 budget -= 1
 
-        while (
-            0 < budget
-            or sum(x is None for x in running_experiments) != parallel_experiments
-        ):
+        while 0 < budget or any(running_experiments):
             for i, experiment in enumerate(running_experiments):
                 if (
                     experiment
@@ -342,16 +365,21 @@ def hyperparameter_search(game_name, parametrization, budget, parallel_experimen
                         "training_step"
                     ]
                 ):
-                    result = experiment.test(
-                        False,
-                        experiment.config.opponent,
-                        experiment.config.muzero_player,
-                        20,
-                    )
+                    result = experiment.test(False, num_tests=num_tests)
+                    if not best_training or best_training["result"] < result:
+                        best_training = {
+                            "result": result,
+                            "config": experiment.config,
+                            "weights": copy.deepcopy(
+                                ray.get(
+                                    experiment.shared_storage_worker.get_weights.remote()
+                                )
+                            ),
+                        }
                     print(f"Parameters: {experiment.param.value}")
                     print(f"Result: {result}")
                     optimizer.tell(experiment.param, -result)
-                    time.sleep(20)
+                    time.sleep(2)
                     experiment.terminate()
 
                     if 0 < budget:
@@ -359,7 +387,7 @@ def hyperparameter_search(game_name, parametrization, budget, parallel_experimen
                         print(f"Launching new experiment: {param.value}")
                         muzero = MuZero(game_name, param.value)
                         muzero.param = param
-                        muzero.train(1 / parallel_experiments, False)
+                        muzero.train(False)
                         running_experiments[i] = muzero
                         budget -= 1
                     else:
@@ -373,6 +401,18 @@ def hyperparameter_search(game_name, parametrization, budget, parallel_experimen
     recommendation = optimizer.provide_recommendation()
     print("Best hyperparameters:")
     print(recommendation.value)
+    # Save best training weights (but it's not the recommended weights)
+    os.makedirs(best_training["config"].results_path, exist_ok=True)
+    torch.save(
+        best_training["weights"],
+        os.path.join(best_training["config"].results_path, "model.weights"),
+    )
+    # Save the recommended hyperparameters
+    text_file = open(
+        os.path.join(best_training["config"].results_path, "best_parameters.txt"), "w"
+    )
+    text_file.write(str(recommendation.value))
+    text_file.close()
     return recommendation.value
 
 
@@ -452,16 +492,14 @@ if __name__ == "__main__":
                 env.render()
         elif choice == 6:
             # Define here the parameters to tune
+            # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
             budget = 50
             parallel_experiments = 2
             lr_init = nevergrad.p.Log(a_min=0.0001, a_max=0.1)
             discount = nevergrad.p.Scalar(lower=0.95, upper=0.9999)
-            parametrization = nevergrad.p.Dict(
-                lr_init=lr_init,
-                discount=discount,
-            )
+            parametrization = nevergrad.p.Dict(lr_init=lr_init, discount=discount)
             best_hyperparameters = hyperparameter_search(
-                game_name, parametrization, budget, parallel_experiments
+                game_name, parametrization, budget, parallel_experiments, 10
             )
             muzero = MuZero(game_name, best_hyperparameters)
         else:

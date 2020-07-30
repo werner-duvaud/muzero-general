@@ -29,9 +29,11 @@ class MuZeroConfig:
 
 
         ### Self-Play
-        self.num_actors = 1  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
+        self.selfplay_device = "cpu"  # "cpu" / "cuda"
+        self.selfplay_num_gpus = 0  # Number of GPUs per actor to use for the selfplay, it can be fractional, don't fortget to take the training worker, the test worker and the other selfplay workers into account. (ex: if you have 1 GPU and num_workers=1 -> selfplay_num_gpus=1/3 because 1/3 for the training, 1/3 for test worker selfplay and 1/3 for this selfplay worker)
         self.max_moves = 42  # Maximum number of moves if game is not finished before
-        self.num_simulations = 200  # Number of future moves self-simulated, should be higher than the number of actions
+        self.num_simulations = 200  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
@@ -56,9 +58,9 @@ class MuZeroConfig:
         self.reduced_channels_reward = 2  # Number of channels in reward head
         self.reduced_channels_value = 2  # Number of channels in value head
         self.reduced_channels_policy = 4  # Number of channels in policy head
-        self.resnet_fc_reward_layers = [32]  # Define the hidden layers in the reward head of the dynamic network
-        self.resnet_fc_value_layers = [32]  # Define the hidden layers in the value head of the prediction network
-        self.resnet_fc_policy_layers = [32]  # Define the hidden layers in the policy head of the prediction network
+        self.resnet_fc_reward_layers = [64]  # Define the hidden layers in the reward head of the dynamic network
+        self.resnet_fc_value_layers = [64]  # Define the hidden layers in the value head of the prediction network
+        self.resnet_fc_policy_layers = [64]  # Define the hidden layers in the policy head of the prediction network
         
         # Fully Connected Network
         self.encoding_size = 32
@@ -77,7 +79,8 @@ class MuZeroConfig:
         self.batch_size = 64  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
-        self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
+        self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available. "cpu" / "cuda"
+        self.training_num_gpus = 1  # Number of GPUs to use for the training, it can be fractional, don't fortget to take the test worker and the selfplay workers into account
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
@@ -218,14 +221,14 @@ class Game(AbstractGame):
 
 class Connect4:
     def __init__(self):
-        self.board = numpy.zeros((6, 7)).astype(int)
+        self.board = numpy.zeros((6, 7), dtype="int32")
         self.player = 1
 
     def to_play(self):
         return 0 if self.player == 1 else 1
 
     def reset(self):
-        self.board = numpy.zeros((6, 7)).astype(int)
+        self.board = numpy.zeros((6, 7), dtype="int32")
         self.player = 1
         return self.get_observation()
 
@@ -246,7 +249,7 @@ class Connect4:
     def get_observation(self):
         board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
         board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
-        board_to_play = numpy.full((6, 7), self.player).astype(float)
+        board_to_play = numpy.full((6, 7), self.player, dtype="int32")
         return numpy.array([board_player1, board_player2, board_to_play])
 
     def legal_actions(self):
