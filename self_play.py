@@ -145,6 +145,8 @@ class SelfPlay:
 
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
+                    root, mcts_info = MCTS(self.config).run_vanilla_mcts(self.game)
+                    """
                     root, mcts_info = MCTS(self.config).run(
                         self.model,
                         stacked_observations,
@@ -152,6 +154,8 @@ class SelfPlay:
                         self.game.to_play(),
                         True,
                     )
+                    """
+                    
                     action = self.select_action(
                         root,
                         temperature
@@ -218,6 +222,10 @@ class SelfPlay:
             ), "Legal actions should be a subset of the action space."
 
             return numpy.random.choice(self.game.legal_actions()), None
+        elif opponent == "MCTS":
+            root, mcts_info = MCTS(self.config).run_vanilla_mcts(self.game)
+
+            return self.select_action(node, 1), root
         else:
             raise NotImplementedError(
                 'Wrong argument: "opponent" argument should be "self", "human", "expert" or "random"'
@@ -358,7 +366,65 @@ class MCTS:
             "max_tree_depth": max_tree_depth,
             "root_predicted_value": root_predicted_value,
         }
+        
         return root, extra_info
+
+
+    def run_vanilla_mcts(game):
+        root = override_root_with
+        min_max_stats = MinMaxStats()
+        max_tree_depth = 0
+        rollout = 25
+
+        for _ in range(self.config.num_simulations_vanilla):
+            virtual_to_play = game.to_play
+            node = root
+            search_path = [node]
+            current_tree_depth = 0
+
+            while node.expanded():
+                current_tree_depth += 1
+                action, node = self.select_child(node, min_max_stats)
+                search_path.append(node)
+
+                if virtual_to_play + 1 < len(self.config.players):
+                    virtual_to_play = self.config.players[virtual_to_play + 1]
+                else:
+                    virtual_to_play = self.config.players[0]
+
+            value = self.rollout(node)
+
+            node.expand(
+                self.config.action_space,
+                virtual_to_play,
+                0,
+                np.ones(self.config.action_space)/ self.config.action_space,
+                deepcopy(game) #todo: this is the hidden state, save a game
+            )
+
+            self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
+
+            max_tree_depth = max(max_tree_depth, current_tree_depth)
+
+        extra_info = {
+            "max_tree_depth": max_tree_depth,
+        }
+
+        return root, extra_info
+
+    def rollout(self, node):
+        for _ in range(self.config.n_rollouts):
+            game = deepcopy(node.hidden_state)
+            done = False
+            v = 0
+
+            while not done:
+                action =  np.random.choice(self.config.action_space, 1)
+                obs, reward, done = game.step(action)
+
+            v += reward
+
+        return v/n_rollouts
 
     def select_child(self, node, min_max_stats):
         """

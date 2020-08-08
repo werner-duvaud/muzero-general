@@ -445,6 +445,7 @@ if __name__ == "__main__":
             "Render some self play games",
             "Play against MuZero",
             "Test the game manually",
+            "Test agaisnt MCTS",
             "Hyperparameter search",
             "Exit",
         ]
@@ -480,6 +481,8 @@ if __name__ == "__main__":
         elif choice == 4:
             muzero.test(render=True, opponent="human", muzero_player=0)
         elif choice == 5:
+            muzero.test(render=True, opponent="MCTS", muzero_player=0)
+        elif choice == 6:
             env = muzero.Game()
             env.reset()
             env.render()
@@ -490,7 +493,7 @@ if __name__ == "__main__":
                 observation, reward, done = env.step(action)
                 print(f"\nAction: {env.action_to_string(action)}\nReward: {reward}")
                 env.render()
-        elif choice == 6:
+        elif choice == 7:
             # Define here the parameters to tune
             # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
             budget = 50
