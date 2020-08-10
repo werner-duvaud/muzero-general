@@ -83,11 +83,17 @@ class MuZero:
             copy.deepcopy(self.muzero_weights), self.config,
         )
         self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(self.config)
+        if self.config.use_last_model_value:
+            self.reanalyse_worker = replay_buffer.Reanalyse.options(
+                num_gpus=self.config.reanalyse_num_gpus
+                if "cuda" in self.config.reanalyse_device
+                else 0
+            ).remote(copy.deepcopy(self.muzero_weights), self.config)
         # Pre-load buffer if pulling from persistent storage
         if self.replay_buffer:
             for game_history_id in self.replay_buffer:
                 self.replay_buffer_worker.save_game.remote(
-                    self.replay_buffer[game_history_id]
+                    self.replay_buffer[game_history_id], self.shared_storage_worker
                 )
             print(f"\nLoaded {len(self.replay_buffer)} games from replay buffer.")
         self.self_play_workers = [
@@ -114,6 +120,10 @@ class MuZero:
         self.training_worker.continuous_update_weights.remote(
             self.replay_buffer_worker, self.shared_storage_worker
         )
+        if self.config.use_last_model_value:
+            self.reanalyse_worker.reanalyse.remote(
+                self.replay_buffer_worker, self.shared_storage_worker
+            )
 
         if log_in_tensorboard:
             self.logging_loop()
@@ -122,10 +132,11 @@ class MuZero:
         """
         Kill the running actors if exist.
         """
-        print("Shutting down workers ...")
+        print("Shutting down workers...")
         ray.kill(self.replay_buffer_worker)
         ray.kill(self.shared_storage_worker)
         ray.kill(self.training_worker)
+        ray.kill(self.reanalyse_worker)
         for worker in self.self_play_workers:
             ray.kill(worker)
 
@@ -172,7 +183,6 @@ class MuZero:
         try:
             while info["training_step"] < self.config.training_steps:
                 info = ray.get(self.shared_storage_worker.get_info.remote())
-                info.update(ray.get(self.replay_buffer_worker.get_info.remote()))
                 writer.add_scalar(
                     "1.Total reward/1.Total reward", info["total_reward"], counter,
                 )
@@ -200,11 +210,16 @@ class MuZero:
                     "2.Workers/3.Self played steps", info["num_played_steps"], counter
                 )
                 writer.add_scalar(
-                    "2.Workers/4.Training steps per self played step ratio",
+                    "2.Workers/4.Reanalysed games",
+                    info["num_reanalysed_games"],
+                    counter,
+                )
+                writer.add_scalar(
+                    "2.Workers/5.Training steps per self played step ratio",
                     info["training_step"] / max(1, info["num_played_steps"]),
                     counter,
                 )
-                writer.add_scalar("2.Workers/5.Learning rate", info["lr"], counter)
+                writer.add_scalar("2.Workers/6.Learning rate", info["lr"], counter)
                 writer.add_scalar(
                     "3.Loss/1.Total weighted loss", info["total_loss"], counter
                 )
@@ -226,12 +241,13 @@ class MuZero:
         self.muzero_weights = ray.get(self.shared_storage_worker.get_weights.remote())
         self.replay_buffer = ray.get(self.replay_buffer_worker.get_buffer.remote())
 
-        # Persist replay buffer to disk
-        print("\n\nPersisting replay buffer games to disk...")
-        pickle.dump(
-            self.replay_buffer,
-            open(os.path.join(self.config.results_path, "replay_buffer.pkl"), "wb"),
-        )
+        if self.config.save_weights:
+            # Persist replay buffer to disk
+            print("\n\nPersisting replay buffer games to disk...")
+            pickle.dump(
+                self.replay_buffer,
+                open(os.path.join(self.config.results_path, "replay_buffer.pkl"), "wb"),
+            )
 
     def test(self, render, opponent=None, muzero_player=None, num_tests=1):
         """
@@ -421,7 +437,9 @@ if __name__ == "__main__":
     # Let user pick a game
     games = [
         filename[:-3]
-        for filename in sorted(os.listdir("./games"))
+        for filename in sorted(
+            os.listdir(os.path.dirname(os.path.realpath(__file__)) + "/games")
+        )
         if filename.endswith(".py") and filename != "abstract_game.py"
     ]
     for i in range(len(games)):

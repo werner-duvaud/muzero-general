@@ -53,7 +53,7 @@ class MuZeroConfig:
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
         
         # Residual Network
-        self.downsample = False  # Downsample observations before representation network (See paper appendix Network Architecture)
+        self.downsample = False  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
         self.blocks = 6  # Number of blocks in the ResNet
         self.channels = 128  # Number of channels in the ResNet
         self.reduced_channels_reward = 2  # Number of channels in reward head
@@ -74,7 +74,7 @@ class MuZeroConfig:
 
 
         ### Training
-        self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
+        self.results_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
         self.save_weights = False  # Save the weights in results_path as model.weights
         self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 512  # Number of parts of games to train on at each training step
@@ -95,16 +95,16 @@ class MuZeroConfig:
 
 
         ### Replay Buffer
-        self.window_size = 10000  # Number of self-play games to keep in the replay buffer
+        self.replay_buffer_size = 10000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 121  # Number of game moves to keep for every batch element
         self.td_steps = 121  # Number of steps in the future to take into account for calculating the target value
-        self.use_last_model_value = False  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
-
-        # Prioritized Replay (See paper appendix Training)
-        self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
-        self.use_max_priority = False  # If False, use the n-step TD error as initial priority. Better for large replay buffer
+        self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
-        self.PER_beta = 1.0
+
+        # Reanalyze (See paper appendix Reanalyse)
+        self.use_last_model_value = False  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+        self.reanalyse_device = "cpu"  # "cpu" / "cuda"
+        self.reanalyse_num_gpus = 0  # Number of GPUs to use for the reanalyse, it can be fractional, don't fortget to take the train worker and the selfplay workers into account
 
 
 
