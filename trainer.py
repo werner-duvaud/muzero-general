@@ -49,16 +49,14 @@ class Trainer:
                 "{} is not implemented. You can change the optimizer manually in trainer.py."
             )
 
-    def continuous_update_weights(self, replay_buffer, shared_storage_worker):
+    def continuous_update_weights(self, replay_buffer, shared_storage):
         # Wait for the replay buffer to be filled
-        while ray.get(replay_buffer.get_info.remote())["num_played_games"] < 1:
+        while ray.get(shared_storage.get_info.remote())["num_played_games"] < 1:
             time.sleep(0.1)
 
         # Training loop
         while self.training_step < self.config.training_steps:
-            index_batch, batch = ray.get(
-                replay_buffer.get_batch.remote(self.model.get_weights())
-            )
+            index_batch, batch = ray.get(replay_buffer.get_batch.remote())
             self.update_lr()
             (
                 priorities,
@@ -74,15 +72,13 @@ class Trainer:
 
             # Save to the shared storage
             if self.training_step % self.config.checkpoint_interval == 0:
-                shared_storage_worker.set_weights.remote(self.model.get_weights())
-            shared_storage_worker.set_info.remote("training_step", self.training_step)
-            shared_storage_worker.set_info.remote(
-                "lr", self.optimizer.param_groups[0]["lr"]
-            )
-            shared_storage_worker.set_info.remote("total_loss", total_loss)
-            shared_storage_worker.set_info.remote("value_loss", value_loss)
-            shared_storage_worker.set_info.remote("reward_loss", reward_loss)
-            shared_storage_worker.set_info.remote("policy_loss", policy_loss)
+                shared_storage.set_weights.remote(self.model.get_weights())
+            shared_storage.set_info.remote("training_step", self.training_step)
+            shared_storage.set_info.remote("lr", self.optimizer.param_groups[0]["lr"])
+            shared_storage.set_info.remote("total_loss", total_loss)
+            shared_storage.set_info.remote("value_loss", value_loss)
+            shared_storage.set_info.remote("reward_loss", reward_loss)
+            shared_storage.set_info.remote("policy_loss", policy_loss)
 
             # Managing the self-play / training ratio
             if self.config.training_delay:
@@ -91,7 +87,7 @@ class Trainer:
                 while (
                     self.training_step
                     / max(
-                        1, ray.get(replay_buffer.get_info.remote())["num_played_steps"]
+                        1, ray.get(shared_storage.get_info.remote())["num_played_steps"]
                     )
                     > self.config.ratio
                     and self.training_step < self.config.training_steps
@@ -118,7 +114,8 @@ class Trainer:
         priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device
-        weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
+        if self.config.PER:
+            weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
         observation_batch = torch.tensor(observation_batch).float().to(device)
         action_batch = torch.tensor(action_batch).float().to(device).unsqueeze(-1)
         target_value = torch.tensor(target_value).float().to(device)
