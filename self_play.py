@@ -145,8 +145,6 @@ class SelfPlay:
 
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
-                    root, mcts_info = MCTS(self.config).run_vanilla_mcts(self.game)
-                    """
                     root, mcts_info = MCTS(self.config).run(
                         self.model,
                         stacked_observations,
@@ -154,8 +152,7 @@ class SelfPlay:
                         self.game.to_play(),
                         True,
                     )
-                    """
-                    
+
                     action = self.select_action(
                         root,
                         temperature
@@ -370,18 +367,36 @@ class MCTS:
         return root, extra_info
 
 
-    def run_vanilla_mcts(game):
-        root = override_root_with
+    def run_vanilla_mcts(self, game):
+        """
+        Runs MCTS without using any network and uses a rollouts to estimate the value of a position.
+        This can only be used with games where we have access to a simulator
+        """
+
+        def uniform_policy(legal_actions):
+            p = numpy.ones(len(self.config.action_space))
+            p[legal_actions] = 1
+            
+            return [p/len(legal_actions)] 
+
+        root = Node(0)
+        root.expand(
+            game.legal_actions(),
+            game.to_play(),
+            0,
+            uniform_policy(game.legal_actions()),
+            game
+        )
         min_max_stats = MinMaxStats()
         max_tree_depth = 0
-        rollout = 25
 
         for _ in range(self.config.num_simulations_vanilla):
-            virtual_to_play = game.to_play
+            virtual_to_play = game.to_play()
             node = root
             search_path = [node]
             current_tree_depth = 0
 
+            expanded_game = copy.deepcopy(game)
             while node.expanded():
                 current_tree_depth += 1
                 action, node = self.select_child(node, min_max_stats)
@@ -392,16 +407,17 @@ class MCTS:
                 else:
                     virtual_to_play = self.config.players[0]
 
-            value = self.rollout(node)
+                _, _, done = expanded_game.step(action)
 
             node.expand(
-                self.config.action_space,
+                expanded_game.legal_actions(),
                 virtual_to_play,
                 0,
-                np.ones(self.config.action_space)/ self.config.action_space,
-                deepcopy(game) #todo: this is the hidden state, save a game
+                uniform_policy(expanded_game.legal_actions()),
+                expanded_game
             )
 
+            value = self.rollout(node,  virtual_to_play)
             self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
@@ -412,19 +428,23 @@ class MCTS:
 
         return root, extra_info
 
-    def rollout(self, node):
+    def rollout(self, node, to_play):
+        """
+
+        """
         for _ in range(self.config.n_rollouts):
-            game = deepcopy(node.hidden_state)
-            done = False
-            v = 0
+            game = copy.deepcopy(node.hidden_state)
+            done = len(game.legal_actions()) == 0
+            v = 0   
+            reward = 0
 
             while not done:
-                action =  np.random.choice(self.config.action_space, 1)
+                action =  numpy.random.choice(game.legal_actions(), 1)
                 obs, reward, done = game.step(action)
 
-            v += reward
+            v += -reward if game.to_play() == to_play else reward
 
-        return v/n_rollouts
+        return v/self.config.n_rollouts
 
     def select_child(self, node, min_max_stats):
         """
@@ -539,92 +559,4 @@ class Node:
         noise = numpy.random.dirichlet([dirichlet_alpha] * len(actions))
         frac = exploration_fraction
         for a, n in zip(actions, noise):
-            self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
-
-
-class GameHistory:
-    """
-    Store only usefull information of a self-play game.
-    """
-
-    def __init__(self):
-        self.observation_history = []
-        self.action_history = []
-        self.reward_history = []
-        self.to_play_history = []
-        self.child_visits = []
-        self.root_values = []
-        self.priorities = None
-
-    def store_search_statistics(self, root, action_space):
-        # Turn visit count from root into a policy
-        if root is not None:
-            sum_visits = sum(child.visit_count for child in root.children.values())
-            self.child_visits.append(
-                [
-                    root.children[a].visit_count / sum_visits
-                    if a in root.children
-                    else 0
-                    for a in action_space
-                ]
-            )
-
-            self.root_values.append(root.value())
-        else:
-            self.root_values.append(None)
-
-    def get_stacked_observations(self, index, num_stacked_observations):
-        """
-        Generate a new observation with the observation at the index position
-        and num_stacked_observations past observations and actions stacked.
-        """
-        # Convert to positive index
-        index = index % len(self.observation_history)
-
-        stacked_observations = self.observation_history[index].copy()
-        for past_observation_index in reversed(
-            range(index - num_stacked_observations, index)
-        ):
-            if 0 <= past_observation_index:
-                previous_observation = numpy.concatenate(
-                    (
-                        self.observation_history[past_observation_index],
-                        [
-                            numpy.ones_like(stacked_observations[0])
-                            * self.action_history[past_observation_index + 1]
-                        ],
-                    )
-                )
-            else:
-                previous_observation = numpy.concatenate(
-                    (
-                        numpy.zeros_like(self.observation_history[index]),
-                        [numpy.zeros_like(stacked_observations[0])],
-                    )
-                )
-
-            stacked_observations = numpy.concatenate(
-                (stacked_observations, previous_observation)
-            )
-
-        return stacked_observations
-
-
-class MinMaxStats:
-    """
-    A class that holds the min-max values of the tree.
-    """
-
-    def __init__(self):
-        self.maximum = -float("inf")
-        self.minimum = float("inf")
-
-    def update(self, value):
-        self.maximum = max(self.maximum, value)
-        self.minimum = min(self.minimum, value)
-
-    def normalize(self, value):
-        if self.maximum > self.minimum:
-            # We normalize only when we have set the maximum and minimum values
-            return (value - self.minimum) / (self.maximum - self.minimum)
-        return value
+            self.ch
