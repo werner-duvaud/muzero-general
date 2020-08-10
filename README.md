@@ -1,6 +1,6 @@
 <p>
 <img src="https://img.shields.io/badge/plateform-Linux%20%7C%20Mac%20%7C%20Windows%20(soon)-929292">
-<img src="https://img.shields.io/badge/python-%3E%3D%203.6-0064BF">
+<img src="https://img.shields.io/badge/python-%3E%3D%203.6-306998">
 <img src="https://img.shields.io/badge/dependencies-up%20to%20date-brightgreen">
 <a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 <img src="https://img.shields.io/badge/licence-MIT-green">
@@ -41,7 +41,7 @@ These improvements are active research, they are personal ideas and go beyond Mu
 
 ## Demo
 
-All performances are tracked and displayed in real time in TensorBoard :
+All performances are tracked and displayed in real time in [TensorBoard](https://www.tensorflow.org/tensorboard) :
 
 ![cartpole training summary](https://github.com/werner-duvaud/muzero-general/blob/master/docs/cartpole-training-summary.png)
 
@@ -66,7 +66,13 @@ Tests are done on Ubuntu with 16 GB RAM / Intel i7 / GTX 1050Ti Max-Q. We make s
 
 ![code structure](https://github.com/werner-duvaud/muzero-general/blob/master/docs/how-it-works-werner-duvaud.png)
 
-See also: [MuZero network summary](https://github.com/werner-duvaud/muzero-general/blob/master/docs/muzero-network-werner-duvaud.png)
+Network summary:
+
+<p align="center">
+<a href="https://github.com/werner-duvaud/muzero-general/blob/master/docs/muzero-network-werner-duvaud.png">
+<img src="https://github.com/werner-duvaud/muzero-general/blob/master/docs/muzero-network-werner-duvaud.png" width="250"/>
+</a>
+</p>
 
 ## Getting started
 ### Installation
@@ -98,7 +104,7 @@ tensorboard --logdir ./results
 Please use this bibtex if you want to cite this repository (master branch) in your publications:
 ```bash
 @misc{muzero-general,
-  author       = {Duvaud, Hainaut},
+  author       = {Werner Duvaud, Aurèle Hainaut},
   title        = {MuZero General: Open Reimplementation of MuZero},
   year         = {2019},
   publisher    = {GitHub},

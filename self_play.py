@@ -51,7 +51,7 @@ class SelfPlay:
                     0,
                 )
 
-                replay_buffer.save_game.remote(game_history)
+                replay_buffer.save_game.remote(game_history, shared_storage)
 
             else:
                 # Take the best action (no exploration) in test mode
@@ -101,7 +101,7 @@ class SelfPlay:
                 while (
                     ray.get(shared_storage.get_info.remote())["training_step"]
                     / max(
-                        1, ray.get(replay_buffer.get_info.remote())["num_played_steps"]
+                        1, ray.get(shared_storage.get_info.remote())["num_played_steps"]
                     )
                     < self.config.ratio
                     and ray.get(shared_storage.get_info.remote())["training_step"]
@@ -488,7 +488,9 @@ class GameHistory:
         self.to_play_history = []
         self.child_visits = []
         self.root_values = []
+        # For PER
         self.priorities = None
+        self.game_priority = None
 
     def store_search_statistics(self, root, action_space):
         # Turn visit count from root into a policy
