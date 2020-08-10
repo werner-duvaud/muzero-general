@@ -1,5 +1,5 @@
-import collections
 import copy
+import time
 
 import numpy
 import ray
@@ -17,32 +17,18 @@ class ReplayBuffer:
     def __init__(self, config):
         self.config = config
         self.buffer = {}
-        self.game_priorities = collections.deque(maxlen=self.config.window_size)
-        self.max_recorded_game_priority = 1.0
         self.total_samples = 0
         self.num_played_games = 0
         self.num_played_steps = 0
 
-        # Used only for the Reanalyze options
-        self.model = None
-        if self.config.use_last_model_value:
-            self.model = models.MuZeroNetwork(self.config)
-            self.model.to(torch.device("cpu"))
-            self.model.eval()
-
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
-        torch.manual_seed(self.config.seed)
 
-    def save_game(self, game_history):
-        if game_history.priorities is not None:
-            # Avoid read only array when loading replay buffer from pickle
-            game_history.priorities = game_history.priorities.copy()
-        else:
-            if self.config.use_max_priority:
-                game_history.priorities = numpy.full(
-                    len(game_history.root_values), self.max_recorded_game_priority
-                )
+    def save_game(self, game_history, shared_storage=None):
+        if self.config.PER:
+            if game_history.priorities is not None:
+                # Avoid read only array when loading replay buffer from disk
+                game_history.priorities = numpy.copy(game_history.priorities)
             else:
                 # Initial priorities for the prioritized replay (See paper appendix Training)
                 priorities = []
@@ -56,29 +42,26 @@ class ReplayBuffer:
                     priorities.append(priority)
 
                 game_history.priorities = numpy.array(priorities, dtype="float32")
+                game_history.game_priority = numpy.max(game_history.priorities)
 
         self.buffer[self.num_played_games] = game_history
-        self.total_samples += len(game_history.priorities)
-        self.game_priorities.append(numpy.max(game_history.priorities))
-
         self.num_played_games += 1
-        self.num_played_steps += len(game_history.observation_history) - 1
+        self.num_played_steps += len(game_history.root_values)
+        self.total_samples += len(game_history.root_values)
 
-        if self.config.window_size < len(self.buffer):
+        if self.config.replay_buffer_size < len(self.buffer):
             del_id = self.num_played_games - len(self.buffer)
-            self.total_samples -= len(self.buffer[del_id].priorities)
+            self.total_samples -= len(self.buffer[del_id].root_values)
             del self.buffer[del_id]
 
-    def get_info(self):
-        return {
-            "num_played_games": self.num_played_games,
-            "num_played_steps": self.num_played_steps,
-        }
+        if shared_storage:
+            shared_storage.set_info.remote("num_played_games", self.num_played_games)
+            shared_storage.set_info.remote("num_played_steps", self.num_played_steps)
 
     def get_buffer(self):
         return self.buffer
 
-    def get_batch(self, model_weights):
+    def get_batch(self):
         (
             index_batch,
             observation_batch,
@@ -86,15 +69,12 @@ class ReplayBuffer:
             reward_batch,
             value_batch,
             policy_batch,
-            weight_batch,
             gradient_scale_batch,
-        ) = ([], [], [], [], [], [], [], [])
-
-        if self.config.use_last_model_value:
-            self.model.set_weights(model_weights)
+        ) = ([], [], [], [], [], [], [])
+        weight_batch = [] if self.config.PER else None
 
         for _ in range(self.config.batch_size):
-            game_id, game_history, game_prob = self.sample_game(self.buffer)
+            game_id, game_history, game_prob = self.sample_game()
             game_pos, pos_prob = self.sample_position(game_history)
 
             values, rewards, policies, actions = self.make_target(
@@ -111,9 +91,6 @@ class ReplayBuffer:
             value_batch.append(values)
             reward_batch.append(rewards)
             policy_batch.append(policies)
-            weight_batch.append(
-                (self.total_samples * game_prob * pos_prob) ** (-self.config.PER_beta)
-            )
             gradient_scale_batch.append(
                 [
                     min(
@@ -123,8 +100,13 @@ class ReplayBuffer:
                 ]
                 * len(actions)
             )
+            if self.config.PER:
+                weight_batch.append(1 / (self.total_samples * game_prob * pos_prob))
 
-        weight_batch = numpy.array(weight_batch, dtype="float32") / max(weight_batch)
+        if self.config.PER:
+            weight_batch = numpy.array(weight_batch, dtype="float32") / max(
+                weight_batch
+            )
 
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1
@@ -146,15 +128,22 @@ class ReplayBuffer:
             ),
         )
 
-    def sample_game(self, buffer):
+    def sample_game(self):
         """
         Sample game from buffer either uniformly or according to some priority.
         See paper appendix Training.
         """
-        game_probs = numpy.array(self.game_priorities, dtype="float32")
-        game_probs /= numpy.sum(game_probs)
-        game_index = numpy.random.choice(len(self.buffer), p=game_probs)
-        game_prob = game_probs[game_index]
+        game_prob = None
+        if self.config.PER:
+            game_probs = numpy.array(
+                [game_history.game_priority for game_history in self.buffer.values()],
+                dtype="float32",
+            )
+            game_probs /= numpy.sum(game_probs)
+            game_index = numpy.random.choice(len(self.buffer), p=game_probs)
+            game_prob = game_probs[game_index]
+        else:
+            game_index = numpy.random.choice(len(self.buffer))
         game_id = self.num_played_games - len(self.buffer) + game_index
 
         return game_id, self.buffer[game_id], game_prob
@@ -164,11 +153,23 @@ class ReplayBuffer:
         Sample position from game either uniformly or according to some priority.
         See paper appendix Training.
         """
-        position_probs = game_history.priorities / sum(game_history.priorities)
-        position_index = numpy.random.choice(len(position_probs), p=position_probs)
-        position_prob = position_probs[position_index]
+        position_prob = None
+        if self.config.PER:
+            position_probs = game_history.priorities / sum(game_history.priorities)
+            position_index = numpy.random.choice(len(position_probs), p=position_probs)
+            position_prob = position_probs[position_index]
+        else:
+            position_index = numpy.random.choice(len(position_probs))
 
         return position_index, position_prob
+
+    def update_game_history(self, game_id, game_history):
+        # The element could have been removed since its selection and update
+        if next(iter(self.buffer)) <= game_id:
+            if self.config.PER:
+                # Avoid read only array when loading replay buffer from disk
+                game_history.priorities = numpy.copy(game_history.priorities)
+            self.buffer[game_id] = game_history
 
     def update_priorities(self, priorities, index_info):
         """
@@ -191,40 +192,21 @@ class ReplayBuffer:
                 ]
 
                 # Update game priorities
-                game_index = game_id - (self.num_played_games - len(self.buffer))
-                self.game_priorities[game_index] = numpy.max(
+                self.buffer[game_id].game_priority = numpy.max(
                     self.buffer[game_id].priorities
-                )  # option: mean, sum, max
-
-                self.max_recorded_game_priority = numpy.max(self.game_priorities)
+                )
 
     def compute_target_value(self, game_history, index):
         # The value target is the discounted root value of the search tree td_steps into the
         # future, plus the discounted sum of all rewards until then.
         bootstrap_index = index + self.config.td_steps
         if bootstrap_index < len(game_history.root_values):
-            if self.config.use_last_model_value:
-                # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
-                observation = (
-                    torch.tensor(
-                        game_history.get_stacked_observations(
-                            bootstrap_index, self.config.stacked_observations
-                        )
-                    )
-                    .float()
-                    .unsqueeze(0)
-                )
-                last_step_value = models.support_to_scalar(
-                    self.model.initial_inference(observation)[0],
-                    self.config.support_size,
-                ).item()
-            else:
-                last_step_value = (
-                    game_history.root_values[bootstrap_index]
-                    if game_history.to_play_history[bootstrap_index]
-                    == game_history.to_play_history[index]
-                    else -game_history.root_values[bootstrap_index]
-                )
+            last_step_value = (
+                game_history.root_values[bootstrap_index]
+                if game_history.to_play_history[bootstrap_index]
+                == game_history.to_play_history[index]
+                else -game_history.root_values[bootstrap_index]
+            )
 
             value = last_step_value * self.config.discount ** self.config.td_steps
         else:
@@ -282,3 +264,65 @@ class ReplayBuffer:
                 actions.append(numpy.random.choice(self.config.action_space))
 
         return target_values, target_rewards, target_policies, actions
+
+
+@ray.remote
+class Reanalyse:
+    """
+    Class which run in a dedicated thread to update the replay buffer with fresh information.
+    See paper appendix Reanalyse.
+    """
+
+    def __init__(self, initial_weights, config):
+        self.config = config
+        self.num_reanalysed_games = 0
+
+        # Fix random generator seed
+        numpy.random.seed(self.config.seed)
+        torch.manual_seed(self.config.seed)
+
+        # Initialize the network
+        self.model = models.MuZeroNetwork(self.config)
+        self.model.set_weights(initial_weights)
+        self.model.to(torch.device(self.config.reanalyse_device))
+        self.model.eval()
+
+    def reanalyse(self, replay_buffer, shared_storage):
+        while ray.get(shared_storage.get_info.remote())["num_played_games"] < 1:
+            time.sleep(0.1)
+
+        while (
+            ray.get(shared_storage.get_info.remote())["training_step"]
+            < self.config.training_steps
+        ):
+            self.model.set_weights(
+                copy.deepcopy(ray.get(shared_storage.get_weights.remote()))
+            )
+
+            game_id, game_history, game_prob = ray.get(
+                replay_buffer.sample_game.remote()
+            )
+
+            # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+            if self.config.use_last_model_value:
+                observations = [
+                    game_history.get_stacked_observations(
+                        i, self.config.stacked_observations
+                    )
+                    for i in range(len(game_history.root_values))
+                ]
+
+            observations = (
+                torch.tensor(observations).float().to(self.config.reanalyse_device)
+            )
+            values = models.support_to_scalar(
+                self.model.initial_inference(observations)[0], self.config.support_size,
+            )
+            for i in range(len(game_history.root_values)):
+                game_history.root_values[i] = values[i].item()
+
+            replay_buffer.update_game_history.remote(game_id, game_history)
+            self.num_reanalysed_games += 1
+            shared_storage.set_info.remote(
+                "num_reanalysed_games", self.num_reanalysed_games
+            )
