@@ -430,8 +430,10 @@ class MCTS:
 
     def rollout(self, node, to_play):
         """
+        Estimates the value of a position through rollouts.
 
         """
+
         for _ in range(self.config.n_rollouts):
             game = copy.deepcopy(node.hidden_state)
             done = len(game.legal_actions()) == 0
