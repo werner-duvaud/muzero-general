@@ -128,13 +128,13 @@ class ReplayBuffer:
             ),
         )
 
-    def sample_game(self):
+    def sample_game(self, force_uniform=False):
         """
         Sample game from buffer either uniformly or according to some priority.
         See paper appendix Training.
         """
         game_prob = None
-        if self.config.PER:
+        if self.config.PER and not force_uniform:
             game_probs = numpy.array(
                 [game_history.game_priority for game_history in self.buffer.values()],
                 dtype="float32",
@@ -148,13 +148,13 @@ class ReplayBuffer:
 
         return game_id, self.buffer[game_id], game_prob
 
-    def sample_position(self, game_history):
+    def sample_position(self, game_history, force_uniform=False):
         """
         Sample position from game either uniformly or according to some priority.
         See paper appendix Training.
         """
         position_prob = None
-        if self.config.PER:
+        if self.config.PER and not force_uniform:
             position_probs = game_history.priorities / sum(game_history.priorities)
             position_index = numpy.random.choice(len(position_probs), p=position_probs)
             position_prob = position_probs[position_index]
@@ -299,8 +299,8 @@ class Reanalyse:
                 copy.deepcopy(ray.get(shared_storage.get_weights.remote()))
             )
 
-            game_id, game_history, game_prob = ray.get(
-                replay_buffer.sample_game.remote()
+            game_id, game_history, _ = ray.get(
+                replay_buffer.sample_game.remote(force_uniform=True)
             )
 
             # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
