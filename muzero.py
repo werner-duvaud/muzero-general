@@ -56,11 +56,21 @@ class MuZero:
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
-        # Weights and replay buffer used to initialize workers
-        self.muzero_weights = models.MuZeroNetwork(self.config).get_weights()
-        self.replay_buffer = None
-
         ray.init(ignore_reinit_error=True)
+
+        # Trick to force DataParallel to stay on CPU
+        @ray.remote(num_gpus=0)
+        def get_initial_weights(config):
+            model = models.MuZeroNetwork(config)
+            weigths = model.get_weights()
+            summary = str(model).replace("\n", " \n\n")
+            return weigths, summary
+
+        # Weights and replay buffer used to initialize workers
+        self.muzero_weights, self.summary = ray.get(
+            get_initial_weights.remote(self.config)
+        )
+        self.replay_buffer = None
 
     def train(self, log_in_tensorboard=True):
         """
@@ -174,8 +184,7 @@ class MuZero:
         )
         # Save model representation
         writer.add_text(
-            "Model summary",
-            str(models.MuZeroNetwork(self.config)).replace("\n", " \n\n"),
+            "Model summary", self.summary,
         )
         # Loop for updating the training performance
         counter = 0
@@ -262,6 +271,8 @@ class MuZero:
             muzero_player (int): Integer with the player number of MuZero in case of multiplayer
             games, None let MuZero play all players turn by turn.
         """
+        opponent = opponent if opponent else self.config.opponent
+        muzero_player = muzero_player if muzero_player else self.config.muzero_player
         self_play_worker = self_play.SelfPlay.options(
             num_gpus=self.config.selfplay_num_gpus
             if "cuda" in self.config.selfplay_device
@@ -282,16 +293,28 @@ class MuZero:
             results.append(
                 ray.get(
                     self_play_worker.play_game.remote(
-                        0,
-                        0,
-                        render,
-                        opponent if opponent else self.config.opponent,
-                        muzero_player if muzero_player else self.config.muzero_player,
+                        0, 0, render, opponent, muzero_player,
                     )
                 )
             )
         ray.get(self_play_worker.close_game.remote())
-        return numpy.mean([sum(history.reward_history) for history in results])
+
+        if len(self.config.players) == 1:
+            result = numpy.mean([sum(history.reward_history) for history in results])
+        else:
+            result = numpy.mean(
+                [
+                    sum(
+                        reward
+                        for i, reward in enumerate(history.reward_history)
+                        if history.to_play_history[i - 1] == muzero_player
+                    )
+                    for history in results
+                ]
+            )
+
+        return result
+
 
     def load_model(self, weights_path=None, replay_buffer_path=None):
         """
@@ -417,18 +440,19 @@ def hyperparameter_search(
     recommendation = optimizer.provide_recommendation()
     print("Best hyperparameters:")
     print(recommendation.value)
-    # Save best training weights (but it's not the recommended weights)
-    os.makedirs(best_training["config"].results_path, exist_ok=True)
-    torch.save(
-        best_training["weights"],
-        os.path.join(best_training["config"].results_path, "model.weights"),
-    )
-    # Save the recommended hyperparameters
-    text_file = open(
-        os.path.join(best_training["config"].results_path, "best_parameters.txt"), "w"
-    )
-    text_file.write(str(recommendation.value))
-    text_file.close()
+    if best_training:
+        # Save best training weights (but it's not the recommended weights)
+        os.makedirs(best_training["config"].results_path, exist_ok=True)
+        torch.save(
+            best_training["weights"],
+            os.path.join(best_training["config"].results_path, "model.weights"),
+        )
+        # Save the recommended hyperparameters
+        text_file = open(
+            os.path.join(best_training["config"].results_path, "best_parameters.txt"), "w"
+        )
+        text_file.write(str(recommendation.value))
+        text_file.close()
     return recommendation.value
 
 
