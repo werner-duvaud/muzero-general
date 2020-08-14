@@ -26,7 +26,7 @@ class SelfPlay:
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
-        self.model.to(torch.device(self.config.selfplay_device))
+        self.model.to(torch.device("cuda" if self.config.selfplay_on_gpu else "cpu"))
         self.model.eval()
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):

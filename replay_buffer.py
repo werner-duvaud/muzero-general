@@ -284,7 +284,7 @@ class Reanalyse:
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
-        self.model.to(torch.device(self.config.reanalyse_device))
+        self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu"))
         self.model.eval()
 
     def reanalyse(self, replay_buffer, shared_storage):
@@ -313,7 +313,9 @@ class Reanalyse:
                 ]
 
             observations = (
-                torch.tensor(observations).float().to(self.config.reanalyse_device)
+                torch.tensor(observations)
+                .float()
+                .to(next(self.model.parameters()).device)
             )
             values = models.support_to_scalar(
                 self.model.initial_inference(observations)[0], self.config.support_size,

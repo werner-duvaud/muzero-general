@@ -14,6 +14,7 @@ class MuZeroConfig:
         # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
 
         self.seed = 0  # Seed for numpy, torch and the game
+        self.max_num_gpus = None  # Fix the maximum number of GPUs to use. By default muzero uses every GPUs available
 
 
 
@@ -31,8 +32,7 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 2  # Number of simultaneous threads/workers self-playing to feed the replay buffer
-        self.selfplay_device = "cpu"  # "cpu" / "cuda"
-        self.selfplay_num_gpus = 0  # Number of GPUs per actor to use for the selfplay, it can be fractional, don't fortget to take the training worker, the test worker and the other selfplay workers into account. (ex: if you have 1 GPU and num_workers=1 -> selfplay_num_gpus=1/3 because 1/3 for the training, 1/3 for test worker selfplay and 1/3 for this selfplay worker)
+        self.selfplay_on_gpu = False
         self.max_moves = 121  # Maximum number of moves if game is not finished before
         self.num_simulations = 400  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
@@ -80,8 +80,7 @@ class MuZeroConfig:
         self.batch_size = 512  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 50  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
-        self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available. "cpu" / "cuda"
-        self.training_num_gpus = 1  # Number of GPUs to use for the training, it can be fractional, don't fortget to take the test worker and the selfplay workers into account
+        self.train_on_gpu = True if torch.cuda.is_available() else False  # Train on GPU if available
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
