@@ -25,10 +25,10 @@ class Trainer:
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_weights)
-        self.model.to(torch.device(self.config.training_device))
+        self.model.to(torch.device("cuda" if self.config.train_on_gpu else "cpu"))
         self.model.train()
 
-        if "cuda" not in self.config.training_device:
+        if not self.config.train_on_gpu:
             print("You are not training on GPU.\n")
 
         if self.config.optimizer == "SGD":

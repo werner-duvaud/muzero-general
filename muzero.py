@@ -1,5 +1,6 @@
 import copy
 import importlib
+import math
 import os
 import pickle
 import time
@@ -27,6 +28,8 @@ class MuZero:
         in the "./games" directory.
 
         config (dict, MuZeroConfig, optional): Override the default config of the game.
+        
+        split_resources_in (int, optional): Split the GPU usage when using concurent muzero instances.
 
     Example:
         >>> muzero = MuZero("cartpole")
@@ -34,7 +37,7 @@ class MuZero:
         >>> muzero.test(render=True)
     """
 
-    def __init__(self, game_name, config=None):
+    def __init__(self, game_name, config=None, split_resources_in=1):
         # Load the game and the config from the module with the game name
         try:
             game_module = importlib.import_module("games." + game_name)
@@ -56,7 +59,16 @@ class MuZero:
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
-        ray.init(ignore_reinit_error=True)
+        total_gpus = (
+            self.config.max_num_gpus
+            if self.config.max_num_gpus is not None
+            else torch.cuda.device_count()
+        )
+        self.num_gpus = total_gpus / split_resources_in
+        if 1 < self.num_gpus:
+            self.num_gpus = math.floor(self.num_gpus)
+
+        ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
 
         # Trick to force DataParallel to stay on CPU
         @ray.remote(num_gpus=0)
@@ -72,6 +84,15 @@ class MuZero:
         )
         self.replay_buffer = None
 
+        # Workers
+        self.self_play_workers = None
+        self.test_worker = None
+        self.training_worker = None
+        self.reanalyse_worker = None
+        self.replay_buffer_worker = None
+        self.shared_storage_worker = None
+        self.self_play_worker = None
+
     def train(self, log_in_tensorboard=True):
         """
         Spawn ray actors and launch the training.
@@ -83,11 +104,23 @@ class MuZero:
         """
         if log_in_tensorboard or self.config.save_weights:
             os.makedirs(self.config.results_path, exist_ok=True)
+
+        # Manage resources
+        if 0 < self.num_gpus:
+            num_gpus_per_worker = self.num_gpus / (
+                self.config.train_on_gpu
+                + self.config.num_workers * self.config.selfplay_on_gpu
+                + log_in_tensorboard * self.config.selfplay_on_gpu
+                + self.config.use_last_model_value * self.config.reanalyse_on_gpu
+            )
+            if 1 < num_gpus_per_worker:
+                num_gpus_per_worker = math.floor(num_gpus_per_worker)
+        else:
+            num_gpus_per_worker = 0
+
         # Initialize workers
         self.training_worker = trainer.Trainer.options(
-            num_gpus=self.config.training_num_gpus
-            if "cuda" in self.config.training_device
-            else 0
+            num_cpus=0, num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(copy.deepcopy(self.muzero_weights), self.config)
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
             copy.deepcopy(self.muzero_weights), self.config,
@@ -95,9 +128,8 @@ class MuZero:
         self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(self.config)
         if self.config.use_last_model_value:
             self.reanalyse_worker = replay_buffer.Reanalyse.options(
-                num_gpus=self.config.reanalyse_num_gpus
-                if "cuda" in self.config.reanalyse_device
-                else 0
+                num_cpus=0,
+                num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
             ).remote(copy.deepcopy(self.muzero_weights), self.config)
         # Pre-load buffer if pulling from persistent storage
         if self.replay_buffer:
@@ -108,9 +140,8 @@ class MuZero:
             print(f"\nLoaded {len(self.replay_buffer)} games from replay buffer.")
         self.self_play_workers = [
             self_play.SelfPlay.options(
-                num_gpus=self.config.selfplay_num_gpus
-                if "cuda" in self.config.selfplay_device
-                else 0
+                num_cpus=0,
+                num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
                 copy.deepcopy(self.muzero_weights),
                 self.Game,
@@ -136,36 +167,26 @@ class MuZero:
             )
 
         if log_in_tensorboard:
-            self.logging_loop()
+            self.logging_loop(
+                num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
+            )
 
-    def terminate(self):
-        """
-        Kill the running actors if exist.
-        """
-        print("Shutting down workers...")
-        ray.kill(self.replay_buffer_worker)
-        ray.kill(self.shared_storage_worker)
-        ray.kill(self.training_worker)
-        ray.kill(self.reanalyse_worker)
-        for worker in self.self_play_workers:
-            ray.kill(worker)
-
-    def logging_loop(self):
+    def logging_loop(self, num_gpus):
         """
         Keep track of the training performance.
         """
         # Launch the test worker to get performance metrics
-        test_worker = self_play.SelfPlay.options(
-            num_gpus=self.config.selfplay_num_gpus
-            if "cuda" in self.config.selfplay_device
-            else 0
+        self.test_worker = self_play.SelfPlay.options(
+            num_cpus=0, num_gpus=num_gpus,
         ).remote(
             copy.deepcopy(self.muzero_weights),
             self.Game,
             self.config,
             self.config.seed + self.config.num_workers,
         )
-        test_worker.continuous_self_play.remote(self.shared_storage_worker, None, True)
+        self.test_worker.continuous_self_play.remote(
+            self.shared_storage_worker, None, True
+        )
 
         # Write everything in TensorBoard
         writer = SummaryWriter(self.config.results_path)
@@ -242,13 +263,12 @@ class MuZero:
                 counter += 1
                 time.sleep(0.5)
         except KeyboardInterrupt:
-            ray.kill(test_worker)
-            ray.kill(self.training_worker)
-            for worker in self.self_play_workers:
-                ray.kill(worker)
+            pass
 
         self.muzero_weights = ray.get(self.shared_storage_worker.get_weights.remote())
         self.replay_buffer = ray.get(self.replay_buffer_worker.get_buffer.remote())
+
+        self.terminate_workers()
 
         if self.config.save_weights:
             # Persist replay buffer to disk
@@ -257,6 +277,35 @@ class MuZero:
                 self.replay_buffer,
                 open(os.path.join(self.config.results_path, "replay_buffer.pkl"), "wb"),
             )
+
+    def terminate_workers(self):
+        """
+        Kill the running workers if exist.
+        """
+        print("\nShutting down workers...")
+        if self.self_play_workers:
+            for worker in self.self_play_workers:
+                ray.kill(worker)
+        if self.test_worker:
+            ray.kill(self.test_worker)
+        if self.training_worker:
+            ray.kill(self.training_worker)
+        if self.reanalyse_worker:
+            ray.kill(self.reanalyse_worker)
+        if self.replay_buffer_worker:
+            ray.kill(self.replay_buffer_worker)
+        if self.shared_storage_worker:
+            ray.kill(self.shared_storage_worker)
+        if self.self_play_worker:
+            ray.kill(self.self_play_worker)
+
+        self.self_play_workers = None
+        self.test_worker = None
+        self.training_worker = None
+        self.reanalyse_worker = None
+        self.replay_buffer_worker = None
+        self.shared_storage_worker = None
+        self.self_play_worker = None
 
     def test(self, render, opponent=None, muzero_player=None, num_tests=1):
         """
@@ -273,16 +322,10 @@ class MuZero:
         """
         opponent = opponent if opponent else self.config.opponent
         muzero_player = muzero_player if muzero_player else self.config.muzero_player
-        self_play_worker = self_play.SelfPlay.options(
-            num_gpus=self.config.selfplay_num_gpus
-            if "cuda" in self.config.selfplay_device
-            else 0
+        self.self_play_worker = self_play.SelfPlay.options(
+            num_cpus=0, num_gpus=self.num_gpus if self.config.selfplay_on_gpu else 0,
         ).remote(
-            copy.deepcopy(
-                ray.get(self.shared_storage_worker.get_weights.remote())
-                if hasattr(self, "shared_storage_worker")
-                else self.muzero_weights
-            ),
+            copy.deepcopy(self.muzero_weights),
             self.Game,
             self.config,
             numpy.random.randint(1000),
@@ -292,12 +335,12 @@ class MuZero:
             print(f"Testing {i+1}/{num_tests}")
             results.append(
                 ray.get(
-                    self_play_worker.play_game.remote(
+                    self.self_play_worker.play_game.remote(
                         0, 0, render, opponent, muzero_player,
                     )
                 )
             )
-        ray.get(self_play_worker.close_game.remote())
+        ray.get(self.self_play_worker.close_game.remote())
 
         if len(self.config.players) == 1:
             result = numpy.mean([sum(history.reward_history) for history in results])
@@ -312,9 +355,8 @@ class MuZero:
                     for history in results
                 ]
             )
-
+        self.terminate_workers()
         return result
-
 
     def load_model(self, weights_path=None, replay_buffer_path=None):
         """
@@ -389,7 +431,7 @@ def hyperparameter_search(
             if 0 < budget:
                 param = optimizer.ask()
                 print(f"Launching new experiment: {param.value}")
-                muzero = MuZero(game_name, param.value)
+                muzero = MuZero(game_name, param.value, parallel_experiments)
                 muzero.param = param
                 muzero.train(False)
                 running_experiments.append(muzero)
@@ -404,27 +446,26 @@ def hyperparameter_search(
                         "training_step"
                     ]
                 ):
+                    weights = ray.get(
+                        experiment.shared_storage_worker.get_weights.remote()
+                    )
+                    time.sleep(2)
+                    experiment.terminate_workers()
                     result = experiment.test(False, num_tests=num_tests)
                     if not best_training or best_training["result"] < result:
                         best_training = {
                             "result": result,
                             "config": experiment.config,
-                            "weights": copy.deepcopy(
-                                ray.get(
-                                    experiment.shared_storage_worker.get_weights.remote()
-                                )
-                            ),
+                            "weights": copy.deepcopy(weights),
                         }
                     print(f"Parameters: {experiment.param.value}")
                     print(f"Result: {result}")
                     optimizer.tell(experiment.param, -result)
-                    time.sleep(2)
-                    experiment.terminate()
 
                     if 0 < budget:
                         param = optimizer.ask()
                         print(f"Launching new experiment: {param.value}")
-                        muzero = MuZero(game_name, param.value)
+                        muzero = MuZero(game_name, param.value, parallel_experiments)
                         muzero.param = param
                         muzero.train(False)
                         running_experiments[i] = muzero
@@ -435,7 +476,7 @@ def hyperparameter_search(
     except KeyboardInterrupt:
         for experiment in running_experiments:
             if isinstance(experiment, MuZero):
-                experiment.terminate()
+                experiment.terminate_workers()
 
     recommendation = optimizer.provide_recommendation()
     print("Best hyperparameters:")
@@ -449,7 +490,8 @@ def hyperparameter_search(
         )
         # Save the recommended hyperparameters
         text_file = open(
-            os.path.join(best_training["config"].results_path, "best_parameters.txt"), "w"
+            os.path.join(best_training["config"].results_path, "best_parameters.txt"),
+            "w",
         )
         text_file.write(str(recommendation.value))
         text_file.close()
@@ -535,7 +577,9 @@ if __name__ == "__main__":
         elif choice == 6:
             # Define here the parameters to tune
             # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
-            budget = 50
+            muzero.terminate_workers()
+            del muzero
+            budget = 20
             parallel_experiments = 2
             lr_init = nevergrad.p.Log(a_min=0.0001, a_max=0.1)
             discount = nevergrad.p.Scalar(lower=0.95, upper=0.9999)
