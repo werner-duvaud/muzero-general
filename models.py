@@ -626,7 +626,7 @@ def mlp(
     return torch.nn.Sequential(*layers)
 
 
-def support_to_scalar(logits, support_size):
+def support_to_scalar(logits, support_size, epsilon=0.001):
     """
     Transform a categorical representation to a scalar
     See paper appendix Network Architecture
@@ -643,20 +643,20 @@ def support_to_scalar(logits, support_size):
 
     # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
     x = torch.sign(x) * (
-        ((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))
+        ((torch.sqrt(1 + 4 * epsilon * (torch.abs(x) + 1 + epsilon)) - 1) / (2 * epsilon))
         ** 2
         - 1
     )
     return x
 
 
-def scalar_to_support(x, support_size):
+def scalar_to_support(x, support_size, epsilon=0.001):
     """
     Transform a scalar to a categorical representation with (2 * support_size + 1) categories
     See paper appendix Network Architecture
     """
     # Reduce the scale (defined in https://arxiv.org/abs/1805.11593)
-    x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + 0.001 * x
+    x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + epsilon * x
 
     # Encode on a vector
     x = torch.clamp(x, -support_size, support_size)

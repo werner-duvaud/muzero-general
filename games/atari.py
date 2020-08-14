@@ -55,6 +55,7 @@ class MuZeroConfig:
         ### Network
         self.network = "resnet"  # "resnet" / "fullyconnected"
         self.support_size = 300  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
+        self.epsilon = 0.001     # scaling function parameter (https://arxiv.org/abs/1805.11593)
 
         # Residual Network
         self.downsample = "resnet"  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)

@@ -129,9 +129,11 @@ class Trainer:
         # target_policy: batch, num_unroll_steps+1, len(action_space)
         # gradient_scale_batch: batch, num_unroll_steps+1
 
-        target_value = models.scalar_to_support(target_value, self.config.support_size)
+        target_value = models.scalar_to_support(
+            target_value, self.config.support_size, self.config.epsilon
+        )
         target_reward = models.scalar_to_support(
-            target_reward, self.config.support_size
+            target_reward, self.config.support_size, self.config.epsilon
         )
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
@@ -166,7 +168,7 @@ class Trainer:
         policy_loss += current_policy_loss
         # Compute priorities for the prioritized replay (See paper appendix Training)
         pred_value_scalar = (
-            models.support_to_scalar(value, self.config.support_size)
+            models.support_to_scalar(value, self.config.support_size, self.config.epsilon)
             .detach()
             .cpu()
             .numpy()
@@ -209,7 +211,7 @@ class Trainer:
 
             # Compute priorities for the prioritized replay (See paper appendix Training)
             pred_value_scalar = (
-                models.support_to_scalar(value, self.config.support_size)
+                models.support_to_scalar(value, self.config.support_size, self.config.epsilon)
                 .detach()
                 .cpu()
                 .numpy()

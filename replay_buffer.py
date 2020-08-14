@@ -316,7 +316,7 @@ class Reanalyse:
                 torch.tensor(observations).float().to(self.config.reanalyse_device)
             )
             values = models.support_to_scalar(
-                self.model.initial_inference(observations)[0], self.config.support_size,
+                self.model.initial_inference(observations)[0], self.config.support_size, self.config.epsilon
             )
             for i in range(len(game_history.root_values)):
                 game_history.root_values[i] = values[i].item()

@@ -230,8 +230,8 @@ class DiagnoseModel:
                 root.hidden_state,
                 torch.tensor([[action]]).to(root.hidden_state.device),
             )
-            value = models.support_to_scalar(value, self.config.support_size).item()
-            reward = models.support_to_scalar(reward, self.config.support_size).item()
+            value = models.support_to_scalar(value, self.config.support_size, self.config.epsilon).item()
+            reward = models.support_to_scalar(reward, self.config.support_size, self.config.epsilon).item()
             root = Node(0)
             root.expand(
                 self.config.action_space,
