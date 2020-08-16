@@ -159,7 +159,7 @@ class ReplayBuffer:
             position_index = numpy.random.choice(len(position_probs), p=position_probs)
             position_prob = position_probs[position_index]
         else:
-            position_index = numpy.random.choice(len(position_probs))
+            position_index = numpy.random.choice(len(game_history.root_values))
 
         return position_index, position_prob
 
