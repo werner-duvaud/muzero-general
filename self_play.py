@@ -179,6 +179,8 @@ class SelfPlay:
                 game_history.store_search_statistics(root, self.config.action_space)
 
                 # Next batch
+                # Current player has changed. The action was made by previous player,
+                # and the reward is from the perspective of previous player.
                 game_history.action_history.append(action)
                 game_history.observation_history.append(observation)
                 game_history.reward_history.append(reward)
@@ -434,13 +436,19 @@ class MCTS:
 
 class Node:
     def __init__(self, prior):
-        self.visit_count = 0
-        self.to_play = -1
+        # P(s,a) : prior probability
         self.prior = prior
+        # R(s,a) : reward of previous action made by previous player
+        self.reward = 0
+        # N(s,a)
+        self.visit_count = 0
+        # S(s,a) : hidden state transition (s,a)->s'
+        self.hidden_state = None
+        # current player
+        self.to_play = -1
+        # V(s') : cumulative value of hidden state s'
         self.value_sum = 0
         self.children = {}
-        self.hidden_state = None
-        self.reward = 0
 
     def expanded(self):
         return len(self.children) > 0
@@ -462,9 +470,8 @@ class Node:
         policy_values = torch.softmax(
             torch.tensor([policy_logits[0][a] for a in actions]), dim=0
         ).tolist()
-        policy = {a: policy_values[i] for i, a in enumerate(actions)}
-        for action, p in policy.items():
-            self.children[action] = Node(p)
+        for i in range(len(actions)):
+            self.children[actions[i]] = Node(policy_values[i])
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """

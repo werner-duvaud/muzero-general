@@ -197,30 +197,29 @@ class ReplayBuffer:
                 )
 
     def compute_target_value(self, game_history, index):
-        # The value target is the discounted root value of the search tree td_steps into the
-        # future, plus the discounted sum of all rewards until then.
+        '''
+        The value target is the discounted root value of the search tree td_steps into the
+        future, plus the discounted sum of all rewards until then.
+        '''
         bootstrap_index = index + self.config.td_steps
         if bootstrap_index < len(game_history.root_values):
-            last_step_value = (
+            value = (
                 game_history.root_values[bootstrap_index]
                 if game_history.to_play_history[bootstrap_index]
                 == game_history.to_play_history[index]
                 else -game_history.root_values[bootstrap_index]
             )
-
-            value = last_step_value * self.config.discount ** self.config.td_steps
         else:
             value = 0
+            bootstrap_index = len(game_history.root_values) - 1
 
-        for i, reward in enumerate(
-            game_history.reward_history[index + 1 : bootstrap_index + 1]
-        ):
-            value += (
-                reward
-                if game_history.to_play_history[index]
-                == game_history.to_play_history[index + 1 + i]
-                else -reward
-            ) * self.config.discount ** i
+        for i in range(bootstrap_index, index, -1):
+            reward = game_history.reward_history[i]
+            if game_history.to_play_history[index] != game_history.to_play_history[i-1]:
+                # action_history[i] and reward_history[i] are both from the perspective of player to_play_history[i-1]
+                # switch reward_history[i] to the perspective of player to_play_history[index]
+                reward = -reward
+            value = reward + self.config.discount * value
 
         return value
 
