@@ -193,13 +193,12 @@ class DiagnoseModel:
         config: configuration class instance related to the weights.
     """
 
-    def __init__(self, weights, config):
+    def __init__(self, checkpoint, config):
         self.config = config
 
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
-        self.model.set_weights(weights)
-        self.model.to(torch.device("cpu"))
+        self.model.set_weights(checkpoint["weights"])
         self.model.eval()
 
     def get_virtual_trajectory_from_obs(
