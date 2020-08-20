@@ -1,4 +1,3 @@
-import copy
 import time
 
 import numpy
@@ -273,9 +272,8 @@ class Reanalyse:
     See paper appendix Reanalyse.
     """
 
-    def __init__(self, initial_weights, config):
+    def __init__(self, initial_checkpoint, config):
         self.config = config
-        self.num_reanalysed_games = 0
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -283,21 +281,22 @@ class Reanalyse:
 
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
-        self.model.set_weights(initial_weights)
+        self.model.set_weights(initial_checkpoint["weights"])
         self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu"))
         self.model.eval()
 
+        self.num_reanalysed_games = initial_checkpoint["num_reanalysed_games"]
+
     def reanalyse(self, replay_buffer, shared_storage):
-        while ray.get(shared_storage.get_info.remote())["num_played_games"] < 1:
+        while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
             time.sleep(0.1)
 
-        while (
-            ray.get(shared_storage.get_info.remote())["training_step"]
-            < self.config.training_steps
+        while ray.get(
+            shared_storage.get_info.remote("training_step")
+        ) < self.config.training_steps and not ray.get(
+            shared_storage.get_info.remote("terminate")
         ):
-            self.model.set_weights(
-                copy.deepcopy(ray.get(shared_storage.get_weights.remote()))
-            )
+            self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             game_id, game_history, _ = ray.get(
                 replay_buffer.sample_game.remote(force_uniform=True)
@@ -312,16 +311,17 @@ class Reanalyse:
                     for i in range(len(game_history.root_values))
                 ]
 
-            observations = (
-                torch.tensor(observations)
-                .float()
-                .to(next(self.model.parameters()).device)
-            )
-            values = models.support_to_scalar(
-                self.model.initial_inference(observations)[0], self.config.support_size,
-            )
-            for i in range(len(game_history.root_values)):
-                game_history.root_values[i] = values[i].item()
+                observations = (
+                    torch.tensor(observations)
+                    .float()
+                    .to(next(self.model.parameters()).device)
+                )
+                values = models.support_to_scalar(
+                    self.model.initial_inference(observations)[0],
+                    self.config.support_size,
+                )
+                for i in range(len(game_history.root_values)):
+                    game_history.root_values[i] = values[i].item()
 
             replay_buffer.update_game_history.remote(game_id, game_history)
             self.num_reanalysed_games += 1

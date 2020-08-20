@@ -1,8 +1,8 @@
-import copy
 import importlib
 import math
 import os
 import pickle
+import sys
 import time
 
 import nevergrad
@@ -28,7 +28,7 @@ class MuZero:
         in the "./games" directory.
 
         config (dict, MuZeroConfig, optional): Override the default config of the game.
-        
+
         split_resources_in (int, optional): Split the GPU usage when using concurent muzero instances.
 
     Example:
@@ -70,19 +70,39 @@ class MuZero:
 
         ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
 
-        # Trick to force DataParallel to stay on CPU
-        @ray.remote(num_gpus=0)
+        # Checkpoint and replay buffer used to initialize workers
+        self.checkpoint = {
+            "weights": None,
+            "optimizer_state": None,
+            "total_reward": 0,
+            "muzero_reward": 0,
+            "opponent_reward": 0,
+            "episode_length": 0,
+            "mean_value": 0,
+            "training_step": 0,
+            "lr": 0,
+            "total_loss": 0,
+            "value_loss": 0,
+            "reward_loss": 0,
+            "policy_loss": 0,
+            "num_played_games": 0,
+            "num_played_steps": 0,
+            "num_reanalysed_games": 0,
+            "terminate": False,
+        }
+        self.replay_buffer = None
+
+        # Trick to avoid using GPU
+        @ray.remote(num_cpus=0, num_gpus=0)
         def get_initial_weights(config):
             model = models.MuZeroNetwork(config)
             weigths = model.get_weights()
             summary = str(model).replace("\n", " \n\n")
             return weigths, summary
 
-        # Weights and replay buffer used to initialize workers
-        self.muzero_weights, self.summary = ray.get(
+        self.checkpoint["weights"], self.summary = ray.get(
             get_initial_weights.remote(self.config)
         )
-        self.replay_buffer = None
 
         # Workers
         self.self_play_workers = None
@@ -102,7 +122,7 @@ class MuZero:
 
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.            
         """
-        if log_in_tensorboard or self.config.save_weights:
+        if log_in_tensorboard or self.config.save_model:
             os.makedirs(self.config.results_path, exist_ok=True)
 
         # Manage resources
@@ -121,16 +141,17 @@ class MuZero:
         # Initialize workers
         self.training_worker = trainer.Trainer.options(
             num_cpus=0, num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
-        ).remote(copy.deepcopy(self.muzero_weights), self.config)
+        ).remote(self.checkpoint, self.config)
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
-            copy.deepcopy(self.muzero_weights), self.config,
+            self.checkpoint, self.config,
         )
+        self.shared_storage_worker.set_info.remote("terminate", False)
         self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(self.config)
         if self.config.use_last_model_value:
             self.reanalyse_worker = replay_buffer.Reanalyse.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
-            ).remote(copy.deepcopy(self.muzero_weights), self.config)
+            ).remote(self.checkpoint, self.config)
         # Pre-load buffer if pulling from persistent storage
         if self.replay_buffer:
             for game_history_id in self.replay_buffer:
@@ -143,10 +164,7 @@ class MuZero:
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
-                copy.deepcopy(self.muzero_weights),
-                self.Game,
-                self.config,
-                self.config.seed + seed,
+                self.checkpoint, self.Game, self.config, self.config.seed + seed,
             )
             for seed in range(self.config.num_workers)
         ]
@@ -179,7 +197,7 @@ class MuZero:
         self.test_worker = self_play.SelfPlay.options(
             num_cpus=0, num_gpus=num_gpus,
         ).remote(
-            copy.deepcopy(self.muzero_weights),
+            self.checkpoint,
             self.Game,
             self.config,
             self.config.seed + self.config.num_workers,
@@ -209,10 +227,26 @@ class MuZero:
         )
         # Loop for updating the training performance
         counter = 0
-        info = ray.get(self.shared_storage_worker.get_info.remote())
+        keys = [
+            "total_reward",
+            "muzero_reward",
+            "opponent_reward",
+            "episode_length",
+            "mean_value",
+            "training_step",
+            "lr",
+            "total_loss",
+            "value_loss",
+            "reward_loss",
+            "policy_loss",
+            "num_played_games",
+            "num_played_steps",
+            "num_reanalysed_games",
+        ]
+        info = ray.get(self.shared_storage_worker.get_info.remote(keys))
         try:
             while info["training_step"] < self.config.training_steps:
-                info = ray.get(self.shared_storage_worker.get_info.remote())
+                info = ray.get(self.shared_storage_worker.get_info.remote(keys))
                 writer.add_scalar(
                     "1.Total reward/1.Total reward", info["total_reward"], counter,
                 )
@@ -265,12 +299,9 @@ class MuZero:
         except KeyboardInterrupt:
             pass
 
-        self.muzero_weights = ray.get(self.shared_storage_worker.get_weights.remote())
-        self.replay_buffer = ray.get(self.replay_buffer_worker.get_buffer.remote())
-
         self.terminate_workers()
 
-        if self.config.save_weights:
+        if self.config.save_model:
             # Persist replay buffer to disk
             print("\n\nPersisting replay buffer games to disk...")
             pickle.dump(
@@ -280,24 +311,17 @@ class MuZero:
 
     def terminate_workers(self):
         """
-        Kill the running workers if exist.
+        Softly terminate the running tasks and garbage collect the workers.
         """
-        print("\nShutting down workers...")
-        if self.self_play_workers:
-            for worker in self.self_play_workers:
-                ray.kill(worker)
-        if self.test_worker:
-            ray.kill(self.test_worker)
-        if self.training_worker:
-            ray.kill(self.training_worker)
-        if self.reanalyse_worker:
-            ray.kill(self.reanalyse_worker)
-        if self.replay_buffer_worker:
-            ray.kill(self.replay_buffer_worker)
         if self.shared_storage_worker:
-            ray.kill(self.shared_storage_worker)
-        if self.self_play_worker:
-            ray.kill(self.self_play_worker)
+            self.shared_storage_worker.set_info.remote("terminate", True)
+            self.checkpoint = ray.get(
+                self.shared_storage_worker.get_checkpoint.remote()
+            )
+        if self.replay_buffer_worker:
+            self.replay_buffer = ray.get(self.replay_buffer_worker.get_buffer.remote())
+
+        print("\nShutting down workers...")
 
         self.self_play_workers = None
         self.test_worker = None
@@ -317,19 +341,16 @@ class MuZero:
             opponent (str): "self" for self-play, "human" for playing against MuZero and "random"
             for a random agent.
 
-            muzero_player (int): Integer with the player number of MuZero in case of multiplayer
+            muzero_player (int): Player number of MuZero in case of multiplayer
             games, None let MuZero play all players turn by turn.
+
+            num_tests (int): Number of games to average.
         """
         opponent = opponent if opponent else self.config.opponent
         muzero_player = muzero_player if muzero_player else self.config.muzero_player
         self.self_play_worker = self_play.SelfPlay.options(
             num_cpus=0, num_gpus=self.num_gpus if self.config.selfplay_on_gpu else 0,
-        ).remote(
-            copy.deepcopy(self.muzero_weights),
-            self.Game,
-            self.config,
-            numpy.random.randint(1000),
-        )
+        ).remote(self.checkpoint, self.Game, self.config, numpy.random.randint(10000))
         results = []
         for i in range(num_tests):
             print(f"Testing {i+1}/{num_tests}")
@@ -340,7 +361,7 @@ class MuZero:
                     )
                 )
             )
-        ray.get(self.self_play_worker.close_game.remote())
+        self.self_play_worker.close_game.remote()
 
         if len(self.config.players) == 1:
             result = numpy.mean([sum(history.reward_history) for history in results])
@@ -358,22 +379,22 @@ class MuZero:
         self.terminate_workers()
         return result
 
-    def load_model(self, weights_path=None, replay_buffer_path=None):
+    def load_model(self, checkpoint_path=None, replay_buffer_path=None):
         """
         Load a model and/or a saved replay buffer.
 
         Args:
-            weights_path (str): Path to model.weights.
+            checkpoint_path (str): Path to model.checkpoint or model.weights.
 
             replay_buffer_path (str): Path to replay_buffer.pkl
         """
-        # Load weights
-        if weights_path:
-            if os.path.exists(weights_path):
-                self.muzero_weights = torch.load(weights_path)
-                print(f"\nUsing weights from {weights_path}")
+        # Load checkpoint
+        if checkpoint_path:
+            if os.path.exists(checkpoint_path):
+                self.checkpoint = torch.load(checkpoint_path)
+                print(f"\nUsing checkpoint from {checkpoint_path}")
             else:
-                print(f"\nThere is no model saved in {weights_path}.")
+                print(f"\nThere is no model saved in {checkpoint_path}.")
 
         # Load replay buffer
         if replay_buffer_path:
@@ -384,6 +405,10 @@ class MuZero:
                 print(
                     f"Warning: Replay buffer path '{replay_buffer_path}' doesn't exist.  Using empty buffer."
                 )
+                self.checkpoint["training_step"] = 0
+                self.checkpoint["num_played_steps"] = 0
+                self.checkpoint["num_played_games"] = 0
+                self.checkpoint["num_reanalysed_games"] = 0
 
     def diagnose_model(self, horizon):
         """
@@ -395,7 +420,7 @@ class MuZero:
         """
         game = self.Game(self.config.seed)
         obs = game.reset()
-        dm = diagnose_model.DiagnoseModel(self.muzero_weights, self.config)
+        dm = diagnose_model.DiagnoseModel(self.checkpoint, self.config)
         dm.compare_virtual_with_real_trajectories(obs, game, horizon)
         input("Press enter to close all plots")
         dm.close_all()
@@ -423,9 +448,9 @@ def hyperparameter_search(
         parametrization=parametrization, budget=budget
     )
 
+    running_experiments = []
+    best_training = None
     try:
-        running_experiments = []
-        best_training = None
         # Launch initial experiments
         for i in range(parallel_experiments):
             if 0 < budget:
@@ -439,24 +464,16 @@ def hyperparameter_search(
 
         while 0 < budget or any(running_experiments):
             for i, experiment in enumerate(running_experiments):
-                if (
-                    experiment
-                    and experiment.config.training_steps
-                    <= ray.get(experiment.shared_storage_worker.get_info.remote())[
-                        "training_step"
-                    ]
+                if experiment and experiment.config.training_steps <= ray.get(
+                    experiment.shared_storage_worker.get_info.remote("training_step")
                 ):
-                    weights = ray.get(
-                        experiment.shared_storage_worker.get_weights.remote()
-                    )
-                    time.sleep(2)
                     experiment.terminate_workers()
                     result = experiment.test(False, num_tests=num_tests)
                     if not best_training or best_training["result"] < result:
                         best_training = {
                             "result": result,
                             "config": experiment.config,
-                            "weights": copy.deepcopy(weights),
+                            "checkpoint": experiment.checkpoint,
                         }
                     print(f"Parameters: {experiment.param.value}")
                     print(f"Result: {result}")
@@ -485,8 +502,8 @@ def hyperparameter_search(
         # Save best training weights (but it's not the recommended weights)
         os.makedirs(best_training["config"].results_path, exist_ok=True)
         torch.save(
-            best_training["weights"],
-            os.path.join(best_training["config"].results_path, "model.weights"),
+            best_training["checkpoint"],
+            os.path.join(best_training["config"].results_path, "model.checkpoint"),
         )
         # Save the recommended hyperparameters
         text_file = open(
@@ -499,113 +516,105 @@ def hyperparameter_search(
 
 
 if __name__ == "__main__":
-    print("\nWelcome to MuZero! Here's a list of games:")
-    # Let user pick a game
-    games = [
-        filename[:-3]
-        for filename in sorted(
-            os.listdir(os.path.dirname(os.path.realpath(__file__)) + "/games")
-        )
-        if filename.endswith(".py") and filename != "abstract_game.py"
-    ]
-    for i in range(len(games)):
-        print(f"{i}. {games[i]}")
-    choice = input("Enter a number to choose the game: ")
-    valid_inputs = [str(i) for i in range(len(games))]
-    while choice not in valid_inputs:
-        choice = input("Invalid input, enter a number listed above: ")
-
-    # Initialize MuZero
-    choice = int(choice)
-    game_name = games[choice]
-    muzero = MuZero(game_name)
-
-    while True:
-        # Configure running options
-        options = [
-            "Train",
-            "Load pretrained model",
-            "Diagnose model",
-            "Render some self play games",
-            "Play against MuZero",
-            "Test the game manually",
-            "Hyperparameter search",
-            "Exit",
+    if len(sys.argv) == 2:
+        # Train directly with "python muzero.py cartpole"
+        muzero = MuZero(sys.argv[1])
+        muzero.train()
+    else:
+        print("\nWelcome to MuZero! Here's a list of games:")
+        # Let user pick a game
+        games = [
+            filename[:-3]
+            for filename in sorted(
+                os.listdir(os.path.dirname(os.path.realpath(__file__)) + "/games")
+            )
+            if filename.endswith(".py") and filename != "abstract_game.py"
         ]
-        print()
-        for i in range(len(options)):
-            print(f"{i}. {options[i]}")
-
-        choice = input("Enter a number to choose an action: ")
-        valid_inputs = [str(i) for i in range(len(options))]
+        for i in range(len(games)):
+            print(f"{i}. {games[i]}")
+        choice = input("Enter a number to choose the game: ")
+        valid_inputs = [str(i) for i in range(len(games))]
         while choice not in valid_inputs:
             choice = input("Invalid input, enter a number listed above: ")
-        choice = int(choice)
-        if choice == 0:
-            muzero.train()
-        elif choice == 1:
-            weights_path = input(
-                "Enter a path to the model.weights, or ENTER if none: "
-            )
-            while weights_path and not os.path.isfile(weights_path):
-                weights_path = input("Invalid weights path. Try again: ")
-            replay_buffer_path = input(
-                "Enter path for existing replay buffer, or ENTER if none: "
-            )
-            while replay_buffer_path and not os.path.isfile(replay_buffer_path):
-                replay_buffer_path = input("Invalid replay buffer path. Try again: ")
-            muzero.load_model(
-                weights_path=weights_path, replay_buffer_path=replay_buffer_path
-            )
-        elif choice == 2:
-            muzero.diagnose_model(30)
-        elif choice == 3:
-            muzero.test(render=True, opponent="self", muzero_player=None)
-        elif choice == 4:
-            muzero.test(render=True, opponent="human", muzero_player=0)
-        elif choice == 5:
-            env = muzero.Game()
-            env.reset()
-            env.render()
 
-            done = False
-            while not done:
-                action = env.human_to_action()
-                observation, reward, done = env.step(action)
-                print(f"\nAction: {env.action_to_string(action)}\nReward: {reward}")
+        # Initialize MuZero
+        choice = int(choice)
+        game_name = games[choice]
+        muzero = MuZero(game_name)
+
+        while True:
+            # Configure running options
+            options = [
+                "Train",
+                "Load pretrained model",
+                "Diagnose model",
+                "Render some self play games",
+                "Play against MuZero",
+                "Test the game manually",
+                "Hyperparameter search",
+                "Exit",
+            ]
+            print()
+            for i in range(len(options)):
+                print(f"{i}. {options[i]}")
+
+            choice = input("Enter a number to choose an action: ")
+            valid_inputs = [str(i) for i in range(len(options))]
+            while choice not in valid_inputs:
+                choice = input("Invalid input, enter a number listed above: ")
+            choice = int(choice)
+            if choice == 0:
+                muzero.train()
+            elif choice == 1:
+                checkpoint_path = input(
+                    "Enter a path to the model.checkpoint, or ENTER if none: "
+                )
+                while checkpoint_path and not os.path.isfile(checkpoint_path):
+                    checkpoint_path = input("Invalid model path. Try again: ")
+                replay_buffer_path = input(
+                    "Enter path for existing replay buffer, or ENTER if none: "
+                )
+                while replay_buffer_path and not os.path.isfile(replay_buffer_path):
+                    replay_buffer_path = input(
+                        "Invalid replay buffer path. Try again: "
+                    )
+                muzero.load_model(
+                    checkpoint_path=checkpoint_path,
+                    replay_buffer_path=replay_buffer_path,
+                )
+            elif choice == 2:
+                muzero.diagnose_model(30)
+            elif choice == 3:
+                muzero.test(render=True, opponent="self", muzero_player=None)
+            elif choice == 4:
+                muzero.test(render=True, opponent="human", muzero_player=0)
+            elif choice == 5:
+                env = muzero.Game()
+                env.reset()
                 env.render()
-        elif choice == 6:
-            # Define here the parameters to tune
-            # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
-            muzero.terminate_workers()
-            del muzero
-            budget = 20
-            parallel_experiments = 2
-            lr_init = nevergrad.p.Log(a_min=0.0001, a_max=0.1)
-            discount = nevergrad.p.Scalar(lower=0.95, upper=0.9999)
-            parametrization = nevergrad.p.Dict(lr_init=lr_init, discount=discount)
-            best_hyperparameters = hyperparameter_search(
-                game_name, parametrization, budget, parallel_experiments, 10
-            )
-            muzero = MuZero(game_name, best_hyperparameters)
-        else:
-            break
-        print("\nDone")
+
+                done = False
+                while not done:
+                    action = env.human_to_action()
+                    observation, reward, done = env.step(action)
+                    print(f"\nAction: {env.action_to_string(action)}\nReward: {reward}")
+                    env.render()
+            elif choice == 6:
+                # Define here the parameters to tune
+                # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
+                muzero.terminate_workers()
+                del muzero
+                budget = 20
+                parallel_experiments = 2
+                lr_init = nevergrad.p.Log(a_min=0.0001, a_max=0.1)
+                discount = nevergrad.p.Log(lower=0.95, upper=0.9999)
+                parametrization = nevergrad.p.Dict(lr_init=lr_init, discount=discount)
+                best_hyperparameters = hyperparameter_search(
+                    game_name, parametrization, budget, parallel_experiments, 20
+                )
+                muzero = MuZero(game_name, best_hyperparameters)
+            else:
+                break
+            print("\nDone")
 
     ray.shutdown()
-
-    ## Successive training, create a new config file for each experiment
-    # experiments = ["cartpole", "tictactoe"]
-    # for experiment in experiments:
-    #     print(f"\nStarting experiment {experiment}")
-    #     try:
-    #         muzero = MuZero(experiment)
-    #         muzero.train()
-    #     except:
-    #         print(f"Skipping {experiment}, an error has occurred.")
-
-    # import argparse
-    # args = argparse.Namespace()
-    # config = vars(args)
-    # muzero = MuZero(config.game_name, config)
-    # muzero.train()

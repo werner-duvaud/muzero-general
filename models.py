@@ -41,6 +41,18 @@ class MuZeroNetwork:
             )
 
 
+def dict_to_cpu(dictionary):
+    cpu_dict = {}
+    for key, value in dictionary.items():
+        if isinstance(value, torch.Tensor):
+            cpu_dict[key] = value.cpu()
+        elif isinstance(value, dict):
+            cpu_dict[key] = dict_to_cpu(value)
+        else:
+            cpu_dict[key] = value
+    return cpu_dict
+
+
 class AbstractNetwork(ABC, torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -55,7 +67,7 @@ class AbstractNetwork(ABC, torch.nn.Module):
         pass
 
     def get_weights(self):
-        return {key: value.cpu() for key, value in self.state_dict().items()}
+        return dict_to_cpu(self.state_dict())
 
     def set_weights(self, weights):
         self.load_state_dict(weights)

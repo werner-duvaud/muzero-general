@@ -7,9 +7,7 @@ to even luck based games.
 
 import datetime
 import os
-from random import randint
 
-import gym
 import numpy
 import torch
 
@@ -82,7 +80,7 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.save_weights = True  # Save the weights in results_path as model.weights
+        self.save_model = True  # Save the checkpoint in results_path as model.checkpoint
         self.training_steps = 15000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 64  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
@@ -228,7 +226,7 @@ class Game(AbstractGame):
 
 class TwentyOne:
     def __init__(self, seed):
-        numpy.random.seed(seed)
+        self.random = numpy.random.RandomState(seed)
 
         self.player_hand = self.deal_card_value()
         self.dealer_hand = self.deal_card_value()
@@ -287,7 +285,7 @@ class TwentyOne:
         return -1
 
     def deal_card_value(self):
-        card = randint(1, 13)
+        card = self.random.randint(1, 13)
         if card >= 10:
             value = 10
         else:
