@@ -49,7 +49,7 @@ class Trainer:
             )
         else:
             raise NotImplementedError(
-                "{} is not implemented. You can change the optimizer manually in trainer.py.".format(self.config.optimizer)
+                f"{self.config.optimizer} is not implemented. You can change the optimizer manually in trainer.py."
             )
 
         if initial_checkpoint["optimizer_state"] is not None:
