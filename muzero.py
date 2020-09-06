@@ -48,6 +48,8 @@ class MuZero:
                 f'{game_name} is not a supported game name, try "cartpole" or refer to the documentation for adding a new game.'
             )
             raise err
+
+        # Overwrite the config
         if config:
             if type(config) is dict:
                 for param, value in config.items():
@@ -59,6 +61,7 @@ class MuZero:
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
+        # Manage GPUs
         total_gpus = (
             self.config.max_num_gpus
             if self.config.max_num_gpus is not None
@@ -90,9 +93,9 @@ class MuZero:
             "num_reanalysed_games": 0,
             "terminate": False,
         }
-        self.replay_buffer = None
+        self.replay_buffer = {}
 
-        # Trick to avoid using GPU
+        # Trick to force DataParallel to stay on CPU
         @ray.remote(num_cpus=0, num_gpus=0)
         def get_initial_weights(config):
             model = models.MuZeroNetwork(config)
@@ -111,21 +114,18 @@ class MuZero:
         self.reanalyse_worker = None
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
-        self.self_play_worker = None
 
     def train(self, log_in_tensorboard=True):
         """
-        Spawn ray actors and launch the training.
+        Spawn ray workers and launch the training.
 
         Args:
-            num_gpus (int): Number of GPUS (if exists) that will be available for the training.
-
-            log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.            
+            log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
         """
         if log_in_tensorboard or self.config.save_model:
             os.makedirs(self.config.results_path, exist_ok=True)
 
-        # Manage resources
+        # Manage GPUs
         if 0 < self.num_gpus:
             num_gpus_per_worker = self.num_gpus / (
                 self.config.train_on_gpu
@@ -140,31 +140,35 @@ class MuZero:
 
         # Initialize workers
         self.training_worker = trainer.Trainer.options(
-            num_cpus=0, num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
+            num_cpus=0,
+            num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(self.checkpoint, self.config)
+
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
-            self.checkpoint, self.config,
+            self.checkpoint,
+            self.config,
         )
         self.shared_storage_worker.set_info.remote("terminate", False)
-        self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(self.config)
+
+        self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(
+            self.checkpoint, self.replay_buffer, self.config
+        )
+
         if self.config.use_last_model_value:
             self.reanalyse_worker = replay_buffer.Reanalyse.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
             ).remote(self.checkpoint, self.config)
-        # Pre-load buffer if pulling from persistent storage
-        if self.replay_buffer:
-            for game_history_id in self.replay_buffer:
-                self.replay_buffer_worker.save_game.remote(
-                    self.replay_buffer[game_history_id], self.shared_storage_worker
-                )
-            print(f"\nLoaded {len(self.replay_buffer)} games from replay buffer.")
+
         self.self_play_workers = [
             self_play.SelfPlay.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
-                self.checkpoint, self.Game, self.config, self.config.seed + seed,
+                self.checkpoint,
+                self.Game,
+                self.config,
+                self.config.seed + seed,
             )
             for seed in range(self.config.num_workers)
         ]
@@ -195,7 +199,8 @@ class MuZero:
         """
         # Launch the test worker to get performance metrics
         self.test_worker = self_play.SelfPlay.options(
-            num_cpus=0, num_gpus=num_gpus,
+            num_cpus=0,
+            num_gpus=num_gpus,
         ).remote(
             self.checkpoint,
             self.Game,
@@ -223,7 +228,8 @@ class MuZero:
         )
         # Save model representation
         writer.add_text(
-            "Model summary", self.summary,
+            "Model summary",
+            self.summary,
         )
         # Loop for updating the training performance
         counter = 0
@@ -248,16 +254,24 @@ class MuZero:
             while info["training_step"] < self.config.training_steps:
                 info = ray.get(self.shared_storage_worker.get_info.remote(keys))
                 writer.add_scalar(
-                    "1.Total reward/1.Total reward", info["total_reward"], counter,
+                    "1.Total reward/1.Total reward",
+                    info["total_reward"],
+                    counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/2.Mean value", info["mean_value"], counter,
+                    "1.Total reward/2.Mean value",
+                    info["mean_value"],
+                    counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/3.Episode length", info["episode_length"], counter,
+                    "1.Total reward/3.Episode length",
+                    info["episode_length"],
+                    counter,
                 )
                 writer.add_scalar(
-                    "1.Total reward/4.MuZero reward", info["muzero_reward"], counter,
+                    "1.Total reward/4.MuZero reward",
+                    info["muzero_reward"],
+                    counter,
                 )
                 writer.add_scalar(
                     "1.Total reward/5.Opponent reward",
@@ -265,7 +279,9 @@ class MuZero:
                     counter,
                 )
                 writer.add_scalar(
-                    "2.Workers/1.Self played games", info["num_played_games"], counter,
+                    "2.Workers/1.Self played games",
+                    info["num_played_games"],
+                    counter,
                 )
                 writer.add_scalar(
                     "2.Workers/2.Training steps", info["training_step"], counter
@@ -329,39 +345,48 @@ class MuZero:
         self.reanalyse_worker = None
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
-        self.self_play_worker = None
 
-    def test(self, render, opponent=None, muzero_player=None, num_tests=1):
+    def test(
+        self, render=True, opponent=None, muzero_player=None, num_tests=1, num_gpus=0
+    ):
         """
         Test the model in a dedicated thread.
 
         Args:
-            render (bool): To display or not the environment.
+            render (bool): To display or not the environment. Defaults to True.
 
             opponent (str): "self" for self-play, "human" for playing against MuZero and "random"
-            for a random agent.
+            for a random agent, None will use the opponent in the config. Defaults to None.
 
             muzero_player (int): Player number of MuZero in case of multiplayer
-            games, None let MuZero play all players turn by turn.
+            games, None let MuZero play all players turn by turn, None will use muzero_player in
+            the config. Defaults to None.
 
-            num_tests (int): Number of games to average.
+            num_tests (int): Number of games to average. Defaults to 1.
+
+            num_gpus (int): Number of GPUs to use, 0 forces to use the CPU. Defaults to 0.
         """
         opponent = opponent if opponent else self.config.opponent
         muzero_player = muzero_player if muzero_player else self.config.muzero_player
-        self.self_play_worker = self_play.SelfPlay.options(
-            num_cpus=0, num_gpus=self.num_gpus if self.config.selfplay_on_gpu else 0,
+        self_play_worker = self_play.SelfPlay.options(
+            num_cpus=0,
+            num_gpus=num_gpus,
         ).remote(self.checkpoint, self.Game, self.config, numpy.random.randint(10000))
         results = []
         for i in range(num_tests):
             print(f"Testing {i+1}/{num_tests}")
             results.append(
                 ray.get(
-                    self.self_play_worker.play_game.remote(
-                        0, 0, render, opponent, muzero_player,
+                    self_play_worker.play_game.remote(
+                        0,
+                        0,
+                        render,
+                        opponent,
+                        muzero_player,
                     )
                 )
             )
-        self.self_play_worker.close_game.remote()
+        self_play_worker.close_game.remote()
 
         if len(self.config.players) == 1:
             result = numpy.mean([sum(history.reward_history) for history in results])
@@ -376,7 +401,6 @@ class MuZero:
                     for history in results
                 ]
             )
-        self.terminate_workers()
         return result
 
     def load_model(self, checkpoint_path=None, replay_buffer_path=None):
@@ -399,7 +423,8 @@ class MuZero:
         # Load replay buffer
         if replay_buffer_path:
             if os.path.exists(replay_buffer_path):
-                self.replay_buffer = pickle.load(open(replay_buffer_path, "rb"))
+                with open(replay_buffer_path, "rb") as f:
+                    self.replay_buffer = pickle.load(f)
                 print(f"\nInitializing replay buffer with {replay_buffer_path}")
             else:
                 print(
@@ -570,9 +595,9 @@ if __name__ == "__main__":
                     "Enter a path to the model.checkpoint, or ENTER if none: "
                 )
                 while checkpoint_path and not os.path.isfile(checkpoint_path):
-                    checkpoint_path = input("Invalid model path. Try again: ")
+                    checkpoint_path = input("Invalid checkpoint path. Try again: ")
                 replay_buffer_path = input(
-                    "Enter path for existing replay buffer, or ENTER if none: "
+                    "Enter a path to the replay_buffer.pkl, or ENTER if none: "
                 )
                 while replay_buffer_path and not os.path.isfile(replay_buffer_path):
                     replay_buffer_path = input(
@@ -608,7 +633,9 @@ if __name__ == "__main__":
                 parallel_experiments = 2
                 lr_init = nevergrad.p.Log(a_min=0.0001, a_max=0.1)
                 discount = nevergrad.p.Log(lower=0.95, upper=0.9999)
-                parametrization = nevergrad.p.Dict(lr_init=lr_init, discount=discount)
+                parametrization = nevergrad.p.Dict(
+                    lr_init=lr_init, discount=discount, training_steps=500
+                )
                 best_hyperparameters = hyperparameter_search(
                     game_name, parametrization, budget, parallel_experiments, 20
                 )
