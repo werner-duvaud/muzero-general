@@ -19,8 +19,8 @@ class SelfPlay:
         self.game = Game(seed)
 
         # Fix random generator seed
-        numpy.random.seed(self.config.seed)
-        torch.manual_seed(self.config.seed)
+        numpy.random.seed(seed)
+        torch.manual_seed(seed)
 
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)

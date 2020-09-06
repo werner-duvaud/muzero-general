@@ -78,8 +78,8 @@ class AbstractGame(ABC):
             An integer from the action space.
         """
         choice = input(f"Enter the action to play for the player {self.to_play()}: ")
-        while choice not in [str(action) for action in self.legal_actions()]:
-            choice = input("Enter another action : ")
+        while int(choice) not in self.legal_actions():
+            choice = input("Ilegal action. Enter another action : ")
         return int(choice)
 
     def expert_agent(self):

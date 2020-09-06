@@ -1,3 +1,4 @@
+import copy
 import time
 
 import numpy
@@ -13,12 +14,14 @@ class ReplayBuffer:
     Class which run in a dedicated thread to store played games and generate batch.
     """
 
-    def __init__(self, config):
+    def __init__(self, initial_checkpoint, initial_buffer, config):
         self.config = config
-        self.buffer = {}
-        self.total_samples = 0
-        self.num_played_games = 0
-        self.num_played_steps = 0
+        self.buffer = copy.deepcopy(initial_buffer)
+        self.num_played_games = initial_checkpoint['num_played_games']
+        self.num_played_steps = initial_checkpoint['num_played_steps']
+        self.total_samples = sum([len(game_history.root_values) for game_history in self.buffer.values()])
+        if self.total_samples != 0:
+            print(f"Replay buffer initialized with {self.total_samples} samples ({self.num_played_games} games).\n")
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
