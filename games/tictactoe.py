@@ -234,7 +234,7 @@ class Game(AbstractGame):
         Returns:
             String representing the action.
         """
-        row = 3 - action_number // 3
+        row = action_number // 3 + 1
         col = action_number % 3 + 1
         return f"Play row {row}, column {col}"
 
