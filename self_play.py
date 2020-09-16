@@ -136,7 +136,8 @@ class SelfPlay:
                     numpy.array(observation).shape == self.config.observation_shape
                 ), f"Observation should match the observation_shape defined in MuZeroConfig. Expected {self.config.observation_shape} but got {numpy.array(observation).shape}."
                 stacked_observations = game_history.get_stacked_observations(
-                    -1, self.config.stacked_observations,
+                    -1,
+                    self.config.stacked_observations,
                 )
 
                 # Choose the action
@@ -223,7 +224,7 @@ class SelfPlay:
     def select_action(node, temperature):
         """
         Select action according to the visit count distribution and the temperature.
-        The temperature is changed dynamically with the visit_softmax_temperature function 
+        The temperature is changed dynamically with the visit_softmax_temperature function
         in the config.
         """
         visit_counts = numpy.array(
@@ -300,7 +301,11 @@ class MCTS:
                 set(self.config.action_space)
             ), "Legal actions should be a subset of the action space."
             root.expand(
-                legal_actions, to_play, reward, policy_logits, hidden_state,
+                legal_actions,
+                to_play,
+                reward,
+                policy_logits,
+                hidden_state,
             )
 
         if add_exploration_noise:
@@ -484,6 +489,7 @@ class GameHistory:
         self.to_play_history = []
         self.child_visits = []
         self.root_values = []
+        self.reanalysed_predicted_root_values = None
         # For PER
         self.priorities = None
         self.game_priority = None
