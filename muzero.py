@@ -633,9 +633,7 @@ if __name__ == "__main__":
                 parallel_experiments = 2
                 lr_init = nevergrad.p.Log(a_min=0.0001, a_max=0.1)
                 discount = nevergrad.p.Log(lower=0.95, upper=0.9999)
-                parametrization = nevergrad.p.Dict(
-                    lr_init=lr_init, discount=discount
-                )
+                parametrization = nevergrad.p.Dict(lr_init=lr_init, discount=discount)
                 best_hyperparameters = hyperparameter_search(
                     game_name, parametrization, budget, parallel_experiments, 20
                 )

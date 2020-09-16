@@ -280,7 +280,12 @@ class Trainer:
 
     @staticmethod
     def loss_function(
-        value, reward, policy_logits, target_value, target_reward, target_policy,
+        value,
+        reward,
+        policy_logits,
+        target_value,
+        target_reward,
+        target_policy,
     ):
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)

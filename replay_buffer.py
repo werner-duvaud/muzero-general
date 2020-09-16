@@ -17,11 +17,15 @@ class ReplayBuffer:
     def __init__(self, initial_checkpoint, initial_buffer, config):
         self.config = config
         self.buffer = copy.deepcopy(initial_buffer)
-        self.num_played_games = initial_checkpoint['num_played_games']
-        self.num_played_steps = initial_checkpoint['num_played_steps']
-        self.total_samples = sum([len(game_history.root_values) for game_history in self.buffer.values()])
+        self.num_played_games = initial_checkpoint["num_played_games"]
+        self.num_played_steps = initial_checkpoint["num_played_steps"]
+        self.total_samples = sum(
+            [len(game_history.root_values) for game_history in self.buffer.values()]
+        )
         if self.total_samples != 0:
-            print(f"Replay buffer initialized with {self.total_samples} samples ({self.num_played_games} games).\n")
+            print(
+                f"Replay buffer initialized with {self.total_samples} samples ({self.num_played_games} games).\n"
+            )
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -203,11 +207,17 @@ class ReplayBuffer:
         # future, plus the discounted sum of all rewards until then.
         bootstrap_index = index + self.config.td_steps
         if bootstrap_index < len(game_history.root_values):
+            root_values = (
+                game_history.root_values
+                if game_history.reanalysed_predicted_root_values is None
+                else game_history.reanalysed_predicted_root_values
+            )
+            print(game_history.reanalysed_predicted_root_values is None)
             last_step_value = (
-                game_history.root_values[bootstrap_index]
+                root_values[bootstrap_index]
                 if game_history.to_play_history[bootstrap_index]
                 == game_history.to_play_history[index]
-                else -game_history.root_values[bootstrap_index]
+                else -root_values[bootstrap_index]
             )
 
             value = last_step_value * self.config.discount ** self.config.td_steps
@@ -323,8 +333,9 @@ class Reanalyse:
                     self.model.initial_inference(observations)[0],
                     self.config.support_size,
                 )
-                for i in range(len(game_history.root_values)):
-                    game_history.root_values[i] = values[i].item()
+                game_history.reanalysed_predicted_root_values = (
+                    torch.squeeze(values).detach().numpy()
+                )
 
             replay_buffer.update_game_history.remote(game_id, game_history)
             self.num_reanalysed_games += 1
