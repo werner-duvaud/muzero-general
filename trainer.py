@@ -30,7 +30,7 @@ class Trainer:
 
         self.training_step = initial_checkpoint["training_step"]
 
-        if not self.config.train_on_gpu:
+        if "cuda" not in str(next(self.model.parameters()).device):
             print("You are not training on GPU.\n")
 
         # Initialize the optimizer

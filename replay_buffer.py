@@ -212,7 +212,6 @@ class ReplayBuffer:
                 if game_history.reanalysed_predicted_root_values is None
                 else game_history.reanalysed_predicted_root_values
             )
-            print(game_history.reanalysed_predicted_root_values is None)
             last_step_value = (
                 root_values[bootstrap_index]
                 if game_history.to_play_history[bootstrap_index]
