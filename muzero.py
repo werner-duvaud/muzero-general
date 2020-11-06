@@ -62,6 +62,14 @@ class MuZero:
         torch.manual_seed(self.config.seed)
 
         # Manage GPUs
+        if self.config.max_num_gpus == 0 and (
+            self.config.selfplay_on_gpu
+            or self.config.train_on_gpu
+            or self.config.reanalyse_on_gpu
+        ):
+            raise ValueError(
+                "Inconsistent MuZeroConfig: max_num_gpus = 0 but GPU requested by selfplay_on_gpu or train_on_gpu or reanalyse_on_gpu."
+            )
         total_gpus = (
             self.config.max_num_gpus
             if self.config.max_num_gpus is not None
@@ -96,7 +104,7 @@ class MuZero:
         self.replay_buffer = {}
 
         # Trick to force DataParallel to stay on CPU
-        @ray.remote(num_cpus=0, num_gpus=0)
+        @ray.remote(num_cpus=0, num_gpus=1 if total_gpus else 0)
         def get_initial_weights(config):
             model = models.MuZeroNetwork(config)
             weigths = model.get_weights()
