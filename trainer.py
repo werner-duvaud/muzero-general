@@ -63,11 +63,13 @@ class Trainer:
         while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
             time.sleep(0.1)
 
+        next_batch = replay_buffer.get_batch.remote()
         # Training loop
         while self.training_step < self.config.training_steps and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
-            index_batch, batch = ray.get(replay_buffer.get_batch.remote())
+            index_batch, batch = ray.get(next_batch)
+            next_batch = replay_buffer.get_batch.remote()
             self.update_lr()
             (
                 priorities,
