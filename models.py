@@ -219,14 +219,14 @@ class ResidualBlock(torch.nn.Module):
         self.bn2 = torch.nn.BatchNorm2d(num_channels)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = torch.nn.functional.relu(x)
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x += x
-        x = torch.nn.functional.relu(x)
-        return x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = torch.nn.functional.relu(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out += x
+        out = torch.nn.functional.relu(out)
+        return out
 
 
 # Downsample observations before representation network (See paper appendix Network Architecture)
