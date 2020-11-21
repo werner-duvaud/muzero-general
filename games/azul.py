@@ -38,7 +38,7 @@ class MuZeroConfig:
         # Hard coded agent that MuZero faces to assess his progress.
         # It doesn't influence training.
         # None, "random" or "expert" if implemented in the Game class
-        self.opponent = None
+        self.opponent = "expert"
 
         ### Self-Play
         # Number of simultaneous threads/workers self-playing
@@ -46,9 +46,9 @@ class MuZeroConfig:
         self.num_workers = 2
         self.selfplay_on_gpu = False
         # Maximum number of moves if game is not finished before
-        self.max_moves = 121
+        self.max_moves = 100
         # Number of future moves self-simulated
-        self.num_simulations = 400
+        self.num_simulations = 2
         # Chronological discount of the reward
         self.discount = 1
         # Number of moves before dropping the temperature given by visit_
@@ -159,13 +159,15 @@ class MuZeroConfig:
         # Reanalyze (See paper appendix R
         # # Use the last model to provide a fresher, stable n-step value
         # (See paper appendix Reanalyze)eanalyse)
-        self.use_last_model_value = False
+        self.use_last_model_value = True
         # "cpu" / "cuda"
         self.reanalyse_device = "cpu"
         # Number of GPUs to use for the reanalyse, it can be fractional,
         # don't forget to take the train worker and the
         # selfplay workers into account
         self.reanalyse_num_gpus = 0
+        # Reanalyze (See paper appendix Reanalyse)
+        self.reanalyse_on_gpu = False
 
         ### Adjust the self play / training ratio to avoid over/underfitting
         # Number of seconds to wait after each played game
@@ -246,6 +248,16 @@ class Game(AbstractGame):
         self.env.render()
         input("Press enter to take a step ")
 
+    def expert_agent(self) -> int:
+        """
+        Hard coded agent that MuZero faces to assess his progress in
+        multiplayer games. It doesn't influence training
+
+        Returns:
+            Action as an integer to take in the current game state
+        """
+        return self.env.expert_action()
+
     def human_to_action(self) -> int:
         """
         For multiplayer games, ask the user for a legal action
@@ -258,18 +270,27 @@ class Game(AbstractGame):
         color = 1
         line = -1
 
+        slot_choice = ""
+        color_choice = ""
+        line_choice = ""
+
         action = action_from_game_action((slot, color, line))
         while action not in self.legal_actions():
             print(f"Player {self.to_play()}")
-            slot_choice = input(f"Enter the slot: ")
-            color_choice = input(f"Enter the color: ")
-            line_choice = input(f"Enter the line: ")
+            try:
+                slot_choice = input(f"Enter the slot: ")
+                color_choice = input(f"Enter the color: ")
+                line_choice = input(f"Enter the line: ")
 
-            slot = int(slot_choice)
-            color = int(color_choice)
-            line = int(line_choice)
+                slot = int(slot_choice)
+                color = int(color_choice)
+                line = int(line_choice)
 
-            action = action_from_game_action((slot, color, line))
+                action = action_from_game_action((slot, color, line))
+            except ValueError:
+                print(
+                    f"Could not parse {(slot_choice, color_choice, line_choice)}")
+
         return action
 
     def action_to_string(self, action: int) -> str:
