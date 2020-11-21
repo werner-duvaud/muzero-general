@@ -6,3 +6,4 @@ box2d-py
 ray
 seaborn
 nevergrad
+gym-azul
