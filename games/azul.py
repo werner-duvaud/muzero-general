@@ -1,11 +1,11 @@
 import datetime
 import os
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict
 
 import numpy as np
 import torch
-from gym_azul.spaces.from_azul_spaces import game_action_from_action
-from gym_azul.spaces.to_azul_spaces import action_from_game_action
+from gym_azul.model import action_from_action_num, action_num_from_action, \
+    Action, Slot, Color, Line
 
 from .abstract_game import AbstractGame
 from gym_azul.envs import AzulEnv
@@ -23,7 +23,7 @@ class MuZeroConfig:
 
         ### Game
         # (channel, height, width)
-        self.observation_shape = (3, 10, 10)
+        self.observation_shape = (5, 10, 10)
         self.action_space = list(range(10 * 5 * 5))
         # List of players
         self.players = list(range(2))
@@ -266,39 +266,54 @@ class Game(AbstractGame):
         Returns:
             An integer from the action space.
         """
-        slot = -1
-        color = 1
-        line = -1
+
+        colors: Dict[str, Color] = {
+            "B": Color.BLUE,
+            "Y": Color.YELLOW,
+            "R": Color.RED,
+            "K": Color.BLACK,
+            "C": Color.CYAN
+        }
 
         slot_choice = ""
         color_choice = ""
         line_choice = ""
+        action_num = -1
 
-        action = action_from_game_action((slot, color, line))
-        while action not in self.legal_actions():
+        color_choices = "[" + ",".join(colors.keys()) + "]"
+
+        while action_num not in self.legal_actions():
             print(f"Player {self.to_play()}")
             try:
-                slot_choice = input(f"Enter the slot: ")
-                color_choice = input(f"Enter the color: ")
-                line_choice = input(f"Enter the line: ")
+                slot_choice = input("Enter the slot: [Cen, Fa{1-9}]: ")
+                color_choice = input(f"Enter the color: {color_choices}: ")
+                line_choice = input(f"Enter the line: [1-5]: ")
 
-                slot = int(slot_choice)
-                color = int(color_choice)
+                if slot_choice == "Cen":
+                    slot = 0
+                else:
+                    factory_number = line_choice[-1]
+                    slot = int(factory_number)
+
+                color = colors[color_choice]
                 line = int(line_choice)
 
-                action = action_from_game_action((slot, color, line))
+                action = Action(Slot(slot), Color(color), Line(line - 1))
+                print(f"Action: {action}")
+
+                action_num = action_num_from_action(action)
             except ValueError:
                 print(
                     f"Could not parse {(slot_choice, color_choice, line_choice)}")
 
-        return action
+        return action_num
 
-    def action_to_string(self, action: int) -> str:
+    def action_to_string(self, action_num: int) -> str:
         """
         Convert an action number to a string representing the action.
 
         Returns:
             String representing the action.
         """
-        slot, color, line = game_action_from_action(action)
+        slot, color, line = action_from_action_num(action_num)
         return f"Slot: {slot}, Color: {color}, Line: {line}"
