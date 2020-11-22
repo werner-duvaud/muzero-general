@@ -29,7 +29,7 @@ class MuZeroConfig:
         self.players = list(range(2))
         # Number of previous observations and previous actions
         # to add to the current observation
-        self.stacked_observations = 0
+        self.stacked_observations = 8
 
         # Evaluate
         # Turn Muzero begins to play
@@ -47,8 +47,8 @@ class MuZeroConfig:
         self.selfplay_on_gpu = False
         # Maximum number of moves if game is not finished before
         self.max_moves = 100
-        # Number of future moves self-simulated
-        self.num_simulations = 2
+        # Number of future moves self-simulated NOTE: from paper
+        self.num_simulations = 50
         # Chronological discount of the reward
         self.discount = 1
         # Number of moves before dropping the temperature given by visit_
@@ -77,7 +77,7 @@ class MuZeroConfig:
         # (See paper appendix Network Architecture)
         self.downsample = False
         # Number of blocks in the ResNet
-        self.blocks = 6
+        self.blocks = 16
         # Number of channels in the ResNet
         self.channels = 128
         # Number of channels in reward head
@@ -117,14 +117,14 @@ class MuZeroConfig:
         self.save_model = True
         # Total number of training steps
         # (ie weights update according to a batch)
-        self.training_steps = 10000
+        self.training_steps = 100_000
         # Number of parts of games to train on at each training step
-        self.batch_size = 512
+        self.batch_size = 2048
         # Number of training steps before using the model for self-playing
-        self.checkpoint_interval = 50
+        self.checkpoint_interval = 10_000
         # Scale the value loss to avoid overfitting of the value function,
         # paper recommends 0.25 (See paper appendix Reanalyze)
-        self.value_loss_weight = 1
+        self.value_loss_weight = 0.25
         # Train on GPU if available
         self.train_on_gpu = torch.cuda.is_available()
 
@@ -143,11 +143,11 @@ class MuZeroConfig:
 
         ### Replay Buffer
         # Number of self-play games to keep in the replay buffer
-        self.replay_buffer_size = 10000
+        self.replay_buffer_size = 1_000_000
         # Number of game moves to keep for every batch element
-        self.num_unroll_steps = 121
+        self.num_unroll_steps = 5
         # Number of steps in the future to take into account for calculating the target value
-        self.td_steps = 121
+        self.td_steps = 5
         # Prioritized Replay (See paper appendix Training),
         # select in priority the elements in the replay buffer
         # which are unexpected for the network
