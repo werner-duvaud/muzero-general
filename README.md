@@ -92,6 +92,10 @@ To visualize the training results, run in a new terminal:
 tensorboard --logdir ./results
 ```
 
+### Config
+
+You can adapt the configurations of each game by editing the `MuZeroConfig` class of the respective file in the [games folder](https://github.com/werner-duvaud/muzero-general/tree/master/games).
+
 ## Authors
 
 * Werner Duvaud
