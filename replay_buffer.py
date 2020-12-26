@@ -333,7 +333,7 @@ class Reanalyse:
                     self.config.support_size,
                 )
                 game_history.reanalysed_predicted_root_values = (
-                    torch.squeeze(values).detach().numpy()
+                    torch.squeeze(values).detach().cpu().numpy()
                 )
 
             replay_buffer.update_game_history.remote(game_id, game_history)
