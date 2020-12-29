@@ -484,9 +484,9 @@ def hyperparameter_search(
 
         parametrization : Nevergrad parametrization, please refer to nevergrad documentation.
 
-        budget (int): Number of experience to launch in total.
+        budget (int): Number of experiments to launch in total.
 
-        parallel_experiments (int): Number of experience to launch in parallel.
+        parallel_experiments (int): Number of experiments to launch in parallel.
 
         num_tests (int): Number of games to average for evaluating an experiment.
     """
