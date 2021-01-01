@@ -6,7 +6,12 @@ import torch
 
 from .abstract_game import AbstractGame
 
-import pyspiel
+try:
+    import pyspiel
+
+except ImportError:
+    import sys
+    sys.exit("You need to install open_spiel by running pip install open_spiel. For a full documentation, see: https://github.com/deepmind/open_spiel/blob/master/docs/install.md")
 
 game = pyspiel.load_game("tic_tac_toe")
 
