@@ -6,6 +6,9 @@ import torch
 
 from .abstract_game import AbstractGame
 
+
+# This is a Game wrapper for open_spiel games. It allows you to run any game in the open_spiel library.
+
 try:
     import pyspiel
 
@@ -13,6 +16,7 @@ except ImportError:
     import sys
     sys.exit("You need to install open_spiel by running pip install open_spiel. For a full documentation, see: https://github.com/deepmind/open_spiel/blob/master/docs/install.md")
 
+# The game you want to run. See https://github.com/deepmind/open_spiel/blob/master/docs/games.md for a list of games
 game = pyspiel.load_game("tic_tac_toe")
 
 class MuZeroConfig:
