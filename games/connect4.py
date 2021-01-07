@@ -157,7 +157,7 @@ class Game(AbstractGame):
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
         
         For complex game where calculating legal moves is too long, the idea is to define the legal actions
-        equal to the action space but to return a negative reward if the action is illegal.        
+        equal to the action space but to return a negative reward if the action is illegal.
 
         Returns:
             An array of integers, subset of the action space.
