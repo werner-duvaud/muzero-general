@@ -223,18 +223,21 @@ Created by Oleg Klimov. Licensed on the same terms as the rest of OpenAI Gym.
 """
 
 
-import sys, math
+import math
 import numpy as np
 
-import Box2D
-from Box2D.b2 import (
-    edgeShape,
-    circleShape,
-    fixtureDef,
-    polygonShape,
-    revoluteJointDef,
-    contactListener,
-)
+try:
+    import Box2D
+    from Box2D.b2 import (
+        edgeShape,
+        circleShape,
+        fixtureDef,
+        polygonShape,
+        revoluteJointDef,
+        contactListener,
+    )
+except ModuleNotFoundError:
+    raise ModuleNotFoundError('swig librairy and box2d-py are required to run lunarlander.\n\nPlease install swig with "sudo apt install swig" on Ubuntu or "brew install swig" on mac.\nThen run "pip install box2d-py".\nFor more detailed instructions: https://github.com/openai/gym')
 
 import gym
 from gym import spaces
