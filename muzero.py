@@ -561,6 +561,7 @@ def hyperparameter_search(
         text_file.close()
     return recommendation.value
 
+
 def load_model_menu(muzero, game_name):
     # Configure running options
     options = ["Specify paths manually"] + sorted(glob(f"results/{game_name}/*/"))
@@ -586,9 +587,7 @@ def load_model_menu(muzero, game_name):
             "Enter a path to the replay_buffer.pkl, or ENTER if none: "
         )
         while replay_buffer_path and not os.path.isfile(replay_buffer_path):
-            replay_buffer_path = input(
-                "Invalid replay buffer path. Try again: "
-            )
+            replay_buffer_path = input("Invalid replay buffer path. Try again: ")
     else:
         checkpoint_path = f"{options[choice]}model.checkpoint"
         replay_buffer_path = f"{options[choice]}replay_buffer.pkl"
@@ -597,6 +596,7 @@ def load_model_menu(muzero, game_name):
         checkpoint_path=checkpoint_path,
         replay_buffer_path=replay_buffer_path,
     )
+
 
 if __name__ == "__main__":
     if len(sys.argv) == 2:
