@@ -10,7 +10,7 @@ from .abstract_game import AbstractGame
 try:
     import cv2
 except ModuleNotFoundError:
-    raise ModuleNotFoundError('Please run "pip install gym[atari]"')
+    raise ModuleNotFoundError('\nPlease run "pip install gym[atari]"')
 
 
 class MuZeroConfig:
