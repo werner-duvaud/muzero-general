@@ -419,13 +419,11 @@ class MCTS:
 
         elif len(self.config.players) == 2:
             for node in reversed(search_path):
-                node.value_sum += value if node.to_play == to_play else -value
+                node.value_sum += value
                 node.visit_count += 1
                 min_max_stats.update(node.reward + self.config.discount * -node.value())
 
-                value = (
-                    -node.reward if node.to_play == to_play else node.reward
-                ) + self.config.discount * value
+                value = node.reward - self.config.discount * value
 
         else:
             raise NotImplementedError("More than two player mode not implemented.")
