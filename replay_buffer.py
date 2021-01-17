@@ -240,6 +240,7 @@ class ReplayBuffer:
         Generate targets for every unroll steps.
         """
         target_values, target_rewards, target_policies, actions = [], [], [], []
+        last_reward = 0
         for current_index in range(
             state_index, state_index + self.config.num_unroll_steps + 1
         ):
@@ -252,7 +253,8 @@ class ReplayBuffer:
                 actions.append(game_history.action_history[current_index])
             elif current_index == len(game_history.root_values):
                 target_values.append(0)
-                target_rewards.append(game_history.reward_history[current_index])
+                last_reward = game_history.reward_history[current_index]
+                target_rewards.append(last_reward)
                 # Uniform policy
                 target_policies.append(
                     [
@@ -264,7 +266,9 @@ class ReplayBuffer:
             else:
                 # States past the end of games are treated as absorbing states
                 target_values.append(0)
-                target_rewards.append(0)
+                if len(self.config.players) > 1:
+                    last_reward = -last_reward
+                target_rewards.append(last_reward)
                 # Uniform policy
                 target_policies.append(
                     [
