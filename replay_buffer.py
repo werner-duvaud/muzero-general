@@ -226,10 +226,11 @@ class ReplayBuffer:
         for i, reward in enumerate(
             game_history.reward_history[index + 1 : bootstrap_index + 1]
         ):
+            # The value is oriented from the perspective of the current player
             value += (
                 reward
                 if game_history.to_play_history[index]
-                == game_history.to_play_history[index + 1 + i - 1]  # player[i-i] got reward[i]
+                == game_history.to_play_history[index + i]
                 else -reward
             ) * self.config.discount ** i
 
