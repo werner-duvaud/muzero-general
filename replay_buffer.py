@@ -229,7 +229,7 @@ class ReplayBuffer:
             value += (
                 reward
                 if game_history.to_play_history[index]
-                == game_history.to_play_history[index + 1 + i]
+                == game_history.to_play_history[index + 1 + i - 1]  # player[i-i] got reward[i]
                 else -reward
             ) * self.config.discount ** i
 
