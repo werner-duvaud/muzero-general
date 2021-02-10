@@ -22,14 +22,13 @@ class MuZeroConfig:
 
 
         ### Game
-        #??? how to rehsape???
+        #How to rehsape???
         #(2, 2) for a 1-qubit system
         #(2, 2, 2, 2) for a 2-qubit system
         #(2, 2, 2, 2, 2, 2) for a 3-qubit system
         self.observation_shape = (1, 1, 4)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
 
-        #Here all actions = all gates on all possible qubits???
-        #result from game.actions ???
+        #Here all actions = all gates on all possible qubits??? but this is smth from env, how to access???
         self.action_space = list(range(2))  # Fixed list of all possible actions. You should only edit the length
 
         self.players = list(range(1))  # List of players. You should only edit the length
@@ -204,13 +203,6 @@ class Game(AbstractGame):
         """
         return self.env.reset()
 
-    #Useful???
-    def close(self):
-        """
-        Properly close the game.
-        """
-        self.env.close()
-
 
     def render(self):
         """
@@ -218,6 +210,7 @@ class Game(AbstractGame):
         """
         self.env.render()
         input("Press enter to take a step ")
+
 
     def action_to_string(self, action_number):
         """
