@@ -8,6 +8,34 @@ from collections import deque
 import itertools
 
 
+###############################################################################
+###########################  UNITARY OPERATORS  ###############################
+###############################################################################
+
+#OPERATORS
+P0 = np.array([[1,0],[0,0]]).astype(np.complex64)
+P1 = np.array([[0,0],[0,1]]).astype(np.complex64)
+I = np.identity(2, dtype=np.complex64)
+II = np.tensordot(I, I, axes=0)
+III = np.tensordot(I, II, axes=0)
+X = np.array([[0, 1], [1, 0]]).astype(np.complex64)
+Y = np.array([[0, -1j], [1j, 0]]).astype(np.complex64)
+Z = np.array([[1, 0], [0, -1]]).astype(np.complex64)
+S = np.array([[1, 0], [0, 1j]]).astype(np.complex64)
+H = (1 / np.sqrt(2)) * np.array([[1, 1], [1, -1]]).astype(np.complex64)
+T = np.array([[1, 0], [0, np.exp((1j * np.pi) / 4)]]).astype(np.complex64)
+Tdag = np.matrix(T).getH() #complex conjugate transpose
+CNOT = np.array([[[[1, 0],[0, 1]], [[0 ,0],[0 ,0]]], [[[0 ,0],[0, 0]],[[0, 1],[1, 0]]]]).astype(np.complex64)
+SWAP = np.array([[[[1, 0],[0, 0]], [[0 ,0],[1 ,0]]], [[[0 ,1],[0, 0]],[[0, 0],[0, 1]]]]).astype(np.complex64)
+TOFFOLI = np.tensordot(P0, II, axes=0) + np.tensordot(P1, CNOT, axes=0)
+FREDKIN = np.tensordot(P0, II, axes=0) + np.tensordot(P1, SWAP, axes=0)
+
+QB1GATES = [X, Y, Z, S, H, T, Tdag]
+QB2GATES = [CNOT, SWAP]
+
+#Hardcode for 1 qb set
+SIZE = len(list(itertools.product(QB1GATES, range(1))))
+
 
 ###############################################################################
 ##################################  MUZERO  ###################################
@@ -20,16 +48,12 @@ class MuZeroConfig:
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
 
 
+        #CHANGEABLE!!!
+        # (2^nb_qbs, 2^nb_qbs, 2)
+        self.observation_shape = (2, 2, 2)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
 
-        ### Game
-        #How to rehsape???
-        #(2, 2) for a 1-qubit system
-        #(2, 2, 2, 2) for a 2-qubit system
-        #(2, 2, 2, 2, 2, 2) for a 3-qubit system
-        self.observation_shape = (1, 1, 4)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
-
-        #Here all actions = all gates on all possible qubits??? but this is smth from env, how to access???
-        self.action_space = list(range(2))  # Fixed list of all possible actions. You should only edit the length
+        #CHANGEABLE!!!
+        self.action_space = list(range(SIZE))  # Fixed list of all possible actions. You should only edit the length
 
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
@@ -159,13 +183,19 @@ class MuZeroConfig:
             return 0.25
 
 
+
+###############################################################################
+###############################  GAME  ########################################
+###############################################################################
 class Game(AbstractGame):
     """
     Game wrapper.
     """
 
-    def __init__(self, seed=None):
-        self.env = GateSynthesis()
+    def __init__(self, seed=None, randomise=True, poss_targets=[I]):
+        idx = np.random.randint(0, len(poss_targets)) if randomise else 0 #by default, the first (only?) unitary
+        self.env = GateSynthesis(QB1GATES, q2_gates=[], rwd=100, max_steps=10000,
+                 init_uop=I, target_uop=poss_targets[idx], tol=1e-3)
 
 
     def step(self, action):
@@ -178,7 +208,7 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        observation, reward, done, _ = self.env.step(action)
+        observation, reward, done = self.env.step(action)
         return np.array([[observation]]), reward, done
 
     def legal_actions(self):
@@ -192,7 +222,7 @@ class Game(AbstractGame):
         Returns:
             An array of integers, subset of the action space.
         """
-        return [_ for _ in range(self.env.full_action_list)]
+        return [_ for _ in range(len(self.env.full_action_list))]
 
     def reset(self):
         """
@@ -229,23 +259,22 @@ class Game(AbstractGame):
 ###############################################################################
 ##########################  GATE SYNTHESIS GAME ###############################
 ###############################################################################
-
-
 class GateSynthesis:
     def __init__(self, q1_gates=[], q2_gates=[], rwd=1000, max_steps=1000,
-                 init_uop=III, target_uop=III):
+                 init_uop=III, target_uop=III, tol=1e-5):
         self.init_unitary_op = init_uop
         self.curr_unitary_op = self.init_unitary_op
-        self.target_unitary_op = target #the unitary one should generate
-        self.nb_qbits = np.int(len(self.self.init_unitary_op.shape) / 2)
+        self.target_unitary_op = target_uop #the unitary one should generate
+        self.nb_qbits = np.int(len(self.init_unitary_op.shape) / 2)
         self.final_reward = rwd
         self.q1_gates = q1_gates
         self.q2_gates = q2_gates
-        self.full_action_list = make_full_action_list()
+        self.full_action_list = self.make_full_action_list()
         self.nb_steps = 0
         self.max_steps = max_steps
+        self.tol = tol
         self.distance_history = []
-        self.player = 1 #How to handle this???
+        self.player = 1
 
 
     def make_full_action_list(self):
@@ -256,31 +285,31 @@ class GateSynthesis:
         The result is of the for (action_index, (gate, qubit) )
         """
         q1_actions = list(itertools.product(self.q1_gates, range(self.nb_qbits)))
-        all_2q_permutations = list(itertools.product(range(self.nb_qbits), range(self.nb_qbits)))
-        #keep only those where both qbits are different one from the other
-        coherent_2q_permutations = list(filter(lambda x: x[0] != x[1], all_2q_permutations))
-        q2_actions = list(itertools.product(self.q2_gates, coherent_2q_permutations))
-        all_actions = q1_actions + q2_actions
+        if self.nb_qbits > 1:
+            all_2q_permutations = list(itertools.product(range(self.nb_qbits), range(self.nb_qbits)))
+            #keep only those where both qbits are different one from the other
+            coherent_2q_permutations = list(filter(lambda x: x[0] != x[1], all_2q_permutations))
+            q2_actions = list(itertools.product(self.q2_gates, coherent_2q_permutations))
+            all_actions = q1_actions + q2_actions
+        else:
+            all_actions = q1_actions
         res = list(zip([_ for _ in range(len(all_actions))], all_actions)) #[(idx, (gate, qb))]
         return res
 
 
-    @property
     def to_play(self):
-        return 0 if self.player == 1 else 1 #TODO:match it with self.player decision
+        return 1
 
 
-    @property
     def reset(self):
         self.curr_unitary_op = self.init_unitary_op
-        self.player = 1 #TODO:match it with self.player decision and to_play
         self.nb_steps = 0
         self.distance_history = []
         return self.get_observation()
 
 
     def step(self, action_idx):
-        (_ , (gate, qbit) = self.full_action_list[action_idx]
+        (_ , (gate, qbit)) = self.full_action_list[action_idx]
 
         if (gate.shape == (2, 2, 2, 2)):  # 2qb
             (qbA, qbB) = qbit
@@ -292,9 +321,8 @@ class GateSynthesis:
 
         done = self.have_winner() or (self.nb_steps > self.max_steps)
         reward = self.final_reward if self.have_winner() else 0
-        self.player *= -1 #TODO: handle player...
 
-        return self.get_observation(), reward, done
+        return self.get_observation, reward, done
 
 
     def qbit_num_to_tensor_index(self, n: int):
@@ -335,41 +363,147 @@ class GateSynthesis:
         self.curr_unitary_op = res
         return res
 
-    #No clue what to do here ???
+
     def get_observation(self):
-        board_player1 = np.where(self.curr_unitary_op == 1, 1, 0)
-        board_player2 = np.where(self.curr_unitary_op == -1, 1, 0)
-        board_to_play = np.full((3, 3), self.player)
-        return np.array([board_player1, board_player2, board_to_play], dtype="int32")
+        n = self.nb_qbits
+        unitary = np.transpose(self.curr_unitary_op,
+                               axes=tuple([el for tup in zip(range(n), range(n, 2 * n)) for el in tup]))
+        unitary = unitary.reshape((2**n, 2**n))
+        res = np.array([np.real(unitary), np.imag(unitary)])  # a 3D object???
+        print("########", res.shape)
+        return res
 
 
     def have_winner(self):
         """Returns True if the current unitary is the target one."""
-        return np.allclose(self.curr_unitary_op, self.target_unitary_op)
+        return np.allclose(self.curr_unitary_op, self.target_unitary_op, rtol=self.tol)
 
 
     def render(self):
         print(self.curr_unitary_op)
 
 
-###############################################################################
-###########################  UNITARY OPERATORS  ###############################
-###############################################################################
 
-#OPERATORS
-I = np.identity(2, dtype=np.complex64)
-II = np.tensordot(I, I, axes=0)
-III = np.tensordot(I, II, axes=0)
-X = np.array([[0, 1], [1, 0]]).astype(np.complex64)
-Y = np.array([[0, -1j], [1j, 0]]).astype(np.complex64)
-Z = np.array([[1, 0], [0, -1]]).astype(np.complex64)
-S = np.array([[1, 0], [0, 1j]]).astype(np.complex64)
-H = (1 / np.sqrt(2)) * np.array([[1, 1], [1, -1]]).astype(np.complex64)
-T = np.array([[1, 0], [0, np.exp((1j * np.pi) / 4)]]).astype(np.complex64)
-Tdag = np.matrix(T).getH() #complex conjugate transpose
-CNOT = np.array([[[[1, 0],[0, 1]], [[0 ,0],[0 ,0]]], [[[0 ,0],[0, 0]],[[0, 1],[1, 0]]]]).astype(np.complex64)
-P0 = np.array([[1,0],[0,0]]).astype(np.complex64)
-P1 = np.array([[0,0],[0,1]]).astype(np.complex64)
-TOFFOLI = np.tensordot(P0, II, axes=0) + np.tensordot(P1, CNOT, axes=0)
-SWAP = np.array([[[[1, 0],[0, 0]], [[0 ,0],[1 ,0]]], [[[0 ,1],[0, 0]],[[0, 0],[0, 1]]]]).astype(np.complex64)
-FREDKIN = np.tensordot(P0, II, axes=0) + np.tensordot(P1, SWAP, axes=0)
+
+
+
+
+###############################################################################
+########################  RANDOM UNITARY GENERATOR  ###########################
+###############################################################################
+def make_init_unitary(size:int=3) -> np.array:
+    init_unitary = None
+    if size == 1:
+        init_unitary = I
+    elif size == 2:
+        init_unitary = II
+    elif size == 3:
+        init_unitary = III
+    return init_unitary
+
+
+def get_random_gate(gates):
+    l = len(gates)
+    idx = np.random.randint(0,l)
+    return gates[idx]
+
+
+def get_random_qbits(nb:int=1, size:int=3):
+    poss_qb = list(range(size))
+    res_qb = []
+
+    for _ in range(nb):
+        l = len(poss_qb)
+        rd_pick = np.random.randint(l)
+        qb = poss_qb.pop(rd_pick)
+        res_qb.append(qb)
+
+    return tuple(res_qb)
+
+def apply_1q_gate(gate:np.array, qbit:int, curr_unitary):
+    idx = qbit * 2
+    tensored_res = np.tensordot(curr_unitary, gate, axes=(idx, 1))
+    N = curr_unitary.ndim
+    lst = list(range(N))
+    lst.insert(idx, N - 1)
+    res = np.transpose(tensored_res, lst[:-1])
+    return res
+
+
+def apply_2q_gate(gate: np.array, qbitA: int, qbitB: int, curr_unitary):
+    A = 2 * qbitA
+    B = 2 * qbitB
+    tensored_res = np.tensordot(curr_unitary, gate, axes=((A, B), (1, 3)))
+    N = curr_unitary.ndim
+    lst = list(range(N))
+    if A < B:
+        smaller, bigger = A, B
+        first, second = N - 2, N - 1
+    else:
+        smaller, bigger = B, A
+        first, second = N - 1, N - 2
+    lst.insert(smaller, first)
+    lst.insert(bigger, second)
+    res = np.transpose(tensored_res, lst[:-2])
+    return res
+
+def apply_gate_on_qbits(action, curr_unitary):
+    gate, qbits = action
+    resulting_unitary = None
+
+    if len(qbits) == 1:
+        qb = qbits[0]
+        resulting_unitary = apply_1q_gate(gate, qb, curr_unitary)
+    elif len(qbits) == 2:
+        qb_a, qb_b = qbits
+        resulting_unitary = apply_2q_gate(gate, qb_a, qb_b, curr_unitary)
+    else:
+        raise ValueError("apply_gate_on_qbits: wrong number of qubits")
+
+    return resulting_unitary
+
+
+def make_random_unitary(qbg1=[], qbg2=[], nb_steps:int=3, size:int=3):
+    """
+    Generates a random unitary for learning, based on the specifications
+    passed as arguments.
+
+    Parameters
+    ----------
+    qbg1 : list of gates
+        The list of one qubit gates to be used for gate generation.
+    qbg2 : list of gates
+        The list of two qubit gates to be used for gate generation.
+    nb_steps : int
+        The number of unitaries to be applied.
+    size : int
+        The number of qubits of the circuit the unitary should be made for.
+
+    Returns
+    ----------
+    A tuple containing in its first element the generated random unitary,
+    on the second element the list of actions (tuples of gate, qubit(s))
+    used to obtain it.
+    """
+
+    #generate an identity unitary of the size of the system
+    target_unitary = make_init_unitary(size)
+    action_path = []
+
+    gate = None
+    qbits = None
+    for _ in range(nb_steps):
+        dice_roll = np.random.randint(1,3)
+        if dice_roll == 1:
+            gate = get_random_gate(qbg1)
+            qbits = get_random_qbits(1)
+        elif dice_roll == 2:
+            gate = get_random_gate(qbg2)
+            qbits = get_random_qbits(2)
+        else:
+            raise ValueError ("make_random_unitary : Selected a gate too big for the system")
+        action = (gate, qbits)
+        target_unitary = apply_gate_on_qbits(action, target_unitary)
+        action_path.append(action)
+
+    return target_unitary, action_path
