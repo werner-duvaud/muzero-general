@@ -54,6 +54,7 @@ class MuZeroConfig:
 
         #CHANGEABLE!!!
         self.action_space = list(range(SIZE))  # Fixed list of all possible actions. You should only edit the length
+        #print("##### MZ AS",self.action_space)
 
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
@@ -121,7 +122,7 @@ class MuZeroConfig:
         self.save_model = True  # Save the checkpoint in results_path as model.checkpoint
 
         #Heuristic choice!!!
-        self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 1000000  # Total number of training steps (ie weights update according to a batch)
 
         # Heuristic choice!!!
         self.batch_size = 128  # Number of parts of games to train on at each training step
@@ -192,9 +193,10 @@ class Game(AbstractGame):
     Game wrapper.
     """
 
-    def __init__(self, seed=None, randomise=True, poss_targets=[I]):
+    def __init__(self, seed=None, randomise=True, poss_targets=QB1GATES):
         idx = np.random.randint(0, len(poss_targets)) if randomise else 0 #by default, the first (only?) unitary
-        self.env = GateSynthesis(QB1GATES, q2_gates=[], rwd=100, max_steps=10000,
+        #print("#######", idx)
+        self.env = GateSynthesis(QB1GATES, q2_gates=[], rwd=100, max_steps=1000,
                  init_uop=I, target_uop=poss_targets[idx], tol=1e-3)
 
 
@@ -209,7 +211,7 @@ class Game(AbstractGame):
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done = self.env.step(action)
-        return np.array([[observation]]), reward, done
+        return observation, reward, done
 
     def legal_actions(self):
         """
@@ -222,7 +224,9 @@ class Game(AbstractGame):
         Returns:
             An array of integers, subset of the action space.
         """
-        return [_ for _ in range(len(self.env.full_action_list))]
+        res = [_ for _ in range(len(self.env.full_action_list))]
+        #print("########### LEGAL A", res)
+        return res
 
     def reset(self):
         """
@@ -320,9 +324,11 @@ class GateSynthesis:
             raise ValueError('Unsupported gate dimension')
 
         done = self.have_winner() or (self.nb_steps > self.max_steps)
+        if done:
+            print ("######### FINISH!!!")
         reward = self.final_reward if self.have_winner() else 0
 
-        return self.get_observation, reward, done
+        return self.get_observation(), reward, done
 
 
     def qbit_num_to_tensor_index(self, n: int):
@@ -370,7 +376,6 @@ class GateSynthesis:
                                axes=tuple([el for tup in zip(range(n), range(n, 2 * n)) for el in tup]))
         unitary = unitary.reshape((2**n, 2**n))
         res = np.array([np.real(unitary), np.imag(unitary)])  # a 3D object???
-        print("########", res.shape)
         return res
 
 
