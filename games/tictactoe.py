@@ -101,7 +101,9 @@ class MuZeroConfig:
         # Reanalyze (See paper appendix Reanalyse)
         self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
         self.reanalyse_on_gpu = False
-
+        self.num_reanalyse_workers = 1
+        self.value_target_update_freq = 1 # Update frequency of the target model used to provide fresher value (and possibly policy) estimates
+        self.use_updated_mcts_value_targets = False # If True, root values targets are updated according to the re-execution of the MCTS (in this case, lagging parameters are used to run the MCTS to stabilize bootstrapping). Otherwise, a lagging value of the network (representation & value) is used to obtain the updated value targets. 
 
 
         ### Adjust the self play / training ratio to avoid over/underfitting
