@@ -45,6 +45,7 @@ class MuZero:
             game_module = importlib.import_module("games." + game_name)
             self.Game = game_module.Game
             self.config = game_module.MuZeroConfig()
+            self.config.game_filename = game_name
         except ModuleNotFoundError as err:
             print(
                 f'{game_name} is not a supported game name, try "cartpole" or refer to the documentation for adding a new game.'
@@ -140,7 +141,7 @@ class MuZero:
                 self.config.train_on_gpu
                 + self.config.num_workers * self.config.selfplay_on_gpu
                 + log_in_tensorboard * self.config.selfplay_on_gpu
-                + self.config.use_last_model_value * self.config.reanalyse_on_gpu
+                + self.config.use_last_model_value * self.config.num_reanalyse_workers * self.config.reanalyse_on_gpu
             )
             if 1 < num_gpus_per_worker:
                 num_gpus_per_worker = math.floor(num_gpus_per_worker)
@@ -156,16 +157,22 @@ class MuZero:
             self.checkpoint, self.config,
         )
         self.shared_storage_worker.set_info.remote("terminate", False)
-
         self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(
             self.checkpoint, self.replay_buffer, self.config
         )
 
         if self.config.use_last_model_value:
-            self.reanalyse_worker = replay_buffer.Reanalyse.options(
-                num_cpus=0,
-                num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
-            ).remote(self.checkpoint, self.config)
+            self.reanalyse_workers = [
+                replay_buffer.Reanalyse.options(
+                    num_cpus=0,
+                    num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
+                ).remote(
+                    self.checkpoint,
+                    self.config,
+                )
+                for seed in range(self.config.num_reanalyse_workers)
+            ]
+
 
         self.self_play_workers = [
             self_play.SelfPlay.options(
@@ -184,13 +191,18 @@ class MuZero:
             )
             for self_play_worker in self.self_play_workers
         ]
+        
+        if self.config.use_last_model_value:
+            [
+                reanalyse_worker.reanalyse.remote(
+                    self.replay_buffer_worker, self.shared_storage_worker
+                )
+                for reanalyse_worker in self.reanalyse_workers
+            ]
+            
         self.training_worker.continuous_update_weights.remote(
             self.replay_buffer_worker, self.shared_storage_worker
         )
-        if self.config.use_last_model_value:
-            self.reanalyse_worker.reanalyse.remote(
-                self.replay_buffer_worker, self.shared_storage_worker
-            )
 
         if log_in_tensorboard:
             self.logging_loop(

@@ -1,12 +1,12 @@
 import copy
 import time
-
 import numpy
 import ray
 import torch
-
+import importlib
 import models
 
+from mcts import MCTS, Node, GameHistory, MinMaxStats
 
 @ray.remote
 class ReplayBuffer:
@@ -15,10 +15,14 @@ class ReplayBuffer:
     """
 
     def __init__(self, initial_checkpoint, initial_buffer, config):
+        self.reanalyse_priorities = None
         self.config = config
         self.buffer = copy.deepcopy(initial_buffer)
         self.num_played_games = initial_checkpoint["num_played_games"]
         self.num_played_steps = initial_checkpoint["num_played_steps"]
+
+        self.num_reanalysed_games = initial_checkpoint["num_reanalysed_games"]
+
         self.total_samples = sum(
             [len(game_history.root_values) for game_history in self.buffer.values()]
         )
@@ -31,6 +35,10 @@ class ReplayBuffer:
         numpy.random.seed(self.config.seed)
 
     def save_game(self, game_history, shared_storage=None):
+        if self.reanalyse_priorities is None:
+            self.reanalyse_priorities = numpy.array([0])
+        else:
+            self.reanalyse_priorities = numpy.concatenate((self.reanalyse_priorities, numpy.array([0])),0)
         if self.config.PER:
             if game_history.priorities is not None:
                 # Avoid read only array when loading replay buffer from disk
@@ -41,7 +49,7 @@ class ReplayBuffer:
                 for i, root_value in enumerate(game_history.root_values):
                     priority = (
                         numpy.abs(
-                            root_value - self.compute_target_value(game_history, i)
+                            root_value - compute_target_value(game_history, i, self.config.td_steps, self.config.discount)
                         )
                         ** self.config.PER_alpha
                     )
@@ -59,7 +67,9 @@ class ReplayBuffer:
             del_id = self.num_played_games - len(self.buffer)
             self.total_samples -= len(self.buffer[del_id].root_values)
             del self.buffer[del_id]
-
+            self.reanalyse_priorities = numpy.delete(self.reanalyse_priorities,0,0)
+            
+            
         if shared_storage:
             shared_storage.set_info.remote("num_played_games", self.num_played_games)
             shared_storage.set_info.remote("num_played_steps", self.num_played_steps)
@@ -132,7 +142,15 @@ class ReplayBuffer:
                 gradient_scale_batch,
             ),
         )
-
+    
+    # Sampling function used to give priority to episodes with 'older' estimates.
+    def reanalyse_sample_game(self):
+        game_index = numpy.argmax(self.reanalyse_priorities,0)
+        game_id = self.num_played_games - len(self.buffer) + game_index
+        self.reanalyse_priorities +=1
+        self.reanalyse_priorities[game_index]=0
+        return game_id, self.buffer[game_id]
+    
     def sample_game(self, force_uniform=False):
         """
         Sample game from buffer either uniformly or according to some priority.
@@ -186,13 +204,17 @@ class ReplayBuffer:
 
         return position_index, position_prob
 
-    def update_game_history(self, game_id, game_history):
+    def update_game_history(self, game_id, game_history, shared_storage):
         # The element could have been removed since its selection and update
         if next(iter(self.buffer)) <= game_id:
             if self.config.PER:
                 # Avoid read only array when loading replay buffer from disk
                 game_history.priorities = numpy.copy(game_history.priorities)
             self.buffer[game_id] = game_history
+        self.num_reanalysed_games += 1
+        shared_storage.set_info.remote(
+            "num_reanalysed_games", self.num_reanalysed_games
+        )
 
     def update_priorities(self, priorities, index_info):
         """
@@ -219,39 +241,7 @@ class ReplayBuffer:
                     self.buffer[game_id].priorities
                 )
 
-    def compute_target_value(self, game_history, index):
-        # The value target is the discounted root value of the search tree td_steps into the
-        # future, plus the discounted sum of all rewards until then.
-        bootstrap_index = index + self.config.td_steps
-        if bootstrap_index < len(game_history.root_values):
-            root_values = (
-                game_history.root_values
-                if game_history.reanalysed_predicted_root_values is None
-                else game_history.reanalysed_predicted_root_values
-            )
-            last_step_value = (
-                root_values[bootstrap_index]
-                if game_history.to_play_history[bootstrap_index]
-                == game_history.to_play_history[index]
-                else -root_values[bootstrap_index]
-            )
 
-            value = last_step_value * self.config.discount ** self.config.td_steps
-        else:
-            value = 0
-
-        for i, reward in enumerate(
-            game_history.reward_history[index + 1 : bootstrap_index + 1]
-        ):
-            # The value is oriented from the perspective of the current player
-            value += (
-                reward
-                if game_history.to_play_history[index]
-                == game_history.to_play_history[index + i]
-                else -reward
-            ) * self.config.discount ** i
-
-        return value
 
     def make_target(self, game_history, state_index):
         """
@@ -261,7 +251,7 @@ class ReplayBuffer:
         for current_index in range(
             state_index, state_index + self.config.num_unroll_steps + 1
         ):
-            value = self.compute_target_value(game_history, current_index)
+            value = compute_target_value(game_history, current_index, self.config.td_steps, self.config.discount)
 
             if current_index < len(game_history.root_values):
                 target_values.append(value)
@@ -308,15 +298,23 @@ class Reanalyse:
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
+        
+        # Import the game class to enable MCTS updates
+        game_module = importlib.import_module("games." + self.config.game_filename)
+        self.game = game_module.Game()
+        self.game.env = None
 
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_checkpoint["weights"])
         self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu"))
         self.model.eval()
-
-        self.num_reanalysed_games = initial_checkpoint["num_reanalysed_games"]
-
+        
+        # Create the target network (for stable bootstrapping)
+        if self.config.use_last_model_value:
+            self.target_model = copy.deepcopy(self.model)
+            self.last_update_step = initial_checkpoint["training_step"]          
+ 
     def reanalyse(self, replay_buffer, shared_storage):
         while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
             time.sleep(0.1)
@@ -327,35 +325,131 @@ class Reanalyse:
             shared_storage.get_info.remote("terminate")
         ):
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
+        
+        
+            # update target model periodically
+            if self.config.use_last_model_value:
+                training_step = ray.get(shared_storage.get_info.remote("training_step"))
+                if (training_step - self.last_update_step) >= self.config.value_target_update_freq :
+                    self.last_update_step = training_step
+                    self.target_model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
-            game_id, game_history, _ = ray.get(
-                replay_buffer.sample_game.remote(force_uniform=True)
+            game_id, game_history = ray.get(
+                replay_buffer.reanalyse_sample_game.remote()
             )
 
             # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
             if self.config.use_last_model_value:
-                observations = [
-                    game_history.get_stacked_observations(
-                        i, self.config.stacked_observations
+                
+                
+                # use the lagging network (representation + value) to obtain updated targets
+                if not self.config.use_updated_mcts_value_targets:
+                    observations = [
+                        game_history.get_stacked_observations(
+                            i, self.config.stacked_observations
+                        )
+                        for i in range(len(game_history.root_values))
+                    ]
+
+                    observations = (
+                        torch.tensor(observations)
+                        .float()
+                        .to(next(self.model.parameters()).device)
                     )
-                    for i in range(len(game_history.root_values))
-                ]
+                    values = models.support_to_scalar(
+                        # use lagging parameters
+                        self.target_model.initial_inference(observations)[0],
+                        self.config.support_size,
+                    )
+                    root_values = (
+                        torch.squeeze(values).detach().cpu().numpy()
+                    )
 
-                observations = (
-                    torch.tensor(observations)
-                    .float()
-                    .to(next(self.model.parameters()).device)
-                )
-                values = models.support_to_scalar(
-                    self.model.initial_inference(observations)[0],
-                    self.config.support_size,
-                )
-                game_history.reanalysed_predicted_root_values = (
-                    torch.squeeze(values).detach().cpu().numpy()
-                )
+                # re-execute MCTS to update targets (child visist and root_values)
+                l = len(game_history.root_values)
+                game_history.child_visits = []
+                game_history.root_values = []
+                priorities = []
+                for i in range(l):
+                    stacked_observations = game_history.get_stacked_observations(
+                        i,
+                        self.config.stacked_observations,
+                    )
+                    
+                    root, mcts_info = MCTS(self.config).run(
+                        # use either fresh or lagging (recent) parameters
+                        self.target_model if self.config.use_updated_mcts_value_targets else self.model,
+                        stacked_observations,
+                        self.game.legal_actions(),
+                        self.game.to_play(),
+                        True,
+                    )
 
-            replay_buffer.update_game_history.remote(game_id, game_history)
-            self.num_reanalysed_games += 1
-            shared_storage.set_info.remote(
-                "num_reanalysed_games", self.num_reanalysed_games
-            )
+                    game_history.store_search_statistics(root, self.config.action_space)
+
+
+                # use mcts values targets 
+                if self.config.use_updated_mcts_value_targets:
+                    root_values = game_history.root_values
+              
+            
+
+            # Update PER according to the initial prioritization (See paper appendix Training)
+            if self.config.PER:
+                priorities = []
+                for i, root_value in enumerate(root_values):
+                    priority = (
+                        numpy.abs(
+                            root_value - compute_target_value(game_history, i, self.config.td_steps, self.config.discount)
+                        )
+                        ** self.config.PER_alpha
+                    )
+                    priorities.append(priority)
+
+                game_history.priorities = numpy.array(priorities, dtype="float32")
+                game_history.game_priority = numpy.max(game_history.priorities)
+
+
+                
+            game_history.reanalysed_predicted_root_values = root_values
+            replay_buffer.update_game_history.remote(game_id, game_history, shared_storage)
+
+
+            
+            
+            
+            
+            
+def compute_target_value(game_history, index, td_steps, discount):
+    # The value target is the discounted root value of the search tree td_steps into the
+    # future, plus the discounted sum of all rewards until then.
+    bootstrap_index = index + td_steps
+    if bootstrap_index < len(game_history.root_values):
+        root_values = (
+            game_history.root_values
+            if game_history.reanalysed_predicted_root_values is None
+            else game_history.reanalysed_predicted_root_values
+        )
+        last_step_value = (
+            root_values[bootstrap_index]
+            if game_history.to_play_history[bootstrap_index]
+            == game_history.to_play_history[index]
+            else -root_values[bootstrap_index]
+        )
+
+        value = last_step_value * discount ** td_steps
+    else:
+        value = 0
+
+    for i, reward in enumerate(
+        game_history.reward_history[index + 1 : bootstrap_index + 1]
+    ):
+        # The value is oriented from the perspective of the current player
+        value += (
+            reward
+            if game_history.to_play_history[index]
+            == game_history.to_play_history[index + i]
+            else -reward
+        ) * discount ** i
+
+    return value
