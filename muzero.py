@@ -88,7 +88,7 @@ class MuZero:
         if 1 < self.num_gpus:
             self.num_gpus = math.floor(self.num_gpus)
 
-        ray.init(num_gpus=total_gpus, ignore_reinit_error=True, )
+        ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
 
         # Checkpoint and replay buffer used to initialize workers
         self.checkpoint = {
@@ -376,7 +376,7 @@ class MuZero:
             results.append(
                 ray.get(
                     self_play_worker.play_game.remote(
-                        0, 0, render, opponent, muzero_player
+                        0, 0, render, opponent, muzero_player,
                     )
                 )
             )
