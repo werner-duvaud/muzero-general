@@ -178,12 +178,17 @@ class Game(AbstractGame):
         """
         self.env.close()
 
-    def render(self):
+    def render(self, mode="rgb_array"):
         """
         Display the game observation.
         """
-        self.env.render()
-        input("Press enter to take a step ")
+        if mode == "default":
+            self.env.render()
+            input("Press enter to take a step ")
+        elif mode == "rgb_array":
+            return self.env.render(mode="rgb_array")
+        else:
+            raise ValueError(f'{mode} is not a valid mode')
 
     def action_to_string(self, action_number):
         """

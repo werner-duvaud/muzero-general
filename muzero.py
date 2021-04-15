@@ -88,7 +88,7 @@ class MuZero:
         if 1 < self.num_gpus:
             self.num_gpus = math.floor(self.num_gpus)
 
-        ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
+        ray.init(num_gpus=total_gpus, ignore_reinit_error=True, )
 
         # Checkpoint and replay buffer used to initialize workers
         self.checkpoint = {
@@ -362,6 +362,8 @@ class MuZero:
             num_tests (int): Number of games to average. Defaults to 1.
 
             num_gpus (int): Number of GPUs to use, 0 forces to use the CPU. Defaults to 0.
+
+            render_history (bool): whether to store a history of the rendered environment
         """
         opponent = opponent if opponent else self.config.opponent
         muzero_player = muzero_player if muzero_player else self.config.muzero_player
@@ -374,7 +376,7 @@ class MuZero:
             results.append(
                 ray.get(
                     self_play_worker.play_game.remote(
-                        0, 0, render, opponent, muzero_player,
+                        0, 0, render, opponent, muzero_player
                     )
                 )
             )

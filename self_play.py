@@ -4,6 +4,7 @@ import time
 import numpy
 import ray
 import torch
+from matplotlib import pyplot
 
 import models
 
@@ -108,7 +109,7 @@ class SelfPlay:
         self.close_game()
 
     def play_game(
-        self, temperature, temperature_threshold, render, opponent, muzero_player
+        self, temperature, temperature_threshold, render, opponent, muzero_player, render_history=False
     ):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
@@ -124,6 +125,8 @@ class SelfPlay:
 
         if render:
             self.game.render()
+        if render_history:
+            game_history.render_history.append(self.game.render(mode="rgb_array"))
 
         with torch.no_grad():
             while (
@@ -162,6 +165,10 @@ class SelfPlay:
                         print(
                             f"Root value for player {self.game.to_play()}: {root.value():.2f}"
                         )
+                    if render_history:
+                        game_history.render_history.append(self.game.render(mode="rgb_array"))
+
+
                 else:
                     action, root = self.select_opponent_action(
                         opponent, stacked_observations
@@ -493,6 +500,7 @@ class GameHistory:
         # For PER
         self.priorities = None
         self.game_priority = None
+        self.render_history = []
 
     def store_search_statistics(self, root, action_space):
         # Turn visit count from root into a policy
