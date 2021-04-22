@@ -1,11 +1,87 @@
+import collections
 import copy
+import pickle
 import time
 
 import numpy
 import ray
 import torch
+import sqlite3
 
 import models
+
+
+class GameHistoryDao(collections.MutableMapping):
+    """
+    Data Access Object for the game histories comprising the replay buffer
+    """
+
+    def __init__(self, file):
+        self.connection = sqlite3.connect(file)
+        self.connection.execute("CREATE TABLE IF NOT EXISTS game_history("
+                                "   id INTEGER PRIMARY KEY ASC,"
+                                "   value TEXT"
+                                ")")
+        self.connection.commit()
+        self.temp = None
+
+    def __len__(self):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM game_history")
+        result = cursor.fetchone()[0]
+        return result
+
+    def __getitem__(self, key):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT value FROM game_history WHERE id = ?", (int(key),))
+        result = cursor.fetchone()
+        if result is None:
+            raise KeyError()
+        as_text = result[0]
+        return pickle.loads(as_text)
+
+    def __setitem__(self, key, value):
+        as_text = pickle.dumps(value)
+        cursor = self.connection.cursor()
+        cursor.execute("REPLACE INTO game_history(id, value) VALUES(?, ?)", (int(key), as_text))
+        self.connection.commit()
+        self.temp = value
+
+    def __delitem__(self, key):
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM game_history WHERE id = ?", (int(key),))
+        self.connection.commit()
+        if cursor.rowcount == 0:
+            raise KeyError()
+
+    def keys(self):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT id FROM game_history ORDER BY id ASC")
+        for row in cursor.fetchall():
+            yield row[0]
+
+    def values(self):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT value FROM game_history ORDER BY id ASC")
+        for row in cursor:
+            yield pickle.loads(row[0])
+
+    def items(self):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT id, value FROM game_history ORDER BY id ASC")
+        for row in cursor:
+            yield row[0], pickle.loads(row[1])
+
+    def __contains__(self, key):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM game_history WHERE id = ?", (int(key),))
+        return cursor.fetchone()[0] > 0
+
+    def __iter__(self):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT id FROM game_history ORDER BY id ASC")
+        for row in cursor:
+            yield row[0]
 
 
 @ray.remote
@@ -16,7 +92,8 @@ class ReplayBuffer:
 
     def __init__(self, initial_checkpoint, initial_buffer, config):
         self.config = config
-        self.buffer = copy.deepcopy(initial_buffer)
+        self.buffer_file = initial_buffer
+        self.buffer = GameHistoryDao(file=self.buffer_file)
         self.num_played_games = initial_checkpoint["num_played_games"]
         self.num_played_steps = initial_checkpoint["num_played_steps"]
         self.total_samples = sum(
@@ -65,7 +142,7 @@ class ReplayBuffer:
             shared_storage.set_info.remote("num_played_steps", self.num_played_steps)
 
     def get_buffer(self):
-        return self.buffer
+        return self.buffer_file
 
     def get_batch(self):
         (

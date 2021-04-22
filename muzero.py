@@ -110,7 +110,7 @@ class MuZero:
             "num_reanalysed_games": 0,
             "terminate": False,
         }
-        self.replay_buffer = {}
+        self.replay_buffer = os.path.join(self.config.results_path, "replay_buffer.db")
 
         cpu_actor = CPUActor.remote()
         cpu_weights = cpu_actor.get_initial_weights.remote(self.config)
