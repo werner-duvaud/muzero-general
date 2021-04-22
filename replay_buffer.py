@@ -281,20 +281,27 @@ class ReplayBuffer:
 
             # The element could have been removed since its selection and training
             if next(iter(self.buffer)) <= game_id:
+
+                # select record from database (can't update in place)
+                game_history = self.buffer[game_id]
+
                 # Update position priorities
                 priority = priorities[i, :]
                 start_index = game_pos
                 end_index = min(
-                    game_pos + len(priority), len(self.buffer[game_id].priorities)
+                    game_pos + len(priority), len(game_history.priorities)
                 )
-                self.buffer[game_id].priorities[start_index:end_index] = priority[
+                game_history.priorities[start_index:end_index] = priority[
                     : end_index - start_index
                 ]
 
                 # Update game priorities
-                self.buffer[game_id].game_priority = numpy.max(
+                game_history.game_priority = numpy.max(
                     self.buffer[game_id].priorities
                 )
+
+                # update record
+                self.buffer[game_id] = game_history
 
     def compute_target_value(self, game_history, index):
         # The value target is the discounted root value of the search tree td_steps into the
