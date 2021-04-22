@@ -302,7 +302,6 @@ class Reanalyse:
         # Import the game class to enable MCTS updates
         game_module = importlib.import_module("games." + self.config.game_filename)
         self.game = game_module.Game()
-        self.game.env = None
 
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
