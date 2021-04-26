@@ -16,14 +16,43 @@ class GameHistoryDao(collections.MutableMapping):
     Data Access Object for the game histories comprising the replay buffer
     """
 
+    @staticmethod
+    def assemble_game_history(result):
+
+        # assemble priorities into the game history
+        # structure: (id, game_priority, priorities, reanalyzed_predicted_root_values, object)
+        game_history = pickle.loads(result[4])
+        game_history.game_priority = result[1]
+        game_history.priorities = pickle.loads(result[2])
+        game_history.reanalysed_predicted_root_values = pickle.loads(result[3])
+
+        return result[0], game_history
+
+    @staticmethod
+    def disassemble_game_history(value):
+
+        # disassemble the priorities from the game history
+        game_priority = value.game_priority
+        priorities = value.priorities
+        reanalyzed_predicted_root_values = value.reanalyzed_predicted_root_values
+
+        # avoid storing duplicate data (it will be reassembled later)
+        value.game_priority = None
+        value.priorities = None
+        value.reanalyzed_predicted_root_values = None
+
+        return game_priority, priorities, reanalyzed_predicted_root_values
+
     def __init__(self, file):
         self.connection = sqlite3.connect(file)
         self.connection.execute("CREATE TABLE IF NOT EXISTS game_history("
                                 "   id INTEGER PRIMARY KEY ASC,"
-                                "   value TEXT"
+                                "   game_priority REAL,"
+                                "   priorities TEXT,"
+                                "   reanalyzed_predicted_root_values TEXT,"
+                                "   object TEXT"
                                 ")")
         self.connection.commit()
-        self.temp = None
 
     def __len__(self):
         cursor = self.connection.cursor()
@@ -33,19 +62,37 @@ class GameHistoryDao(collections.MutableMapping):
 
     def __getitem__(self, key):
         cursor = self.connection.cursor()
-        cursor.execute("SELECT value FROM game_history WHERE id = ?", (int(key),))
+        cursor.execute("SELECT  game_priority,"
+                       "        priorities,"
+                       "        reanalyzed_predicted_root_values"
+                       "        object"
+                       "    FROM game_history"
+                       "    WHERE id = ?", (int(key),))
         result = cursor.fetchone()
         if result is None:
             raise KeyError()
-        as_text = result[0]
-        return pickle.loads(as_text)
+
+        return self.assemble_game_history(result)
 
     def __setitem__(self, key, value):
-        as_text = pickle.dumps(value)
+
+        game_priority, priorities, reanalyzed_predicted_root_values = self.disassemble_game_history(value)
+
         cursor = self.connection.cursor()
-        cursor.execute("REPLACE INTO game_history(id, value) VALUES(?, ?)", (int(key), as_text))
+        cursor.execute("REPLACE INTO game_history("
+                       "    id,"
+                       "    game_priority,"
+                       "    priorities,"
+                       "    reanalyzed_predicted_root_values,"
+                       "    object"
+                       ") VALUES(?, ?, ?, ?, ?)", (
+                            int(key),
+                            game_priority,
+                            pickle.dumps(priorities),
+                            pickle.dumps(reanalyzed_predicted_root_values),
+                            pickle.dumps(value)
+                        ))
         self.connection.commit()
-        self.temp = value
 
     def __delitem__(self, key):
         cursor = self.connection.cursor()
@@ -82,6 +129,70 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT id FROM game_history ORDER BY id ASC")
         for row in cursor:
             yield row[0]
+
+    def priorities(self, game_id):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT priorities FROM game_history WHERE id = ?", (game_id,))
+        result = cursor.fetchone()
+        if result is None:
+            raise KeyError()
+        return pickle.loads(result[0])
+
+    def min_id(self):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT MIN(id) FROM game_history")
+        return cursor.fetchone()[0]
+
+    def sample_n(self, n):
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT  id,"
+                       "        game_priority,"
+                       "        priorities,"
+                       "        reanalyzed_predicted_root_values"
+                       "        object"
+                       "    FROM game_history"
+                       "    ORDER BY RANDOM()"
+                       "    LIMIT ?", (int(n),))
+        for row in cursor:
+            yield self.assemble_game_history(row)
+
+    def sample_n_ranked(self, n):
+        # reference: https://stackoverflow.com/a/12301949
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT  id,"
+                       "        game_priority,"
+                       "        priorities,"
+                       "        reanalyzed_predicted_root_values"
+                       "        object"
+                       "    FROM game_history"
+                       "    ORDER BY -LOG(1.0 - RAND()) / game_priority"
+                       "    LIMIT ?", (int(n),))
+        for row in cursor:
+            yield self.assemble_game_history(row)
+
+    def update_priorities(self, game_id, game_priority, priorities):
+        cursor = self.connection.cursor()
+        cursor.execute("UPDATE game_history"
+                       "SET game_priority = ?,"
+                       "    priorities = ?"
+                       "WHERE"
+                       "    id = ?", (
+                            game_priority,
+                            pickle.dumps(priorities),
+                            int(game_id)
+                        ))
+        self.connection.commit()
+
+    def update_reanalyzed_values(self, game_id, reanalyzed_predicted_root_values):
+        cursor = self.connection.cursor()
+        cursor.execute("UPDATE game_history"
+                       "SET reanalyzed_predicted_root_values = ?"
+                       "WHERE"
+                       "    id = ?", (
+                            reanalyzed_predicted_root_values,
+                            int(game_id)
+                        ))
+        self.connection.commit()
 
 
 @ray.remote
@@ -215,38 +326,19 @@ class ReplayBuffer:
         Sample game from buffer either uniformly or according to some priority.
         See paper appendix Training.
         """
-        game_prob = None
-        if self.config.PER and not force_uniform:
-            game_probs = numpy.array(
-                [game_history.game_priority for game_history in self.buffer.values()],
-                dtype="float32",
-            )
-            game_probs /= numpy.sum(game_probs)
-            game_index = numpy.random.choice(len(self.buffer), p=game_probs)
-            game_prob = game_probs[game_index]
-        else:
-            game_index = numpy.random.choice(len(self.buffer))
-        game_id = self.num_played_games - len(self.buffer) + game_index
-
-        return game_id, self.buffer[game_id], game_prob
+        return next(iter(self.sample_n_games(1)))
 
     def sample_n_games(self, n_games, force_uniform=False):
         if self.config.PER and not force_uniform:
-            game_id_list = []
-            game_probs = []
-            for game_id, game_history in self.buffer.items():
-                game_id_list.append(game_id)
-                game_probs.append(game_history.game_priority)
-            game_probs = numpy.array(game_probs, dtype="float32")
-            game_probs /= numpy.sum(game_probs)
-            game_prob_dict = dict([(game_id, prob) for game_id, prob in zip(game_id_list, game_probs)])
-            selected_games = numpy.random.choice(game_id_list, n_games, p=game_probs)
+            samples = self.buffer.sample_n_ranked(n_games)
         else:
-            selected_games = numpy.random.choice(list(self.buffer.keys()), n_games)
-            game_prob_dict = {}
-        ret = [(game_id, self.buffer[game_id], game_prob_dict.get(game_id))
-               for game_id in selected_games]
-        return ret
+            samples = self.buffer.sample_n(n_games)
+
+        for sample in samples:
+            game_id = sample[0]
+            game_history = sample[1]
+            game_prob = game_history.game_priority
+            yield game_id, game_history, game_prob
 
     def sample_position(self, game_history, force_uniform=False):
         """
@@ -265,10 +357,7 @@ class ReplayBuffer:
 
     def update_game_history(self, game_id, game_history):
         # The element could have been removed since its selection and update
-        if next(iter(self.buffer)) <= game_id:
-            if self.config.PER:
-                # Avoid read only array when loading replay buffer from disk
-                game_history.priorities = numpy.copy(game_history.priorities)
+        if self.buffer.min_id() <= game_id:
             self.buffer[game_id] = game_history
 
     def update_priorities(self, priorities, index_info):
@@ -280,28 +369,28 @@ class ReplayBuffer:
             game_id, game_pos = index_info[i]
 
             # The element could have been removed since its selection and training
-            if next(iter(self.buffer)) <= game_id:
+            if self.buffer.min_id() <= game_id:
 
                 # select record from database (can't update in place)
-                game_history = self.buffer[game_id]
+                priorities_record = self.buffer.priorities(game_id)
 
                 # Update position priorities
                 priority = priorities[i, :]
                 start_index = game_pos
                 end_index = min(
-                    game_pos + len(priority), len(game_history.priorities)
+                    game_pos + len(priority), len(priorities_record)
                 )
-                game_history.priorities[start_index:end_index] = priority[
+                priorities_record[start_index:end_index] = priority[
                     : end_index - start_index
                 ]
 
                 # Update game priorities
-                game_history.game_priority = numpy.max(
-                    self.buffer[game_id].priorities
+                game_priority = numpy.max(
+                    priorities_record
                 )
 
                 # update record
-                self.buffer[game_id] = game_history
+                self.buffer.update_priorities(game_id, game_priority, priorities_record)
 
     def compute_target_value(self, game_history, index):
         # The value target is the discounted root value of the search tree td_steps into the
