@@ -37,11 +37,6 @@ class GameHistoryDao(collections.MutableMapping):
         priorities = value.priorities
         reanalysed_predicted_root_values = value.reanalysed_predicted_root_values
 
-        # don't store numpy arrays or else it's a problem later after reloading
-        priorities = list(priorities) if type(priorities) is numpy.ndarray else priorities
-        reanalysed_predicted_root_values = list(reanalysed_predicted_root_values) if type(
-            reanalysed_predicted_root_values) is numpy.ndarray else reanalysed_predicted_root_values
-
         # avoid storing duplicate data (it will be reassembled later)
         value.game_priority = None
         value.priorities = None
@@ -96,7 +91,7 @@ class GameHistoryDao(collections.MutableMapping):
                        "    object"
                        ") VALUES(?, ?, ?, ?, ?)", (
                             int(key),
-                            game_priority,
+                            float(game_priority),
                             pickle.dumps(priorities),
                             pickle.dumps(reanalysed_predicted_root_values),
                             pickle.dumps(value)
@@ -196,7 +191,7 @@ class GameHistoryDao(collections.MutableMapping):
                        "    priorities = ?"
                        "WHERE"
                        "    id = ?", (
-                            game_priority,
+                            float(game_priority),
                             pickle.dumps(priorities),
                             int(game_id)
                         ))
