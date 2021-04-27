@@ -20,7 +20,7 @@ class GameHistoryDao(collections.MutableMapping):
     def assemble_game_history(result):
 
         # assemble priorities into the game history
-        # structure: (id, game_priority, priorities, reanalyzed_predicted_root_values, object)
+        # structure: (id, game_priority, priorities, reanalysed_predicted_root_values, object)
         game_history = pickle.loads(result[4])
         game_history.game_priority = result[1]
         game_history.priorities = pickle.loads(result[2])
@@ -34,14 +34,14 @@ class GameHistoryDao(collections.MutableMapping):
         # disassemble the priorities from the game history
         game_priority = value.game_priority
         priorities = value.priorities
-        reanalyzed_predicted_root_values = value.reanalyzed_predicted_root_values
+        reanalysed_predicted_root_values = value.reanalysed_predicted_root_values
 
         # avoid storing duplicate data (it will be reassembled later)
         value.game_priority = None
         value.priorities = None
-        value.reanalyzed_predicted_root_values = None
+        value.reanalysed_predicted_root_values = None
 
-        return game_priority, priorities, reanalyzed_predicted_root_values
+        return game_priority, priorities, reanalysed_predicted_root_values
 
     def __init__(self, file):
         self.connection = sqlite3.connect(file)
@@ -49,7 +49,7 @@ class GameHistoryDao(collections.MutableMapping):
                                 "   id INTEGER PRIMARY KEY ASC,"
                                 "   game_priority REAL,"
                                 "   priorities TEXT,"
-                                "   reanalyzed_predicted_root_values TEXT,"
+                                "   reanalysed_predicted_root_values TEXT,"
                                 "   object TEXT"
                                 ")")
         self.connection.commit()
@@ -64,7 +64,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor = self.connection.cursor()
         cursor.execute("SELECT  game_priority,"
                        "        priorities,"
-                       "        reanalyzed_predicted_root_values"
+                       "        reanalysed_predicted_root_values"
                        "        object"
                        "    FROM game_history"
                        "    WHERE id = ?", (int(key),))
@@ -76,20 +76,20 @@ class GameHistoryDao(collections.MutableMapping):
 
     def __setitem__(self, key, value):
 
-        game_priority, priorities, reanalyzed_predicted_root_values = self.disassemble_game_history(value)
+        game_priority, priorities, reanalysed_predicted_root_values = self.disassemble_game_history(value)
 
         cursor = self.connection.cursor()
         cursor.execute("REPLACE INTO game_history("
                        "    id,"
                        "    game_priority,"
                        "    priorities,"
-                       "    reanalyzed_predicted_root_values,"
+                       "    reanalysed_predicted_root_values,"
                        "    object"
                        ") VALUES(?, ?, ?, ?, ?)", (
                             int(key),
                             game_priority,
                             pickle.dumps(priorities),
-                            pickle.dumps(reanalyzed_predicted_root_values),
+                            pickle.dumps(reanalysed_predicted_root_values),
                             pickle.dumps(value)
                         ))
         self.connection.commit()
@@ -112,7 +112,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT id,"
                        "       game_priority,"
                        "       priorities,"
-                       "       reanalyzed_predicted_root_values"
+                       "       reanalysed_predicted_root_values"
                        "       object"
                        "    FROM game_history ORDER BY id ASC")
         for row in cursor:
@@ -123,7 +123,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT id,"
                        "       game_priority,"
                        "       priorities,"
-                       "       reanalyzed_predicted_root_values"
+                       "       reanalysed_predicted_root_values"
                        "       object"
                        "    FROM game_history ORDER BY id ASC")
         for row in cursor:
@@ -158,7 +158,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT  id,"
                        "        game_priority,"
                        "        priorities,"
-                       "        reanalyzed_predicted_root_values"
+                       "        reanalysed_predicted_root_values"
                        "        object"
                        "    FROM game_history"
                        "    ORDER BY RANDOM()"
@@ -172,7 +172,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT  id,"
                        "        game_priority,"
                        "        priorities,"
-                       "        reanalyzed_predicted_root_values"
+                       "        reanalysed_predicted_root_values"
                        "        object"
                        "    FROM game_history"
                        "    ORDER BY -LOG(1.0 - RAND()) / game_priority"
@@ -193,13 +193,13 @@ class GameHistoryDao(collections.MutableMapping):
                         ))
         self.connection.commit()
 
-    def update_reanalyzed_values(self, game_id, reanalyzed_predicted_root_values):
+    def update_reanalyzed_values(self, game_id, reanalysed_predicted_root_values):
         cursor = self.connection.cursor()
         cursor.execute("UPDATE game_history"
-                       "SET reanalyzed_predicted_root_values = ?"
+                       "SET reanalysed_predicted_root_values = ?"
                        "WHERE"
                        "    id = ?", (
-                            reanalyzed_predicted_root_values,
+                            reanalysed_predicted_root_values,
                             int(game_id)
                         ))
         self.connection.commit()
