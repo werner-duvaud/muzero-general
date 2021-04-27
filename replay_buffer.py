@@ -187,10 +187,10 @@ class GameHistoryDao(collections.MutableMapping):
     def update_priorities(self, game_id, game_priority, priorities):
         cursor = self.connection.cursor()
         cursor.execute("UPDATE game_history"
-                       "SET game_priority = ?,"
-                       "    priorities = ?"
-                       "WHERE"
-                       "    id = ?", (
+                       "    SET game_priority = ?,"
+                       "        priorities = ?"
+                       "    WHERE"
+                       "        id = ?", (
                             float(game_priority),
                             pickle.dumps(priorities),
                             int(game_id)
@@ -200,9 +200,9 @@ class GameHistoryDao(collections.MutableMapping):
     def update_reanalyzed_values(self, game_id, reanalysed_predicted_root_values):
         cursor = self.connection.cursor()
         cursor.execute("UPDATE game_history"
-                       "SET reanalysed_predicted_root_values = ?"
-                       "WHERE"
-                       "    id = ?", (
+                       "    SET reanalysed_predicted_root_values = ?"
+                       "    WHERE"
+                       "        id = ?", (
                             reanalysed_predicted_root_values,
                             int(game_id)
                         ))
