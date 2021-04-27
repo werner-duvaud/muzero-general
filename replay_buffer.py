@@ -65,7 +65,8 @@ class GameHistoryDao(collections.MutableMapping):
 
     def __getitem__(self, key):
         cursor = self.connection.cursor()
-        cursor.execute("SELECT  game_priority,"
+        cursor.execute("SELECT  id,"
+                       "        game_priority,"
                        "        priorities,"
                        "        reanalysed_predicted_root_values"
                        "        object"
