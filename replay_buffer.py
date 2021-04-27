@@ -68,7 +68,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT  id,"
                        "        game_priority,"
                        "        priorities,"
-                       "        reanalysed_predicted_root_values"
+                       "        reanalysed_predicted_root_values,"
                        "        object"
                        "    FROM game_history"
                        "    WHERE id = ?", (int(key),))
@@ -116,7 +116,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT id,"
                        "       game_priority,"
                        "       priorities,"
-                       "       reanalysed_predicted_root_values"
+                       "       reanalysed_predicted_root_values,"
                        "       object"
                        "    FROM game_history ORDER BY id ASC")
         for row in cursor:
@@ -127,7 +127,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT id,"
                        "       game_priority,"
                        "       priorities,"
-                       "       reanalysed_predicted_root_values"
+                       "       reanalysed_predicted_root_values,"
                        "       object"
                        "    FROM game_history ORDER BY id ASC")
         for row in cursor:
@@ -162,7 +162,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT  id,"
                        "        game_priority,"
                        "        priorities,"
-                       "        reanalysed_predicted_root_values"
+                       "        reanalysed_predicted_root_values,"
                        "        object"
                        "    FROM game_history"
                        "    ORDER BY RANDOM()"
@@ -176,7 +176,7 @@ class GameHistoryDao(collections.MutableMapping):
         cursor.execute("SELECT  id,"
                        "        game_priority,"
                        "        priorities,"
-                       "        reanalysed_predicted_root_values"
+                       "        reanalysed_predicted_root_values,"
                        "        object"
                        "    FROM game_history"
                        "    ORDER BY -LOG(1.0 - RAND()) / game_priority"
