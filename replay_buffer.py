@@ -1,12 +1,13 @@
 import collections
-import copy
 import pickle
 import time
 
+import math
 import numpy
+import random
 import ray
-import torch
 import sqlite3
+import torch
 
 import models
 
@@ -45,6 +46,8 @@ class GameHistoryDao(collections.MutableMapping):
 
     def __init__(self, file):
         self.connection = sqlite3.connect(file)
+        self.connection.create_function('log', 1, math.log10)
+        self.connection.create_function('rand', 0, random.random)
         self.connection.execute("CREATE TABLE IF NOT EXISTS game_history("
                                 "   id INTEGER PRIMARY KEY ASC,"
                                 "   game_priority REAL,"
