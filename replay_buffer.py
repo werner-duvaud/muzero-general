@@ -34,8 +34,13 @@ class GameHistoryDao(collections.MutableMapping):
 
         # disassemble the priorities from the game history
         game_priority = value.game_priority
-        priorities = list(value.priorities)
-        reanalysed_predicted_root_values = list(value.reanalysed_predicted_root_values)
+        priorities = value.priorities
+        reanalysed_predicted_root_values = value.reanalysed_predicted_root_values
+
+        # don't store numpy arrays or else it's a problem later after reloading
+        priorities = list(priorities) if type(priorities) is numpy.ndarray else priorities
+        reanalysed_predicted_root_values = list(reanalysed_predicted_root_values) if type(
+            reanalysed_predicted_root_values) is numpy.ndarray else reanalysed_predicted_root_values
 
         # avoid storing duplicate data (it will be reassembled later)
         value.game_priority = None
