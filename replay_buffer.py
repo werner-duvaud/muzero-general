@@ -203,7 +203,7 @@ class GameHistoryDao(collections.MutableMapping):
                        "    SET reanalysed_predicted_root_values = ?"
                        "    WHERE"
                        "        id = ?", (
-                            reanalysed_predicted_root_values,
+                            pickle.dumps(reanalysed_predicted_root_values),
                             int(game_id)
                         ))
         self.connection.commit()
