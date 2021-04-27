@@ -109,7 +109,7 @@ class GameHistoryDao(collections.MutableMapping):
 
     def values(self):
         cursor = self.connection.cursor()
-        cursor.execute("SELECT value FROM game_history ORDER BY id ASC")
+        cursor.execute("SELECT object FROM game_history ORDER BY id ASC")
         for row in cursor:
             yield pickle.loads(row[0])
 
