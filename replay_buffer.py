@@ -109,15 +109,25 @@ class GameHistoryDao(collections.MutableMapping):
 
     def values(self):
         cursor = self.connection.cursor()
-        cursor.execute("SELECT object FROM game_history ORDER BY id ASC")
+        cursor.execute("SELECT id,"
+                       "       game_priority,"
+                       "       priorities,"
+                       "       reanalyzed_predicted_root_values"
+                       "       object"
+                       "    FROM game_history ORDER BY id ASC")
         for row in cursor:
-            yield pickle.loads(row[0])
+            yield self.assemble_game_history(row)[1]
 
     def items(self):
         cursor = self.connection.cursor()
-        cursor.execute("SELECT id, value FROM game_history ORDER BY id ASC")
+        cursor.execute("SELECT id,"
+                       "       game_priority,"
+                       "       priorities,"
+                       "       reanalyzed_predicted_root_values"
+                       "       object"
+                       "    FROM game_history ORDER BY id ASC")
         for row in cursor:
-            yield row[0], pickle.loads(row[1])
+            yield self.assemble_game_history(row)
 
     def __contains__(self, key):
         cursor = self.connection.cursor()
