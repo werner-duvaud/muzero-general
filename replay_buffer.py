@@ -164,9 +164,11 @@ class GameHistoryDao(collections.MutableMapping):
                        "        priorities,"
                        "        reanalysed_predicted_root_values,"
                        "        object"
-                       "    FROM game_history"
-                       "    ORDER BY RANDOM()"
-                       "    LIMIT ?", (int(n),))
+                       "    FROM game_history WHERE id IN ("
+                       "        SELECT id FROM game_history"
+                       "        ORDER BY RANDOM()"
+                       "        LIMIT ?"
+                       "    )", (int(n),))
         for row in cursor:
             yield self.assemble_game_history(row)
 
@@ -178,9 +180,11 @@ class GameHistoryDao(collections.MutableMapping):
                        "        priorities,"
                        "        reanalysed_predicted_root_values,"
                        "        object"
-                       "    FROM game_history"
-                       "    ORDER BY -LOG(1.0 - RAND()) / game_priority"
-                       "    LIMIT ?", (int(n),))
+                       "    FROM game_history WHERE id IN ("
+                       "        SELECT id FROM game_history"
+                       "        ORDER BY -LOG(1.0 - RAND()) / game_priority"
+                       "        LIMIT ?"
+                       "    )", (int(n),))
         for row in cursor:
             yield self.assemble_game_history(row)
 
