@@ -34,8 +34,8 @@ class GameHistoryDao(collections.MutableMapping):
 
         # disassemble the priorities from the game history
         game_priority = value.game_priority
-        priorities = value.priorities
-        reanalysed_predicted_root_values = value.reanalysed_predicted_root_values
+        priorities = list(value.priorities)
+        reanalysed_predicted_root_values = list(value.reanalysed_predicted_root_values)
 
         # avoid storing duplicate data (it will be reassembled later)
         value.game_priority = None
