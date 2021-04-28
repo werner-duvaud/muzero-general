@@ -201,7 +201,7 @@ class GameHistoryDao(collections.MutableMapping):
                         ))
         self.connection.commit()
 
-    def update_reanalyzed_values(self, game_id, reanalysed_predicted_root_values):
+    def update_reanalysed_values(self, game_id, reanalysed_predicted_root_values):
         cursor = self.connection.cursor()
         cursor.execute("UPDATE game_history"
                        "    SET reanalysed_predicted_root_values = ?"
@@ -374,7 +374,7 @@ class ReplayBuffer:
         return position_index, position_prob
 
     def update_reanalysed_values(self, game_id, reanalysed_predicted_root_values):
-        self.buffer.update_reanalyzed_values(game_id, reanalysed_predicted_root_values)
+        self.buffer.update_reanalysed_values(game_id, reanalysed_predicted_root_values)
 
     def update_priorities(self, priorities, index_info):
         """
