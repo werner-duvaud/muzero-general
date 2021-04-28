@@ -373,10 +373,8 @@ class ReplayBuffer:
 
         return position_index, position_prob
 
-    def update_game_history(self, game_id, game_history):
-        # The element could have been removed since its selection and update
-        if self.buffer.min_id() <= game_id:
-            self.buffer[game_id] = game_history
+    def update_reanalysed_values(self, game_id, reanalysed_predicted_root_values):
+        self.buffer.update_reanalyzed_values(game_id, reanalysed_predicted_root_values)
 
     def update_priorities(self, priorities, index_info):
         """
@@ -524,6 +522,7 @@ class Reanalyse:
             )
 
             # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+            reanalysed_predicted_root_values = game_history.reanalysed_predicted_root_values
             if self.config.use_last_model_value:
                 observations = [
                     game_history.get_stacked_observations(
@@ -541,11 +540,11 @@ class Reanalyse:
                     self.model.initial_inference(observations)[0],
                     self.config.support_size,
                 )
-                game_history.reanalysed_predicted_root_values = (
+                reanalysed_predicted_root_values = (
                     torch.squeeze(values).detach().cpu().numpy()
                 )
 
-            replay_buffer.update_game_history.remote(game_id, game_history)
+            replay_buffer.update_reanalysed_values.remote(game_id, reanalysed_predicted_root_values)
             self.num_reanalysed_games += 1
             shared_storage.set_info.remote(
                 "num_reanalysed_games", self.num_reanalysed_games
