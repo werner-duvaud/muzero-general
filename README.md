@@ -13,6 +13,10 @@ It is designed to be easily adaptable for every games or reinforcement learning 
 MuZero is a state of the art RL algorithm for board games (Chess, Go, ...) and Atari games.
 It is the successor to [AlphaZero](https://arxiv.org/abs/1712.01815) but without any knowledge of the environment underlying dynamics. MuZero learns a model of the environment and uses an internal representation that contains only the useful information for predicting the reward, value, policy and transitions. MuZero is also close to [Value prediction networks](https://arxiv.org/abs/1707.03497). See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works).
 
+## Important!
+
+This repository is fork of base MuZero implementation. Main target of fork allow higher customiztion and usage as library, more simular to OpenAI stable-baseelines.
+
 ## Features
 
 * [x] Residual Network and Fully connected network in [PyTorch](https://github.com/pytorch/pytorch)
