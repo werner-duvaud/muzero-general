@@ -5,6 +5,14 @@ import gym
 import numpy
 import torch
 
+from gym.wrappers import Monitor
+import glob
+import io
+import base64
+from IPython.display import HTML
+from pyvirtualdisplay import Display
+from IPython import display as ipythondisplay
+
 from .abstract_game import AbstractGame
 
 
@@ -126,14 +134,38 @@ class MuZeroConfig:
         else:
             return 0.25
 
+display = None
+
+def show_video():
+  mp4list = glob.glob('video/*.mp4')
+  if len(mp4list) > 0:
+    mp4 = mp4list[0]
+    video = io.open(mp4, 'r+b').read()
+    encoded = base64.b64encode(video)
+    ipythondisplay.display(HTML(data='''<video alt="test" autoplay 
+                loop controls style="height: 400px;">
+                <source src="data:video/mp4;base64,{0}" type="video/mp4" />
+             </video>'''.format(encoded.decode('ascii'))))
 
 class Game(AbstractGame):
     """
     Game wrapper.
     """
 
-    def __init__(self, seed=None):
+    def __init__(self, seed = None, useMonitor = False):
+        global display
+        
         self.env = gym.make("CartPole-v1")
+        
+        self.useMonitor = useMonitor
+
+        if self.useMonitor:
+            self.env = Monitor(self.env, './video', force=True)
+
+            if display is None:
+                display = Display(visible=0, size=(1400, 900))
+                display.start()
+
         if seed is not None:
             self.env.seed(seed)
 
@@ -183,7 +215,9 @@ class Game(AbstractGame):
         Display the game observation.
         """
         self.env.render()
-        input("Press enter to take a step ")
+        
+        if self.useMonitor is False:
+            input("Press enter to take a step ")
 
     def action_to_string(self, action_number):
         """

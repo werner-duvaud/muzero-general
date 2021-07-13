@@ -1,0 +1,15 @@
+version: '3.9'
+
+services:
+    
+    notebook:
+        build:
+            context: .
+        container_name: notebook
+        ports: 
+            - 8889:8889
+            - 6006:6006
+        runtime: nvidia
+        volumes:
+            - .:/work
+    

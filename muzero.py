@@ -39,25 +39,10 @@ class MuZero:
         >>> muzero.test(render=True)
     """
 
-    def __init__(self, game_name, config=None, split_resources_in=1):
-        # Load the game and the config from the module with the game name
-        try:
-            game_module = importlib.import_module("games." + game_name)
-            self.Game = game_module.Game
-            self.config = game_module.MuZeroConfig()
-        except ModuleNotFoundError as err:
-            print(
-                f'{game_name} is not a supported game name, try "cartpole" or refer to the documentation for adding a new game.'
-            )
-            raise err
-
-        # Overwrite the config
-        if config:
-            if type(config) is dict:
-                for param, value in config.items():
-                    setattr(self.config, param, value)
-            else:
-                self.config = config
+    def __init__(self, Game, config, split_resources_in=1, game_kwargs={}):
+        self.Game = Game
+        self.game_kwargs = game_kwargs
+        self.config = config
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -172,7 +157,7 @@ class MuZero:
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
-                self.checkpoint, self.Game, self.config, self.config.seed + seed,
+                self.checkpoint, self.Game, self.config, self.config.seed + seed, game_kwargs = self.game_kwargs,
             )
             for seed in range(self.config.num_workers)
         ]
@@ -209,6 +194,7 @@ class MuZero:
             self.Game,
             self.config,
             self.config.seed + self.config.num_workers,
+            game_kwargs = self.game_kwargs
         )
         self.test_worker.continuous_self_play.remote(
             self.shared_storage_worker, None, True
@@ -367,7 +353,7 @@ class MuZero:
         muzero_player = muzero_player if muzero_player else self.config.muzero_player
         self_play_worker = self_play.SelfPlay.options(
             num_cpus=0, num_gpus=num_gpus,
-        ).remote(self.checkpoint, self.Game, self.config, numpy.random.randint(10000))
+        ).remote(self.checkpoint, self.Game, self.config, numpy.random.randint(10000), game_kwargs = self.game_kwargs)
         results = []
         for i in range(num_tests):
             print(f"Testing {i+1}/{num_tests}")
@@ -446,7 +432,7 @@ class MuZero:
         Args:
             horizon (int): Number of timesteps for which we collect information.
         """
-        game = self.Game(self.config.seed)
+        game = self.Game(self.config.seed, **self.game_kwargs)
         obs = game.reset()
         dm = diagnose_model.DiagnoseModel(self.checkpoint, self.config)
         dm.compare_virtual_with_real_trajectories(obs, game, horizon)
