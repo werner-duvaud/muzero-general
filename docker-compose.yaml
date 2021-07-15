@@ -2,10 +2,10 @@ version: '3.9'
 
 services:
     
-    notebook:
+    muzero-notebook:
         build:
             context: .
-        container_name: notebook
+        container_name: muzero-notebook
         ports: 
             - 8889:8889
             - 6006:6006

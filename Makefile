@@ -65,21 +65,21 @@ start:
 
 # Will start in docker develoment environment
 docker-console:
-	docker-compose run --service-ports notebook bash
+	docker-compose run --service-ports muzero-notebook bash
 
 console: docker-console
 
 notebook-up:
-	docker-compose up --build notebook
+	docker-compose up --build muzero-notebook
 
 docker:
-	docker-compose run -d --service-ports notebook
+	docker-compose run -d --service-ports muzero-notebook
 
 docker-it:
-	docker-compose run --service-ports notebook 
+	docker-compose run --service-ports muzero-notebook 
 
 attach-console:
-	docker exec -it notebook bash
+	docker exec -it muzero-notebook bash
 
 chmod:
 	chmod -R 777 .
