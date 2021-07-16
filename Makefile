@@ -106,11 +106,15 @@ upload-package:
 
 minor-bump:
 	bump2version minor
+	make chmod
 
 patch-bump:
 	bump2version patch
+	make chmod
 
 clean:
 	rm -rf dist
 	rm -rf build
 	rm -rf muzero_baseline.egg-info
+
+republish: clean package-dist upload-package
