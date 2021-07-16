@@ -1,3 +1,5 @@
+__version__ = "0.1.0"
+
 from .games import *
 from .muzero import *
 from .models import *

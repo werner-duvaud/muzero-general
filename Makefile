@@ -90,3 +90,16 @@ chmod:
 
 gpu-monitor:
 	watch -n 0.5 nvidia-smi
+
+# ---------------------------------------------------------------------------------------------------------------------
+# PYTHON PACKAGE
+# ---------------------------------------------------------------------------------------------------------------------
+
+package-dist:
+	python setup.py sdist bdist_wheel
+
+upload-to-test-repo:
+	twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+
+upload-package:
+	twine upload dist/*
