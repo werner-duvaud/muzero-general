@@ -103,3 +103,10 @@ upload-to-test-repo:
 
 upload-package:
 	twine upload dist/*
+
+minor-bump:
+	bump2version minor
+
+patch-bump:
+	bump2version patch
+

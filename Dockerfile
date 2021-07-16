@@ -16,7 +16,7 @@ COPY requirements.txt requirements.txt
 
 RUN pip install -r requirements.txt
 
-RUN pip install jupyter twine
+RUN pip install jupyter twine bump2version
 
 FROM second
 
