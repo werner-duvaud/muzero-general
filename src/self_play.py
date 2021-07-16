@@ -8,8 +8,8 @@ import torch
 from . import models
 
 
-@ray.remote
-class SelfPlay:
+
+class SelfPlayDirect:
     """
     Class which run in a dedicated thread to play games and save them to the replay-buffer.
     """
@@ -123,7 +123,7 @@ class SelfPlay:
         done = False
 
         if render:
-            self.game.render()
+            self.game.render(starting=True)
 
         with torch.no_grad():
             while (
@@ -171,7 +171,7 @@ class SelfPlay:
 
                 if render:
                     print(f"Played action: {self.game.action_to_string(action)}")
-                    self.game.render()
+                    self.game.render(middle=True)
 
                 game_history.store_search_statistics(root, self.config.action_space)
 
@@ -180,6 +180,9 @@ class SelfPlay:
                 game_history.observation_history.append(observation)
                 game_history.reward_history.append(reward)
                 game_history.to_play_history.append(self.game.to_play())
+
+        if render:
+            self.game.render(ended=True)
 
         return game_history
 
@@ -245,6 +248,11 @@ class SelfPlay:
 
         return action
 
+
+@ray.remote
+class SelfPlay(SelfPlayDirect):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 # Game independent
 class MCTS:

@@ -381,6 +381,35 @@ class MuZero:
             )
         return result
 
+    def test_direct(self, render=True, opponent=None, muzero_player=None, num_tests=1):
+        """
+        Test in same thread, interface same like simple test method
+        """
+        opponent = opponent if opponent else self.config.opponent
+        muzero_player = muzero_player if muzero_player else self.config.muzero_player
+        self_play_worker = self_play.SelfPlayDirect(
+            self.checkpoint, self.Game, self.config, numpy.random.randint(10000), game_kwargs = self.game_kwargs
+        )
+        results = []
+        for i in range(num_tests):
+            print(f"Testing {i+1}/{num_tests}")
+            results.append(self_play_worker.play_game(0, 0, render, opponent, muzero_player))
+
+        if len(self.config.players) == 1:
+            result = numpy.mean([sum(history.reward_history) for history in results])
+        else:
+            result = numpy.mean(
+                [
+                    sum(
+                        reward
+                        for i, reward in enumerate(history.reward_history)
+                        if history.to_play_history[i - 1] == muzero_player
+                    )
+                    for history in results
+                ]
+            )
+        return result
+
     def load_model(self, checkpoint_path=None, replay_buffer_path=None):
         """
         Load a model and/or a saved replay buffer.
