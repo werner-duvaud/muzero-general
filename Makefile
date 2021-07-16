@@ -110,3 +110,7 @@ minor-bump:
 patch-bump:
 	bump2version patch
 
+clean:
+	rm -rf dist
+	rm -rf build
+	rm -rf muzero_baseline.egg-info
