@@ -13,7 +13,7 @@ with open(os.path.join(HERE, "README.md")) as fid:
 # This call to setup() does all the work
 setup(
     name="muzero-baseline",
-    version="0.1.2",
+    version="0.2.0",
     description="Baseline implementation of MuZero agent",
     long_description=README,
     long_description_content_type="text/markdown",
