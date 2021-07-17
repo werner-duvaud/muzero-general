@@ -39,7 +39,7 @@ class MuZero:
         >>> muzero.test(render=True)
     """
 
-    def __init__(self, Game, config, split_resources_in=1, game_kwargs={}):
+    def __init__(self, Game, config, split_resources_in=1, game_kwargs={}, ray_init_kwargs={}):
         self.Game = Game
         self.game_kwargs = game_kwargs
         self.config = config
@@ -73,7 +73,7 @@ class MuZero:
         if 1 < self.num_gpus:
             self.num_gpus = math.floor(self.num_gpus)
 
-        ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
+        ray.init(num_gpus=total_gpus, ignore_reinit_error=True, **ray_init_kwargs)
 
         # Checkpoint and replay buffer used to initialize workers
         self.checkpoint = {
