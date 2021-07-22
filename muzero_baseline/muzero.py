@@ -19,7 +19,7 @@ from . import replay_buffer
 from . import self_play
 from . import shared_storage
 from . import trainer
-
+from .ProgressBar import ProgressBar
 
 class MuZero:
     """
@@ -142,8 +142,11 @@ class MuZero:
         )
         self.shared_storage_worker.set_info.remote("terminate", False)
 
+        total_games_to_play = self.config.training_steps * self.config.batch_size
+        pb = ProgressBar(total = total_games_to_play, description = "Games to play")
+
         self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(
-            self.checkpoint, self.replay_buffer, self.config
+            self.checkpoint, self.replay_buffer, self.config, pb.actor
         )
 
         if self.config.use_last_model_value:
@@ -179,10 +182,10 @@ class MuZero:
 
         if log_in_tensorboard:
             self.logging_loop(
-                num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
+                num_gpus_per_worker if self.config.selfplay_on_gpu else 0, pb
             )
 
-    def logging_loop(self, num_gpus):
+    def logging_loop(self, num_gpus, pb):
         """
         Keep track of the training performance.
         """
@@ -284,15 +287,17 @@ class MuZero:
                 writer.add_scalar("3.Loss/Value_loss", info["value_loss"], counter)
                 writer.add_scalar("3.Loss/Reward_loss", info["reward_loss"], counter)
                 writer.add_scalar("3.Loss/Policy_loss", info["policy_loss"], counter)
-                print(
-                    f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
-                    end="\r",
-                )
+                # print(
+                #     f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
+                #     end="\r",
+                # )
                 counter += 1
-                time.sleep(0.5)
+                pb.block_for_update()
+
         except KeyboardInterrupt:
             pass
 
+        pb.close()
         self.terminate_workers()
 
         if self.config.save_model:

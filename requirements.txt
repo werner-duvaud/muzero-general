@@ -5,3 +5,4 @@ gym
 ray
 seaborn
 nevergrad
+tqdm
