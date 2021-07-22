@@ -14,7 +14,7 @@ class ReplayBuffer:
     Class which run in a dedicated thread to store played games and generate batch.
     """
 
-    def __init__(self, initial_checkpoint, initial_buffer, config, pba):
+    def __init__(self, initial_checkpoint, initial_buffer, config, pba = None):
         self.config = config
         self.buffer = copy.deepcopy(initial_buffer)
         self.num_played_games = initial_checkpoint["num_played_games"]
@@ -54,9 +54,11 @@ class ReplayBuffer:
 
         self.buffer[self.num_played_games] = game_history
         self.num_played_games += 1
-        self.pba.update.remote(1)
-        self.num_played_steps += len(game_history.root_values)
-        self.total_samples += len(game_history.root_values)
+        played_steps = len(game_history.root_values)
+        if self.pba is not None:
+            self.pba.update.remote(played_steps)
+        self.num_played_steps += played_steps
+        self.total_samples += played_steps
 
         if self.config.replay_buffer_size < len(self.buffer):
             del_id = self.num_played_games - len(self.buffer)

@@ -143,10 +143,13 @@ class MuZero:
         self.shared_storage_worker.set_info.remote("terminate", False)
 
         total_games_to_play = self.config.training_steps * self.config.batch_size
-        pb = ProgressBar(total = total_games_to_play, description = "Games to play")
+
+        pb = None
+        if log_in_tensorboard:
+            pb = ProgressBar(total = total_games_to_play, desc = "Timesteps", smoothing = 0)
 
         self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(
-            self.checkpoint, self.replay_buffer, self.config, pb.actor
+            self.checkpoint, self.replay_buffer, self.config, pb.actor if pb is not None else None
         )
 
         if self.config.use_last_model_value:
@@ -185,7 +188,7 @@ class MuZero:
                 num_gpus_per_worker if self.config.selfplay_on_gpu else 0, pb
             )
 
-    def logging_loop(self, num_gpus, pb):
+    def logging_loop(self, num_gpus, pb = None):
         """
         Keep track of the training performance.
         """
@@ -292,7 +295,10 @@ class MuZero:
                 #     end="\r",
                 # )
                 counter += 1
-                pb.block_for_update()
+                if pb is not None:
+                    pb.block_for_update()
+                else:
+                    time.sleep(0.5)
 
         except KeyboardInterrupt:
             pass
