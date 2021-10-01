@@ -271,7 +271,7 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
-                target_policies_actions.append(2*numpy.random.uniform(0, 1, len(game_history.child_visits[0]))-1)
+                target_policies_actions.append([tuple([2 * numpy.random.uniform(0, 1) - 1 for i in range(len(self.config.action_space))]) for ii in range(len(game_history.child_visits[0]))])
                 actions.append(game_history.action_history[current_index])
             else:
                 # States past the end of games are treated as absorbing states
@@ -284,7 +284,8 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
-                target_policies_actions.append(2*numpy.random.uniform(0, 1, len(game_history.child_visits[0]))-1)
-                actions.append(numpy.random.choice(game_history.action_history))
+                target_policies_actions.append([tuple([2 * numpy.random.uniform(0, 1) - 1 for i in range(len(self.config.action_space))]) for ii in range(len(game_history.child_visits[0]))])
+                action_index = numpy.random.choice(len(game_history.action_history))
+                actions.append(game_history.action_history[action_index])
 
         return target_values, target_rewards, target_policies, actions, target_policies_actions

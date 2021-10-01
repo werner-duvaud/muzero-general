@@ -13,18 +13,17 @@ class MuZeroConfig:
     def __init__(self):
         self.seed = 0  # Seed for numpy, torch and the game
 
-
-
         ### Game
         self.observation_shape = (1, 1, 4)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
-        self.action_space = [i for i in range(2)]  # Fixed list of all possible actions. You should only edit the length
+        numJoints = 1
+        maxSteps = 50
+        self.action_space = numpy.ones(numJoints)  # Fixed list of all possible actions. You should only edit the length
         self.players = [i for i in range(1)]  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
         self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
-
 
 
         ### Self-Play
@@ -41,6 +40,10 @@ class MuZeroConfig:
         # UCB formula
         self.pb_c_base = 19652
         self.pb_c_init = 1.25
+
+        #Progressive widening
+        self.progressive_widening_C_pw = 1
+        self.progressive_widening_a = 0.49
 
 
 
@@ -105,6 +108,8 @@ class MuZeroConfig:
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = 1/2  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
 
+        self.log_video = False
+        self.video_iter = 1000
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -142,9 +147,9 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        action = -1 if action < -1 else action
-        action = 1 if action > 1 else action
-        observation, reward, done, _ = self.env.step(action)
+        action = [-1] if action[0] < -1 else action
+        action = [1] if action[0] > 1 else action
+        observation, reward, done, _ = self.env.step(action[0])
         return numpy.array([[observation]]), reward, done
 
     def legal_actions(self):
@@ -175,12 +180,14 @@ class Game(AbstractGame):
         """
         self.env.close()
 
-    def render(self):
+    def render(self, mode='human'):
         """
         Display the game observation.
         """
-        self.env.render()
-        input("Press enter to take a step ")
+        ret = self.env.render(mode)
+        if mode == 'human':
+            input("Press enter to take a step ")
+        return ret
 
 
 class ContinuousCartPoleEnv(gym.Env):

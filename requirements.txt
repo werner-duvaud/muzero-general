@@ -2,5 +2,7 @@ numpy
 torch
 tensorboard
 gym
-box2d-py
-ray
+box2d
+ray[default]
+opencv-python
+moviepy

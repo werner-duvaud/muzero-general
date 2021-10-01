@@ -115,17 +115,18 @@ class Trainer:
         device = next(self.model.parameters()).device
         weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
         observation_batch = torch.tensor(observation_batch).float().to(device)
-        action_batch = torch.tensor(action_batch).float().to(device).unsqueeze(-1)
+        action_batch = torch.tensor(action_batch).float().to(device)
         target_value = torch.tensor(target_value).float().to(device)
         target_reward = torch.tensor(target_reward).float().to(device)
         target_policy = torch.tensor(target_policy).float().to(device)
         policy_actions_batch = torch.tensor(policy_actions_batch).float().to(device)
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
         # observation_batch: batch, channels, height, width
-        # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
+        # observation_batch: batch, observation_shape
+        # action_batch: batch, num_unroll_steps+1, len(action_space) (unsqueeze)
         # target_value: batch, num_unroll_steps+1
         # target_reward: batch, num_unroll_steps+1
-        # target_policy: batch, num_unroll_steps+1, len(action_space)
+        # target_policy: batch, num_unroll_steps+1, child_nodes
         # gradient_scale_batch: batch, num_unroll_steps+1
 
         target_value = models.scalar_to_support(target_value, self.config.support_size)
@@ -141,11 +142,12 @@ class Trainer:
         )
 
         log_probs = []
+        action_len = len(self.config.action_space)
         for batch_i in range(len(policy_actions_batch)):
             log_probs.append(
                 models.get_log_prob(
-                    policy_params[batch_i, 0],
-                    policy_params[batch_i, 1],
+                    policy_params[batch_i, 0:action_len],
+                    policy_params[batch_i, action_len:action_len * 2],
                     policy_actions_batch[batch_i, 0],
                 )
             )
@@ -162,8 +164,8 @@ class Trainer:
             for batch_i in range(len(policy_actions_batch)):
                 log_probs.append(
                     models.get_log_prob(
-                        policy_params[batch_i, 0],
-                        policy_params[batch_i, 1],
+                        policy_params[batch_i, 0:action_len],
+                        policy_params[batch_i, action_len:action_len * 2],
                         policy_actions_batch[batch_i, i],
                     )
                 )
@@ -281,6 +283,7 @@ class Trainer:
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
+        #expected reward * -log prob of actions
         policy_loss = (-target_policy * policy_logits).sum(1)
 
         return value_loss, reward_loss, policy_loss
