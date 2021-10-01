@@ -1,0 +1,104 @@
+<mujocoinclude>
+
+    <option gravity="0 0 0"/>
+    <visual>
+        <headlight ambient="0.5 0.5 0.5"/>
+    </visual>
+
+    <compiler inertiafromgeom="auto" angle="radian" coordinate="local" eulerseq="XYZ"/>
+    <size njmax="6000" nconmax="6000"/>
+
+    <option timestep='0.0025' iterations="50" tolerance="1e-10" solver="Newton" jacobian="dense" cone="elliptic"/>
+
+    <!-- assets -->
+    <asset>
+        <mesh name="pedestal" file="pedestal.stl"/>
+        <mesh name="base" file="base.stl"/>
+        <mesh name="l0" file="l0.stl"/>
+        <mesh name="head" file="head.stl"/>
+        <mesh name="l1" file="l1.stl"/>
+        <mesh name="l2" file="l2.stl"/>
+        <mesh name="l3" file="l3.stl"/>
+        <mesh name="l4" file="l4.stl"/>
+        <mesh name="l5" file="l5.stl"/>
+        <mesh name="l6" file="l6.stl"/>
+        <mesh name="eGripperBase" file="eGripperBase.stl"/>
+
+        <texture type="skybox" builtin="gradient" rgb1=".50 .495 .48" rgb2=".50 .495 .48" width="32"
+                 height="32"></texture>
+        <texture file="marble.png" name="marble"/>
+        <texture file="navy_blue.png" name="navy_blue"/>
+        <texture file="wood_light.png" name="table_texture" type="2d"/>
+        <texture file="wood_light.png" name="wood_texture"/>
+        <texture file="tennis.png" name="tennis_green"/>
+        <texture file="white.png" name="white_texture"/>
+        <texture file="grey.png" name="grey_texture"/>
+        <texture file="green.png" name="green_texture"/>
+        <texture file="metal.png" name="metal_texture"/>
+        <texture file="red.png" name="red_texture"/>
+        <texture file="yellow.png" name="yellow_texture"/>
+        <texture file="blue.png" name="blue_texture"/>
+        <texture file="light_wood_v3.png" name="light_wood_v3" type="2d"/>
+
+        <texture name="wood" file="wood.png" type="cube"/>
+        <material shininess=".1" name="wood" texture="wood" specular="0.4"/>
+
+        <mesh name="mug_mesh" file="objects/mug.stl" scale="0.0008 0.0008 0.0008"/>
+        <mesh name="bottle_mesh" file="objects/bottle.stl" scale="0.0008 0.0008 0.0008"/>
+        <mesh name="can_mesh" file="objects/can.stl" scale="0.0008 0.0008 0.0008"/>
+        <mesh name="cup_mesh" file="objects/cup.stl" scale="0.001 0.001 0.001"/>
+        <mesh name="box_mesh" file="objects/box.stl" scale="0.0008 0.0008 0.0008" refpos="0 0 -25"/>
+
+        <mesh name="bowl1_mesh" file="objects/bowl1.stl" scale="0.002 0.002 0.002"/>
+        <mesh name="bowl2_mesh" file="objects/bowl2.stl" scale="0.0010 0.0010 0.0010"/>
+        <mesh name="bowl3_mesh" file="objects/bowl3.stl" scale="0.0012 0.0012 0.0012" refpos="100 100 0"/>
+        <mesh name="bowl4_mesh" file="objects/bowl4.stl" scale="0.0008 0.0008 0.0008" refpos="-40 210 0"/>
+
+        <mesh name="cup2_mesh" file="objects/cup2.stl" scale="0.004 0.004 0.004" refpos="-5 0 -45"/>
+        <mesh name="plate_mesh" file="objects/plate.stl" scale="0.005 0.005 0.005" refpos="8 0 27"/>
+
+
+        <!--        <texture name="real_door" file="../textures/real_door.png" type="cube"/>-->
+        <!--        <material shininess=".1" name="real_door" texture="real_door" specular=".4"/>-->
+        <texture name="darkwood" file="darkwood.png" type="cube"/>
+        <material shininess=".1" name="darkwood" texture="darkwood" specular="0.4"/>
+        <!--        <texture name="granite" file="../textures/granite.png" type="2d"/>-->
+        <!--        <material shininess=".1" name="granite" texture="granite" specular="0.4"/>-->
+        <texture name="light_wood" file="light_wood.png" type="cube"/>
+        <material shininess=".1" name="light_wood" texture="light_wood" specular="0.4"/>
+        <!--        <texture name="light_wood_v2" file="../textures/light_wood_v2.png" type="cube"/>-->
+        <!--        <material shininess=".1" name="light_wood_v2" texture="light_wood_v2" specular="0.4"/>-->
+        <!--        <texture name="light_wood_v3" file="../textures/light_wood_v3.png" type="2d"/>-->
+        <!--        <material shininess=".1" name="light_wood_v3" texture="light_wood_v3" specular="0.4"/>-->
+        <!--        <texture builtin="gradient" height="256" rgb1=".9 .9 1." rgb2=".2 .3 .4" type="skybox" width="256"/>-->
+
+
+        <material name="marble" shininess="0.3" rgba="0.9 0.9 0.9 1" specular="1" texture="marble"/>
+        <material name="navy_blue" shininess="0.3" rgba="0.9 0.9 0.9 1" specular="1" texture="navy_blue"/>
+        <material name="tennis_green" shininess="0.3" rgba="0.9 0.9 0.9 1" specular="1" texture="tennis_green"/>
+        <material name="white" shininess="0.3" rgba="0.9 0.9 0.9 1" specular="1" texture="white_texture"/>
+        <material name="grey" shininess="0.3" rgba="0.9 0.9 0.9 1" specular="1" texture="grey_texture"/>
+        <material name="green" shininess="0.3" rgba="0.9 0.9 0.9 1" specular="1" texture="green_texture"/>
+        <material name="metal" shininess="0.6" rgba="0.9 0.9 0.9 1" specular="1" texture="metal_texture"/>
+        <material name="red" shininess="0.3" rgba="0.9 0.9 0.9 1" specular="1" texture="red_texture"/>
+        <material name="blue" shininess="0.3" rgba="0.9 0.9 0.9 1" specular="1" texture="blue_texture"/>
+        <material name="yellow" shininess="0.6" rgba="0.9 0.9 0.9 1" specular="1" texture="yellow_texture"/>
+        <material name="wood_material" rgba="1 1 1 1" shininess="0.1" specular="0.4" texture="wood_texture"/>
+        <material name="table_material" rgba="1 1 1 1" shininess="0.1" specular="0.4" texture="table_texture"/>
+        <material name="light_wood_v3" shininess=".1" texture="light_wood_v3" specular="0.4"/>
+    </asset>
+
+    <!-- defaults -->
+    <default>
+        <joint limited="true"
+               damping="10"
+               frictionloss="0.001"
+               margin="0.01"
+               armature=".1"
+               user="0"/>
+        <geom solref="0.02 1" solimp="1 1 0"/>
+        <motor ctrllimited="true" ctrlrange="-1 1"/>
+        <general ctrllimited="true" ctrlrange="-1 1" dyntype="none" gaintype="fixed"/>
+    </default>
+
+</mujocoinclude>

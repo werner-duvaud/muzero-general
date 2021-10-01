@@ -1,0 +1,1091 @@
+
+<?xml version="1.0" encoding="utf-8"?>
+  <mujoco>
+      <compiler meshdir="meshes" texturedir="textures"/>
+      <include file="include/assets.xml"/>
+      <include file="include/actuators_torqueCtrl.xml"/>
+      <option timestep='0.0025'/>
+  
+  
+      <worldbody>
+          <light diffuse=".5 .5 .5" pos="0 -1 3" dir="0 0.5 -1"/> 
+          <body name="sawyer">
+              <include file="include/sawyer_chain.xml"/>
+          </body>
+  
+          <include file="include/table.xml"/>
+  
+          <camera name="track" pos="0 -0.4 1.3" mode="fixed" euler="0.85 -0 0"/>
+          <camera name="track_aux_shelf" pos="1.6 -0.4 1.7" mode="fixed" euler="0.95 0 1"/>
+          <camera name="track_aux_shelf2" pos="1.4 0.4 0.6" mode="fixed" euler="1.3 0 1.57"/> 
+          <camera name="look_at_mugs" pos="0.6 -0.5 0.3" mode="fixed" euler="1.3 0 1.57"/>
+
+          
+          
+          <body name="mug0" pos="0 -0.4 0.007">
+              <joint name="mugjoint0" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="9.359949021420038" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom0"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite0" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite0_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug1" pos="0 -0.5 0.007">
+              <joint name="mugjoint1" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="5.259262318278913" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom1"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite1" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite1_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug2" pos="0 -0.6000000000000001 0.007">
+              <joint name="mugjoint2" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="10.49662477878709" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom2"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite2" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite2_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug3" pos="0 -0.7000000000000001 0.007">
+              <joint name="mugjoint3" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="9.353223926182768" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom3"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite3" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite3_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug4" pos="0 -0.8 0.007">
+              <joint name="mugjoint4" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="9.20367802087489" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom4"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite4" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite4_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug5" pos="0 -0.9 0.007">
+              <joint name="mugjoint5" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="8.303348210038742" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom5"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite5" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite5_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug6" pos="0 -1.0 0.007">
+              <joint name="mugjoint6" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="7.046486340378425" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom6"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite6" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite6_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug7" pos="0 -1.1 0.007">
+              <joint name="mugjoint7" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="11.192709663506637" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom7"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite7" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite7_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug8" pos="0 -1.2000000000000002 0.007">
+              <joint name="mugjoint8" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="7.996546736745231" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom8"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite8" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite8_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug9" pos="0 -1.3 0.007">
+              <joint name="mugjoint9" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="7.668272751028667" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom9"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite9" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite9_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug10" pos="0 -1.4 0.007">
+              <joint name="mugjoint10" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="11.21133832769295" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom10"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite10" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite10_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug11" pos="0 -1.5 0.007">
+              <joint name="mugjoint11" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="10.29142094277039" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom11"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite11" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite11_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug12" pos="0 -1.6 0.007">
+              <joint name="mugjoint12" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="6.345799453449335" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom12"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite12" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite12_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug13" pos="0 -1.7000000000000002 0.007">
+              <joint name="mugjoint13" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="10.135781212657465" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom13"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite13" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite13_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug14" pos="0 -1.8000000000000003 0.007">
+              <joint name="mugjoint14" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="6.844398656469153" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom14"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite14" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite14_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug15" pos="0 -1.9 0.007">
+              <joint name="mugjoint15" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="12.853351478166735" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom15"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite15" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite15_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug16" pos="0 -2.0 0.007">
+              <joint name="mugjoint16" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="13.539752926394888" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom16"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite16" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite16_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug17" pos="0 -2.1 0.007">
+              <joint name="mugjoint17" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="9.942368373819278" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom17"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite17" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite17_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug18" pos="0 -2.2 0.007">
+              <joint name="mugjoint18" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="13.46561485357468" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom18"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite18" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite18_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug19" pos="0 -2.3000000000000003 0.007">
+              <joint name="mugjoint19" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="5.79645477009061" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom19"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite19" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite19_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug20" pos="0 -2.4 0.007">
+              <joint name="mugjoint20" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="10.052460901217039" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom20"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite20" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite20_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug21" pos="0 -2.5 0.007">
+              <joint name="mugjoint21" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="5.652865043868781" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom21"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite21" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite21_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug22" pos="0 -2.6 0.007">
+              <joint name="mugjoint22" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="9.281223275973893" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom22"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite22" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite22_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug23" pos="0 -2.7 0.007">
+              <joint name="mugjoint23" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="5.965309156606126" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom23"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite23" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite23_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug24" pos="0 -2.8000000000000003 0.007">
+              <joint name="mugjoint24" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="6.271599717012775" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom24"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite24" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite24_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug25" pos="0 -2.9 0.007">
+              <joint name="mugjoint25" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="10.967453089785959" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom25"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite25" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite25_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug26" pos="0 -3.0 0.007">
+              <joint name="mugjoint26" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="7.260120006042358" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom26"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite26" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite26_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug27" pos="0 -3.1 0.007">
+              <joint name="mugjoint27" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="6.06945684309983" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom27"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite27" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite27_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug28" pos="0 -3.2 0.007">
+              <joint name="mugjoint28" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="7.203062070705597" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom28"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite28" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite28_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug29" pos="0 -3.3000000000000003 0.007">
+              <joint name="mugjoint29" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="8.498262850032994" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom29"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite29" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite29_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug30" pos="0 -3.4 0.007">
+              <joint name="mugjoint30" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="9.677874845823002" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom30"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite30" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite30_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug31" pos="0 -3.5 0.007">
+              <joint name="mugjoint31" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="7.0174322626496535" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom31"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite31" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite31_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug32" pos="0 -3.6 0.007">
+              <joint name="mugjoint32" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="11.404067252149147" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom32"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite32" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite32_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug33" pos="0 -3.7 0.007">
+              <joint name="mugjoint33" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="9.830698355517516" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom33"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite33" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite33_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug34" pos="0 -3.8000000000000003 0.007">
+              <joint name="mugjoint34" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="10.052367200185492" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom34"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite34" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite34_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug35" pos="0 -3.9 0.007">
+              <joint name="mugjoint35" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="8.868926511185593" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom35"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite35" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite35_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug36" pos="0 -4.0 0.007">
+              <joint name="mugjoint36" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="12.93637454441577" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom36"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite36" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite36_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug37" pos="0 -4.1000000000000005 0.007">
+              <joint name="mugjoint37" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="10.800041788778067" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom37"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite37" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite37_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug38" pos="0 -4.2 0.007">
+              <joint name="mugjoint38" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="6.6229859850231385" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom38"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite38" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite38_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+          <body name="mug39" pos="0 -4.300000000000001 0.007">
+              <joint name="mugjoint39" type="free" limited='false' damping="1" armature="0"/>
+              <inertial pos="0 0 0" mass="12.007523466071563" diaginertia=".1 .1 .1"/>
+              <geom name="mugGeom39"
+                    mesh="cup_mesh"
+                    conaffinity="1"
+                    contype="1"
+                    friction=".1 .005 .0001"
+                    density="1384.7"
+                    type="mesh"
+                    material="white"
+                    solimp="0.99 0.99 0.01"
+                    solref="0.01 1"
+                    rgba="1 1 1 1"/>
+              <site name="mugSite39" pos="0 0 0" size="0.01" rgba="1 0 0 0"/>
+              <site name="mugSite39_top" pos="0 0 0.1" size="0.01" rgba="1 0 0 0"/>
+          </body>
+    
+
+        <body name="shelf_bowl1" pos="-0.44 1 0.042">
+            <geom name="shelf_bowl_geom1"
+                  mesh="bowl1_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="blue"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="0.8 0.8 0.8 0.4"/>
+        </body>
+
+
+
+        <body name="shelf_bowl2" pos="-0.23 0.99 0.042">
+            <geom name="shelf_bowl_geom2"
+                  mesh="bowl2_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+        <body name="shelf_bowl3" pos="0.1 1.0 0.042">
+            <geom name="shelf_bowl_geom3"
+                  mesh="bowl3_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="wood_material"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="0.6 0.6 0.6 1"/>
+        </body>
+
+
+
+        <body name="shelf_plate" pos="0.35 1.0 0.04">
+            <geom name="shelf_plate_geom"
+                  mesh="plate_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 0"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+        <body name="shelf_plate_1" pos="0.35 1.0 0.06">
+            <geom name="shelf_plate_geom_1"
+                  mesh="plate_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 0"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+        <body name="shelf_plate_2" pos="0.35 1.0 0.08">
+            <geom name="shelf_plate_geom_2"
+                  mesh="plate_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 0"
+                  rgba="1 1 1 1"/>
+        </body>
+
+        <body name="shelf_plate_3" pos="0.35 1.0 0.10">
+            <geom name="shelf_plate_geom_3"
+                  mesh="plate_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 0"
+                  rgba="1 1 1 1"/>
+        </body>
+
+        <body name="shelf_plate_4" pos="0.35 1.0 0.12">
+            <geom name="shelf_plate_geom_4"
+                  mesh="plate_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 0"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+        <body name="shelf_bowl4" pos="0.26 1.2 0.215">
+            <geom name="shelf_bowl_geom4"
+                  mesh="bowl4_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="1 1 1 1"/>
+        </body>
+
+        <body name="shelf_cup2" pos="0.49 1.22 0.215">
+            <geom name="shelf_cup_geom2"
+                  mesh="cup2_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 0"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+        <body name="shelf_cup21" pos="0.505 1.12 0.215">
+            <geom name="shelf_cup_geom21"
+                  mesh="cup2_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 3"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+        <body name="shelf_cup22" pos="0.39 1.18 0.215">
+            <geom name="shelf_cup_geom22"
+                  mesh="cup2_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 1"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+
+        <body name="shelf_cup23" pos="0.5 1.0 0.215">
+            <geom name="shelf_cup_geom23"
+                  mesh="cup2_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 -1"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+
+        <body name="shelf_cup24" pos="0.4 1.05 0.215">
+            <geom name="shelf_cup_geom24"
+                  mesh="cup2_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="white"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  euler="1.58 0 -2"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+
+        <body name="shelf_can1" pos="-0.526 1.2 0.215">
+            <geom name="shelf_can_geom1"
+                  mesh="can_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="red"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="0.8 0.8 0.8 1"/>
+        </body>
+
+
+        <body name="shelf_can2" pos="-0.53 0.9 0.215">
+            <geom name="shelf_can_geom2"
+                  mesh="can_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="blue"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="0.8 0.8 0.8 1"/>
+        </body>
+
+
+        <body name="shelf_box1" pos="-0.5 1.0 0.215">
+            <geom name="shelf_box_geom1"
+                  mesh="box_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="navy_blue"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="1 1 0.8 0.8"/>
+        </body>
+
+
+        <body name="shelf_box2" pos="-0.45 1.2 0.215">
+            <geom name="shelf_box_geom2"
+                  mesh="box_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="navy_blue"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="0.8 0.8 0.8 1"/>
+        </body>
+
+
+        <body name="shelf_bottle" pos="-0.44 1.09 0.215">
+            <geom name="shelf_bottle_geom"
+                  mesh="bottle_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="grey"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="1 1 1 1"/>
+        </body>
+
+
+        <body name="shelf_bottle1" pos="-0.52 1.1 0.215">
+            <geom name="shelf_bottle_geom1"
+                  mesh="bottle_mesh"
+                  conaffinity="1"
+                  contype="1"
+                  friction=".1 .005 .0001"
+                  density="1384.7"
+                  type="mesh"
+                  material="grey"
+                  solimp="0.99 0.99 0.01"
+                  solref="0.01 1"
+                  rgba="0.8 0.8 0.8 1"/>
+        </body>
+
+
+
+
+        <body name="shelf" pos="0. 1.05 0.001">
+            <geom type="box" contype="1" material="light_wood" size="0.6 0.2 0.007" name="level1" conaffinity="1"
+                  pos="0 0 0.03" mass="1000"/>
+            <geom type="box" contype="1" material="light_wood" size="0.6 0.2 0.007" name="level2" conaffinity="1"
+                  pos="0 0 0.2" mass="1000"/>
+            <geom type="box" contype="1" material="light_wood" size="0.61 0.2 0.007" name="cover" conaffinity="1"
+                  pos="0 0 0.6" mass="1000"/>
+<!--             <geom type="box" contype="1" material="light_wood" size="0.6 0.005 0.3" name="wall1" conaffinity="1"
+                  pos="0.0 0.2 0.301" mass="1000"/> -->
+            <!-- <geom rgba="0.3 0.3 1 1" type="box" solimp="0.99 0.99 0.01" contype="1" size="0.1 0.001 0.03" name="cover_wall2" conaffinity="1" pos="0.0 -0.1 0.034" mass="1000" solref="0.01 1"/> -->
+            <geom material="light_wood" type="box" contype="1" size="0.005 0.2 0.3" name="wall3" conaffinity="1"
+                  pos="0.6 0 0.301" mass="1000"/>
+            <geom material="light_wood" type="box" contype="1" size="0.005 0.2 0.3" name="wall4" conaffinity="1"
+                  pos="-0.6 0 0.301" mass="1000"/>
+            <geom material="light_wood" type="box" contype="1" size="0.005 0.2 0.3" name="wall3_inner" conaffinity="1"
+                  pos="0.575 0 0.301" mass="1000"/>
+            <geom material="light_wood" type="box" contype="1" size="0.005 0.2 0.3" name="wall4_inner" conaffinity="1"
+                  pos="-0.575 0 0.301" mass="1000"/>
+
+
+            <site name="goal" pos="0 -0.1 0.22" size="0.02" rgba="0 0.8 0 0"/>
+            <site name="goal_top" pos="0 -0.1 0.32" size="0.02" rgba="0 0.8 0 0"/>
+            <!-- <joint type="slide" range="-0.2 0." axis="0 1 0" name="goal_slidey" pos="0 0 0" damping="1.0"/> -->
+        </body>
+
+    </worldbody>
+        
+      <keyframe>
+          <key qpos='-0.029997 -0.56 0.0299998 2.10036 0.11904 -1.16064 -1.46072 0.0092 -0.00705 0 -0.4 0.007 1 0 0 0 0 -0.5 0.007 1 0 0 0 0 -0.6000000000000001 0.007 1 0 0 0 0 -0.7000000000000001 0.007 1 0 0 0 0 -0.8 0.007 1 0 0 0 0 -0.9 0.007 1 0 0 0 0 -1.0 0.007 1 0 0 0 0 -1.1 0.007 1 0 0 0 0 -1.2000000000000002 0.007 1 0 0 0 0 -1.3 0.007 1 0 0 0 0 -1.4 0.007 1 0 0 0 0 -1.5 0.007 1 0 0 0 0 -1.6 0.007 1 0 0 0 0 -1.7000000000000002 0.007 1 0 0 0 0 -1.8000000000000003 0.007 1 0 0 0 0 -1.9 0.007 1 0 0 0 0 -2.0 0.007 1 0 0 0 0 -2.1 0.007 1 0 0 0 0 -2.2 0.007 1 0 0 0 0 -2.3000000000000003 0.007 1 0 0 0 0 -2.4 0.007 1 0 0 0 0 -2.5 0.007 1 0 0 0 0 -2.6 0.007 1 0 0 0 0 -2.7 0.007 1 0 0 0 0 -2.8000000000000003 0.007 1 0 0 0 0 -2.9 0.007 1 0 0 0 0 -3.0 0.007 1 0 0 0 0 -3.1 0.007 1 0 0 0 0 -3.2 0.007 1 0 0 0 0 -3.3000000000000003 0.007 1 0 0 0 0 -3.4 0.007 1 0 0 0 0 -3.5 0.007 1 0 0 0 0 -3.6 0.007 1 0 0 0 0 -3.7 0.007 1 0 0 0 0 -3.8000000000000003 0.007 1 0 0 0 0 -3.9 0.007 1 0 0 0 0 -4.0 0.007 1 0 0 0 0 -4.1000000000000005 0.007 1 0 0 0 0 -4.2 0.007 1 0 0 0 0 -4.300000000000001 0.007 1 0 0 0'/>
+      </keyframe>
+  </mujoco>
+

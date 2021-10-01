@@ -26,6 +26,7 @@ class SharedStorage:
             "reward_loss": 0,
             "policy_loss": 0,
         }
+        self.video = None
 
     def get_weights(self):
         return self.weights
@@ -42,3 +43,9 @@ class SharedStorage:
 
     def set_infos(self, key, value):
         self.infos[key] = value
+
+    def set_video(self, value):
+        self.video = value
+
+    def get_video(self):
+        return self.video

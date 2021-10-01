@@ -30,6 +30,7 @@ class SelfPlay:
         self.model.eval()
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
+        test_steps = 0
         while True:
             self.model.set_weights(
                 copy.deepcopy(ray.get(shared_storage.get_weights.remote()))
@@ -51,6 +52,14 @@ class SelfPlay:
                 replay_buffer.save_game.remote(game_history)
 
             else:
+                # record a video every videoIter iterations
+                video_log = False
+                if self.config.log_video:
+                    if test_steps % self.config.video_iter == 0:
+                        video_log = True
+                        #print('\nnext iteration is video saved', test_steps)
+                    test_steps += 1
+
                 # Take the best action (no exploration) in test mode
                 game_history = self.play_game(
                     0,
@@ -58,6 +67,7 @@ class SelfPlay:
                     False,
                     "self" if len(self.config.players) == 1 else self.config.opponent,
                     self.config.muzero_player,
+                    saveVideo=video_log,
                 )
 
                 # Save to the shared storage
@@ -94,6 +104,12 @@ class SelfPlay:
                             ]
                         ),
                     )
+                #save video
+                if video_log and len(game_history.render_images)>0:
+                    render_images = numpy.transpose(game_history.render_images, [1, 0, 4, 2, 3])
+                    assert len(render_images.shape) == 5, "Need [N, T, C, H, W] input tensor for video logging!"
+                    shared_storage.set_video.remote(render_images)
+                    game_history.render_images = []
 
             # Managing the self-play / training ratio
             if not test_mode and self.config.self_play_delay:
@@ -109,14 +125,14 @@ class SelfPlay:
                     time.sleep(0.5)
 
     def play_game(
-        self, temperature, temperature_threshold, render, opponent, muzero_player
+        self, temperature, temperature_threshold, render, opponent, muzero_player, saveVideo=False
     ):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
         """
         game_history = GameHistory()
         observation = self.game.reset()
-        game_history.action_history.append(0)
+        game_history.action_history.append([0]*len(self.config.action_space))
         game_history.observation_history.append(observation)
         game_history.reward_history.append(0)
         game_history.to_play_history.append(self.game.to_play())
@@ -164,6 +180,9 @@ class SelfPlay:
                     )
 
                 observation, reward, done = self.game.step(action)
+
+                if saveVideo:
+                    game_history.render_images.append(list([self.game.render('rgb_array')]))
 
                 if render:
                     print(
@@ -228,7 +247,7 @@ class SelfPlay:
         visit_counts = numpy.array(
             [child.visit_count for child in node.children.values()]
         )
-        actions = [action for action in node.children.keys()]
+        actions = [list(action) for action in node.children.keys()]
         if temperature == 0:
             action = actions[numpy.argmax(visit_counts)]
         elif temperature == float("inf"):
@@ -239,7 +258,7 @@ class SelfPlay:
             visit_count_distribution = visit_count_distribution / sum(
                 visit_count_distribution
             )
-            action = numpy.random.choice(actions, p=visit_count_distribution)
+            action = actions[numpy.random.choice(len(actions), p=visit_count_distribution)]
 
         return action
 
@@ -281,7 +300,7 @@ class MCTS:
         ).item()
         reward = models.support_to_scalar(reward, self.config.support_size).item()
         root.expand(
-            legal_actions, to_play, reward, policy_params, hidden_state,
+            self.config.action_space, to_play, reward, policy_params, hidden_state,
         )
         if add_exploration_noise:
             root.add_exploration_noise(
@@ -309,12 +328,12 @@ class MCTS:
                 else:
                     virtual_to_play = self.config.players[0]
 
-            # Inside the search tree we use the dynamics function to obtain the next hidden
+            # Inside  thesearch tree we use the dynamics function to obtain the next hidden
             # state given an action and the previous hidden state
             parent = search_path[-2]
             value, reward, policy_params, hidden_state = model.recurrent_inference(
                 parent.hidden_state,
-                torch.tensor([[action]]).float().to(parent.hidden_state.device),
+                torch.tensor([action]).float().to(parent.hidden_state.device),
             )
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
@@ -337,24 +356,20 @@ class MCTS:
         Select the child with the highest UCB score.
         """
         # Progressive widening (See https://hal.archives-ouvertes.fr/hal-00542673v2/document)
-        C = 1
-        alpha = 0.5
+        #these were added to the config class because they seemed important to have easy control over
+        C = self.config.progressive_widening_C_pw
+        alpha = self.config.progressive_widening_a
         while len(node.children) < math.ceil(C * node.visit_count ** alpha):
-            action = models.sample_action(node.mu, node.sigma).item()
-            node.children[action] = Node()
+            action = [i.item() for i in models.sample_action(node.mu, node.sigma)]
+            node.children[tuple(action)] = Node()
 
         max_ucb = max(
             self.ucb_score(node, child, min_max_stats)
             for action, child in node.children.items()
         )
-        action = numpy.random.choice(
-            [
-                action
-                for action, child in node.children.items()
-                if self.ucb_score(node, child, min_max_stats) == max_ucb
-            ]
-        )
-        return action, node.children[action]
+        bestActions = [action for action, child in node.children.items() if self.ucb_score(node, child, min_max_stats) == max_ucb]
+        action = bestActions[numpy.random.choice(len(bestActions))]
+        return list(action), node.children[tuple(action)]
 
     def ucb_score(self, parent, child, min_max_stats):
         """
@@ -423,11 +438,12 @@ class Node:
         self.to_play = to_play
         self.reward = reward
         self.hidden_state = hidden_state
+        action_len = len(actions)
 
-        self.mu, self.sigma = policy_params[0][0], policy_params[0][1]
+        self.mu, self.sigma = policy_params[0][0:action_len], policy_params[0][action_len:action_len*2]
 
-        action = models.sample_action(self.mu, self.sigma).item()
-        self.children[action] = Node()
+        action = [i.item() for i in models.sample_action(self.mu, self.sigma)]
+        self.children[tuple(action)] = Node()
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
@@ -455,6 +471,7 @@ class GameHistory:
         self.root_values = []
         self.root_actions = []
         self.priorities = None
+        self.render_images = []
 
     def store_search_statistics(self, root, action_space):
         # Turn visit count from root into a policy
@@ -468,7 +485,8 @@ class GameHistory:
             )
 
             self.root_values.append(root.value())
-            self.root_actions.append(list(root.children.keys()))
+            actions = [list(action) for action in root.children.keys()]
+            self.root_actions.append(actions)
         else:
             self.root_values.append(None)
             self.root_actions.append(None)

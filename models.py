@@ -94,15 +94,17 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         )
 
         self.dynamics_encoded_state_network = FullyConnectedNetwork(
-            encoding_size + 1, fc_dynamics_layers, encoding_size
-        )
+            encoding_size + action_space_size, fc_dynamics_layers, encoding_size
+        )   # this was modified for nDOF by having the input size be encoding_size + action_space_size as a variable
+            # instead of the hardcoded +1 for action_space_size
         self.dynamics_reward_network = FullyConnectedNetwork(
             encoding_size, fc_reward_layers, self.full_support_size,
         )
 
         self.prediction_policy_network = FullyConnectedNetwork(
-            encoding_size, fc_policy_layers, 2
-        )
+            encoding_size, fc_policy_layers, 2*action_space_size
+        )   # this was modified for nDOF to output a mean and std for all n joints that control the robot/ env. First n
+            # are means and last n are stds
         self.prediction_value_network = FullyConnectedNetwork(
             encoding_size, fc_value_layers, self.full_support_size,
         )
@@ -624,8 +626,10 @@ def scalar_to_support(x, support_size):
         2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1)
     )
     indexes = floor + support_size + 1
-    prob = prob.masked_fill_(2 * support_size < indexes, 0.0)
-    indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
+    prob = prob.masked_fill_(2 * support_size < indexes, 0.0)   # if indexes is greater than 2*support_size then
+        # floor == support_size and prob is 0 already. What does this line do?
+    indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)  # set index to 0 if it it equal to
+        # support_size*2 +1
     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
     return logits
 
@@ -642,4 +646,5 @@ def get_log_prob(mu, sigma, action):
 
     m = torch.distributions.normal.Normal(mu, sigma)
     log_prob = m.log_prob(action)
-    return log_prob
+    return log_prob.sum(1)  # modified to sum the log probability of each joint's action so the total probability of
+        # that action is equal to the product of the individual probabilities.

@@ -1,0 +1,27 @@
+<mujocoinclude>
+
+    <!-- torque control -->
+    <!-- <actuator>
+        <motor name="j0" joint="right_j0" ctrlrange="-10 10"/>
+        <motor name="j1" joint="right_j1" ctrlrange="-10 10"/>
+        <motor name="j2" joint="right_j2" ctrlrange="-10 10"/>
+        <motor name="j3" joint="right_j3" ctrlrange="-10 10"/>
+        <motor name="j4" joint="right_j4" ctrlrange="-10 10"/>
+        <motor name="j5" joint="right_j5" ctrlrange="-10 10"/>
+        <motor name="j6" joint="right_j6" ctrlrange="-10 10"/>
+    </actuator> -->
+
+    <!-- position control -->
+    <actuator>
+        <position name="j0" joint="right_j0" forcerange="-10 10" ctrlrange="-3 3" kp="50"/>
+        <position name="j1" joint="right_j1" forcerange="-10 10" ctrlrange="-3.5 2" kp="50"/>
+        <position name="j2" joint="right_j2" forcerange="-10 10" ctrlrange="-3 3" kp="50"/>
+        <position name="j3" joint="right_j3" forcerange="-10 10" ctrlrange="-3 3" kp="50"/>
+        <position name="j4" joint="right_j4" forcerange="-10 10" ctrlrange="-2.9 2.9" kp="50"/>
+        <position name="j5" joint="right_j5" forcerange="-10 10" ctrlrange="-2.9 2.9" kp="50"/>
+        <position name="j6" joint="right_j6" forcerange="-10 10" ctrlrange="-4.7 4.7" kp="50"/>
+        <position ctrllimited="true" ctrlrange="-1 1" joint="r_close" kp="400" user="1"/>
+        <position ctrllimited="true" ctrlrange="-1 1" joint="l_close" kp="400" user="1"/>
+    </actuator>
+
+</mujocoinclude>
