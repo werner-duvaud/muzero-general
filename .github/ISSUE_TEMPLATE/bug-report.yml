@@ -1,0 +1,69 @@
+name: 🐛 Bug Report
+
+description: Create a report to help us reproduce and fix the bug
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting a MuZero 🐛 Bug Report!
+
+  - type: checkboxes
+    attributes:
+      label: Search before asking
+      description: >
+        Please search the [issues](https://github.com/werner-duvaud/muzero-general/issues) to see if a similar bug report already exists.
+      options:
+        - label: >
+            I have searched the MuZero [issues](https://github.com/werner-duvaud/muzero-general/issues) and found no similar bug report.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: 🐛 Describe the bug
+      description: |
+        Please provide a clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Add an example
+      description: Provide console output with error messages and/or screenshots of the bug.
+      placeholder: |
+        💡 ProTip! Include as much information as possible (screenshots, logs, tracebacks etc.) to receive the most helpful response.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Environment
+      description: Please specify the software and hardware you used to produce the bug.
+      placeholder: |
+        For example:
+        - torch 1.9.0+cu111 CUDA:0 (A100-SXM4-40GB, 40536MiB)
+        - OS: Ubuntu 20.04
+        - Python: 3.9.0
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Minimal Reproducible Example
+      description: >
+        This code will help us reproducing the issue so we can track the source of it.
+      placeholder: |
+        ```
+        # Code to reproduce the issue here
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Additional
+      description: Anything else you would like to share?
+  - type: markdown
+    attributes:
+      value: >
+        Thanks for contributing 🎉!
