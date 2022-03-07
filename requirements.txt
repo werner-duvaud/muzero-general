@@ -1,6 +1,8 @@
-numpy
-torch
-tensorboard
-gym
 box2d-py
+gym
+nevergrad
+pybullet
 ray
+seaborn
+tensorboard
+torch

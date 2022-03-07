@@ -1,0 +1,38 @@
+name: 🚀 Feature Request
+
+description: Submit a request for a new MuZero feature
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting a MuZero 🚀 Feature Request!
+
+  - type: checkboxes
+    attributes:
+      label: Search before asking
+      description: >
+        Please search the [issues](https://github.com/werner-duvaud/muzero-general/issues) to see if a similar feature request already exists.
+      options:
+        - label: >
+            I have searched the MuZero [issues](https://github.com/werner-duvaud/muzero-general/issues) and found no similar feature requests.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Description
+      description: A short description of your feature.
+      placeholder: |
+        What new feature would you like to see in MuZero?
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: >
+        Add any other context or screenshots about the feature request.
+  - type: markdown
+    attributes:
+      value: >
+        Thanks for contributing 🎉!

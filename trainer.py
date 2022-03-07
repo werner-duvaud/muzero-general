@@ -1,3 +1,4 @@
+import copy
 import time
 
 import numpy
@@ -14,9 +15,8 @@ class Trainer:
     in the shared storage.
     """
 
-    def __init__(self, initial_weights, config):
+    def __init__(self, initial_checkpoint, config):
         self.config = config
-        self.training_step = 0
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -24,10 +24,16 @@ class Trainer:
 
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
-        self.model.set_weights(initial_weights)
-        self.model.to(torch.device(config.training_device))
+        self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
+        self.model.to(torch.device("cuda" if self.config.train_on_gpu else "cpu"))
         self.model.train()
 
+        self.training_step = initial_checkpoint["training_step"]
+
+        if "cuda" not in str(next(self.model.parameters()).device):
+            print("You are not training on GPU.\n")
+
+        # Initialize the optimizer
         if self.config.optimizer == "SGD":
             self.optimizer = torch.optim.SGD(
                 self.model.parameters(),
@@ -42,20 +48,28 @@ class Trainer:
                 weight_decay=self.config.weight_decay,
             )
         else:
-            raise ValueError(
-                "{} is not implemented. You can change the optimizer manually in trainer.py."
+            raise NotImplementedError(
+                f"{self.config.optimizer} is not implemented. You can change the optimizer manually in trainer.py."
             )
 
-    def continuous_update_weights(self, replay_buffer, shared_storage_worker):
+        if initial_checkpoint["optimizer_state"] is not None:
+            print("Loading optimizer...\n")
+            self.optimizer.load_state_dict(
+                copy.deepcopy(initial_checkpoint["optimizer_state"])
+            )
+
+    def continuous_update_weights(self, replay_buffer, shared_storage):
         # Wait for the replay buffer to be filled
-        while ray.get(replay_buffer.get_self_play_count.remote()) < 1:
+        while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
             time.sleep(0.1)
 
+        next_batch = replay_buffer.get_batch.remote()
         # Training loop
-        while True:
-            index_batch, batch = ray.get(
-                replay_buffer.get_batch.remote(self.model.get_weights())
-            )
+        while self.training_step < self.config.training_steps and not ray.get(
+            shared_storage.get_info.remote("terminate")
+        ):
+            index_batch, batch = ray.get(next_batch)
+            next_batch = replay_buffer.get_batch.remote()
             self.update_lr()
             (
                 priorities,
@@ -63,6 +77,7 @@ class Trainer:
                 value_loss,
                 reward_loss,
                 policy_loss,
+                entropy_loss,
             ) = self.update_weights(batch)
 
             if self.config.PER:
@@ -71,24 +86,40 @@ class Trainer:
 
             # Save to the shared storage
             if self.training_step % self.config.checkpoint_interval == 0:
-                shared_storage_worker.set_weights.remote(self.model.get_weights())
-            shared_storage_worker.set_infos.remote("training_step", self.training_step)
-            shared_storage_worker.set_infos.remote(
-                "lr", self.optimizer.param_groups[0]["lr"]
+                shared_storage.set_info.remote(
+                    {
+                        "weights": copy.deepcopy(self.model.get_weights()),
+                        "optimizer_state": copy.deepcopy(
+                            models.dict_to_cpu(self.optimizer.state_dict())
+                        ),
+                    }
+                )
+                if self.config.save_model:
+                    shared_storage.save_checkpoint.remote()
+            shared_storage.set_info.remote(
+                {
+                    "training_step": self.training_step,
+                    "lr": self.optimizer.param_groups[0]["lr"],
+                    "total_loss": total_loss,
+                    "value_loss": value_loss,
+                    "reward_loss": reward_loss,
+                    "policy_loss": policy_loss,
+                    "entropy_loss": entropy_loss,
+                }
             )
-            shared_storage_worker.set_infos.remote("total_loss", total_loss)
-            shared_storage_worker.set_infos.remote("value_loss", value_loss)
-            shared_storage_worker.set_infos.remote("reward_loss", reward_loss)
-            shared_storage_worker.set_infos.remote("policy_loss", policy_loss)
 
             # Managing the self-play / training ratio
             if self.config.training_delay:
                 time.sleep(self.config.training_delay)
             if self.config.ratio:
                 while (
-                    ray.get(replay_buffer.get_self_play_count.remote())
-                    / max(1, self.training_step)
-                    < self.config.ratio
+                    self.training_step
+                    / max(
+                        1, ray.get(shared_storage.get_info.remote("num_played_steps"))
+                    )
+                    > self.config.ratio
+                    and self.training_step < self.config.training_steps
+                    and not ray.get(shared_storage.get_info.remote("terminate"))
                 ):
                     time.sleep(0.5)
 
@@ -102,24 +133,31 @@ class Trainer:
             action_batch,
             target_value,
             target_reward,
-            target_policy,
-            policy_actions_batch,
+            target_policy_action,
+            target_policy_visit,
             weight_batch,
             gradient_scale_batch,
         ) = batch
 
         # Keep values as scalars for calculating the priorities for the prioritized replay
-        target_value_scalar = numpy.array(target_value, dtype=numpy.float32)
+        target_value_scalar = numpy.array(target_value, dtype="float32")
         priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device
-        weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
-        observation_batch = torch.tensor(observation_batch).float().to(device)
-        action_batch = torch.tensor(action_batch).float().to(device).unsqueeze(-1)
+        if self.config.PER:
+            weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
+        observation_batch = (
+            torch.tensor(numpy.array(observation_batch)).float().to(device)
+        )
+        action_batch = torch.tensor(numpy.array(action_batch)).float().to(device)
         target_value = torch.tensor(target_value).float().to(device)
         target_reward = torch.tensor(target_reward).float().to(device)
-        target_policy = torch.tensor(target_policy).float().to(device)
-        policy_actions_batch = torch.tensor(policy_actions_batch).float().to(device)
+        target_policy_action = (
+            torch.tensor(numpy.array(target_policy_action)).float().to(device)
+        )
+        target_policy_visit = (
+            torch.tensor(numpy.array(target_policy_visit)).float().to(device)
+        )
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
@@ -136,55 +174,49 @@ class Trainer:
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
         ## Generate predictions
-        value, reward, policy_params, hidden_state = self.model.initial_inference(
-            observation_batch
-        )
-
-        log_probs = []
-        for batch_i in range(len(policy_actions_batch)):
-            log_probs.append(
-                models.get_log_prob(
-                    policy_params[batch_i, 0],
-                    policy_params[batch_i, 1],
-                    policy_actions_batch[batch_i, 0],
-                )
-            )
-
-        predictions = [(value, reward, torch.stack(log_probs))]
+        (
+            value,
+            reward,
+            policy_mu,
+            policy_log_std,
+            hidden_state,
+        ) = self.model.initial_inference(observation_batch)
+        predictions = [(value, reward, policy_mu, policy_log_std)]
         for i in range(1, action_batch.shape[1]):
-            value, reward, policy_params, hidden_state = self.model.recurrent_inference(
-                hidden_state, action_batch[:, i]
-            )
+            (
+                value,
+                reward,
+                policy_mu,
+                policy_log_std,
+                hidden_state,
+            ) = self.model.recurrent_inference(hidden_state, action_batch[:, i])
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             hidden_state.register_hook(lambda grad: grad * 0.5)
-
-            log_probs = []
-            for batch_i in range(len(policy_actions_batch)):
-                log_probs.append(
-                    models.get_log_prob(
-                        policy_params[batch_i, 0],
-                        policy_params[batch_i, 1],
-                        policy_actions_batch[batch_i, i],
-                    )
-                )
-
-            predictions.append((value, reward, torch.stack(log_probs)))
+            predictions.append((value, reward, policy_mu, policy_log_std))
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
 
         ## Compute losses
-        value_loss, reward_loss, policy_loss = (0, 0, 0)
-        value, reward, policy_logits = predictions[0]
+        value_loss, reward_loss, policy_loss, entropy_loss = (0, 0, 0, 0)
+        value, reward, policy_mu, policy_log_std = predictions[0]
         # Ignore reward loss for the first batch step
-        current_value_loss, _, current_policy_loss = self.loss_function(
+        (
+            current_value_loss,
+            _,
+            current_policy_loss,
+            current_entropy_loss,
+        ) = self.loss_function(
             value.squeeze(-1),
             reward.squeeze(-1),
-            policy_logits,
+            policy_mu,
+            policy_log_std,
             target_value[:, 0],
             target_reward[:, 0],
-            target_policy[:, 0],
+            target_policy_action[:, 0],
+            target_policy_visit[:, 0],
         )
         value_loss += current_value_loss
         policy_loss += current_policy_loss
+        entropy_loss += current_entropy_loss
         # Compute priorities for the prioritized replay (See paper appendix Training)
         pred_value_scalar = (
             models.support_to_scalar(value, self.config.support_size)
@@ -199,18 +231,21 @@ class Trainer:
         )
 
         for i in range(1, len(predictions)):
-            value, reward, policy_logits = predictions[i]
+            value, reward, policy_mu, policy_log_std = predictions[i]
             (
                 current_value_loss,
                 current_reward_loss,
                 current_policy_loss,
+                current_entropy_loss,
             ) = self.loss_function(
                 value.squeeze(-1),
                 reward.squeeze(-1),
-                policy_logits,
+                policy_mu,
+                policy_log_std,
                 target_value[:, i],
                 target_reward[:, i],
-                target_policy[:, i],
+                target_policy_action[:, i],
+                target_policy_visit[:, i],
             )
 
             # Scale gradient by the number of unroll steps (See paper appendix Training)
@@ -223,10 +258,14 @@ class Trainer:
             current_policy_loss.register_hook(
                 lambda grad: grad / gradient_scale_batch[:, i]
             )
+            current_entropy_loss.register_hook(
+                lambda grad: grad / gradient_scale_batch[:, i]
+            )
 
             value_loss += current_value_loss
             reward_loss += current_reward_loss
             policy_loss += current_policy_loss
+            entropy_loss += current_entropy_loss
 
             # Compute priorities for the prioritized replay (See paper appendix Training)
             pred_value_scalar = (
@@ -241,8 +280,14 @@ class Trainer:
                 ** self.config.PER_alpha
             )
 
-        # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
-        loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
+        # Scale the value loss and the entropy loss
+        loss = (
+            value_loss * self.config.value_loss_weight
+            + reward_loss
+            + policy_loss
+            + entropy_loss * self.config.entropy_loss_weight
+        )
+
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
             loss *= weight_batch
@@ -262,6 +307,7 @@ class Trainer:
             value_loss.mean().item(),
             reward_loss.mean().item(),
             policy_loss.mean().item(),
+            entropy_loss.mean().item(),
         )
 
     def update_lr(self):
@@ -276,11 +322,29 @@ class Trainer:
 
     @staticmethod
     def loss_function(
-        value, reward, policy_logits, target_value, target_reward, target_policy,
+        value,
+        reward,
+        policy_mu,
+        policy_log_std,
+        target_value,
+        target_reward,
+        target_policy_action,
+        target_policy_visit,
     ):
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
-        policy_loss = (-target_policy * policy_logits).sum(1)
 
-        return value_loss, reward_loss, policy_loss
+        dist = torch.distributions.Normal(
+            loc=policy_mu, scale=torch.exp(policy_log_std)
+        )
+        entropy_loss = -dist.entropy().sum(1)
+
+        # KL loss
+        policy_loss = torch.zeros(policy_mu.size(0)).to(target_policy_action.device)
+        for i in range(target_policy_action.size(1)):
+            log_prob = dist.log_prob(target_policy_action[:, i, :]).sum(1)
+            log_target = torch.log(target_policy_visit[:, i])
+            policy_loss += torch.exp(log_prob) * (log_prob - log_target)
+
+        return value_loss, reward_loss, policy_loss, entropy_loss
