@@ -1,5 +1,5 @@
 import datetime
-import os
+import pathlib
 
 import numpy
 import torch
@@ -14,13 +14,18 @@ try:
 
 except ImportError:
     import sys
-    sys.exit("You need to install open_spiel by running pip install open_spiel. For a full documentation, see: https://github.com/deepmind/open_spiel/blob/master/docs/install.md")
+
+    sys.exit(
+        "You need to install open_spiel by running pip install open_spiel. For a full documentation, see: https://github.com/deepmind/open_spiel/blob/master/docs/install.md"
+    )
 
 # The game you want to run. See https://github.com/deepmind/open_spiel/blob/master/docs/games.md for a list of games
 game = pyspiel.load_game("tic_tac_toe")
 
+
 class MuZeroConfig:
     def __init__(self):
+        # fmt: off
         # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
 
         self.game = game
@@ -86,7 +91,7 @@ class MuZeroConfig:
 
 
         ### Training
-        self.results_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
+        self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / pathlib.Path(__file__).stem / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")  # Path to store the model weights and TensorBoard logs
         self.save_model = True  # Save the checkpoint in results_path as model.checkpoint
         self.training_steps = 1000000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 64  # Number of parts of games to train on at each training step
@@ -122,7 +127,7 @@ class MuZeroConfig:
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
-
+        # fmt: on
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -146,7 +151,7 @@ class Game(AbstractGame):
     def step(self, action):
         """
         Apply action to the game.
-        
+
         Args:
             action : action of the action_space to take.
 
@@ -161,7 +166,7 @@ class Game(AbstractGame):
         Return the current player.
 
         Returns:
-            The current player, it should be an element of the players list in the config. 
+            The current player, it should be an element of the players list in the config.
         """
         return self.env.to_play()
 
@@ -169,10 +174,10 @@ class Game(AbstractGame):
         """
         Should return the legal actions at each turn, if it is not available, it can return
         the whole action space. At each turn, the game have to be able to handle one of returned actions.
-        
+
         For complex game where calculating legal moves is too long, the idea is to define the legal actions
         equal to the action space but to return a negative reward if the action is illegal.
-    
+
         Returns:
             An array of integers, subset of the action space.
         """
@@ -181,7 +186,7 @@ class Game(AbstractGame):
     def reset(self):
         """
         Reset the game for a new game.
-        
+
         Returns:
             Initial observation of the game.
         """
@@ -209,7 +214,7 @@ class Game(AbstractGame):
             try:
                 print("Legal Actions: ", self.legal_actions_human())
                 choice = input("Enter your move: ")
-                if (choice in self.legal_actions_human()):
+                if choice in self.legal_actions_human():
                     break
             except:
                 pass
@@ -217,11 +222,10 @@ class Game(AbstractGame):
 
         return self.env.board.string_to_action(choice)
 
-
     def action_to_string(self, action_number):
         """
         Convert an action number to a string representing the action.
-        
+
         Args:
             action_number: an integer from the action space.
 
@@ -264,22 +268,24 @@ class Spiel:
         if self.player == 1:
             current_player = 1
         else:
-             current_player = 0
-        return numpy.array(self.board.observation_tensor(current_player)).reshape(self.game.observation_tensor_shape())
+            current_player = 0
+        return numpy.array(self.board.observation_tensor(current_player)).reshape(
+            self.game.observation_tensor_shape()
+        )
 
     def legal_actions(self):
         return self.board.legal_actions()
 
     def have_winner(self):
         rewards = self.board.rewards()
-        
-        if (self.player == 1):
 
-            if (rewards[0] == 1.0):
+        if self.player == 1:
+
+            if rewards[0] == 1.0:
                 return True
 
-        elif (self.player == -1):
-            if (rewards[1] == 1.0):
+        elif self.player == -1:
+            if rewards[1] == 1.0:
                 return True
 
         return False

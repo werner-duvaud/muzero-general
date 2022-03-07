@@ -1,7 +1,7 @@
-numpy
-torch
-tensorboard
 gym
+nevergrad
+numpy
 ray
 seaborn
-nevergrad
+tensorboard
+torch

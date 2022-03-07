@@ -79,7 +79,9 @@ class ReplayBuffer:
         ) = ([], [], [], [], [], [], [])
         weight_batch = [] if self.config.PER else None
 
-        for game_id, game_history, game_prob in self.sample_n_games(self.config.batch_size):
+        for game_id, game_history, game_prob in self.sample_n_games(
+            self.config.batch_size
+        ):
             game_pos, pos_prob = self.sample_position(game_history)
 
             values, rewards, policies, actions = self.make_target(
@@ -89,7 +91,9 @@ class ReplayBuffer:
             index_batch.append([game_id, game_pos])
             observation_batch.append(
                 game_history.get_stacked_observations(
-                    game_pos, self.config.stacked_observations
+                    game_pos,
+                    self.config.stacked_observations,
+                    len(self.config.action_space),
                 )
             )
             action_batch.append(actions)
@@ -162,13 +166,17 @@ class ReplayBuffer:
                 game_probs.append(game_history.game_priority)
             game_probs = numpy.array(game_probs, dtype="float32")
             game_probs /= numpy.sum(game_probs)
-            game_prob_dict = dict([(game_id, prob) for game_id, prob in zip(game_id_list, game_probs)])
+            game_prob_dict = dict(
+                [(game_id, prob) for game_id, prob in zip(game_id_list, game_probs)]
+            )
             selected_games = numpy.random.choice(game_id_list, n_games, p=game_probs)
         else:
             selected_games = numpy.random.choice(list(self.buffer.keys()), n_games)
             game_prob_dict = {}
-        ret = [(game_id, self.buffer[game_id], game_prob_dict.get(game_id))
-               for game_id in selected_games]
+        ret = [
+            (game_id, self.buffer[game_id], game_prob_dict.get(game_id))
+            for game_id in selected_games
+        ]
         return ret
 
     def sample_position(self, game_history, force_uniform=False):
@@ -236,7 +244,7 @@ class ReplayBuffer:
                 else -root_values[bootstrap_index]
             )
 
-            value = last_step_value * self.config.discount ** self.config.td_steps
+            value = last_step_value * self.config.discount**self.config.td_steps
         else:
             value = 0
 
@@ -249,7 +257,7 @@ class ReplayBuffer:
                 if game_history.to_play_history[index]
                 == game_history.to_play_history[index + i]
                 else -reward
-            ) * self.config.discount ** i
+            ) * self.config.discount**i
 
         return value
 
@@ -334,12 +342,16 @@ class Reanalyse:
 
             # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
             if self.config.use_last_model_value:
-                observations = [
-                    game_history.get_stacked_observations(
-                        i, self.config.stacked_observations
-                    )
-                    for i in range(len(game_history.root_values))
-                ]
+                observations = numpy.array(
+                    [
+                        game_history.get_stacked_observations(
+                            i,
+                            self.config.stacked_observations,
+                            len(self.config.action_space),
+                        )
+                        for i in range(len(game_history.root_values))
+                    ]
+                )
 
                 observations = (
                     torch.tensor(observations)
