@@ -371,7 +371,9 @@ class DynamicsNetwork(torch.nn.Module):
         )
         self.block_output_size_reward = block_output_size_reward
         self.fc = mlp(
-            self.block_output_size_reward, fc_reward_layers, full_support_size,
+            self.block_output_size_reward,
+            fc_reward_layers,
+            full_support_size,
         )
 
     def forward(self, x):
@@ -414,7 +416,9 @@ class PredictionNetwork(torch.nn.Module):
             self.block_output_size_value, fc_value_layers, full_support_size
         )
         self.fc_policy = mlp(
-            self.block_output_size_policy, fc_policy_layers, action_space_size,
+            self.block_output_size_policy,
+            fc_policy_layers,
+            action_space_size,
         )
 
     def forward(self, x):

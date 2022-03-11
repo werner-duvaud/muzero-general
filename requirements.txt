@@ -1,7 +1,7 @@
+gym[classic_control]
+nevergrad
 numpy
-torch
-tensorboard
-gym
 ray
 seaborn
-nevergrad
+tensorboard
+torch

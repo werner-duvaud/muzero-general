@@ -25,7 +25,7 @@ class SelfPlay:
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_checkpoint["weights"])
-        self.model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model.to(torch.device("cuda" if self.config.selfplay_on_gpu else "cpu"))
         self.model.eval()
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
@@ -136,8 +136,7 @@ class SelfPlay:
                     numpy.array(observation).shape == self.config.observation_shape
                 ), f"Observation should match the observation_shape defined in MuZeroConfig. Expected {self.config.observation_shape} but got {numpy.array(observation).shape}."
                 stacked_observations = game_history.get_stacked_observations(
-                    -1,
-                    self.config.stacked_observations,
+                    -1, self.config.stacked_observations, len(self.config.action_space)
                 )
 
                 # Choose the action
@@ -511,7 +510,9 @@ class GameHistory:
         else:
             self.root_values.append(None)
 
-    def get_stacked_observations(self, index, num_stacked_observations):
+    def get_stacked_observations(
+        self, index, num_stacked_observations, action_space_size
+    ):
         """
         Generate a new observation with the observation at the index position
         and num_stacked_observations past observations and actions stacked.
@@ -530,6 +531,7 @@ class GameHistory:
                         [
                             numpy.ones_like(stacked_observations[0])
                             * self.action_history[past_observation_index + 1]
+                            / action_space_size
                         ],
                     )
                 )

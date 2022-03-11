@@ -1,11 +1,11 @@
 import copy
 import importlib
+import json
 import math
-import os
+import pathlib
 import pickle
 import sys
 import time
-from glob import glob
 
 import nevergrad
 import numpy
@@ -55,7 +55,12 @@ class MuZero:
         if config:
             if type(config) is dict:
                 for param, value in config.items():
-                    setattr(self.config, param, value)
+                    if hasattr(self.config, param):
+                        setattr(self.config, param, value)
+                    else:
+                        raise AttributeError(
+                            f"{game_name} config has no attribute '{param}'. Check the config file for the complete list of parameters."
+                        )
             else:
                 self.config = config
 
@@ -132,7 +137,7 @@ class MuZero:
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
         """
         if log_in_tensorboard or self.config.save_model:
-            os.makedirs(self.config.results_path, exist_ok=True)
+            self.config.results_path.mkdir(parents=True, exist_ok=True)
 
         # Manage GPUs
         if 0 < self.num_gpus:
@@ -149,11 +154,13 @@ class MuZero:
 
         # Initialize workers
         self.training_worker = trainer.Trainer.options(
-            num_cpus=0, num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
+            num_cpus=0,
+            num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(self.checkpoint, self.config)
 
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
-            self.checkpoint, self.config,
+            self.checkpoint,
+            self.config,
         )
         self.shared_storage_worker.set_info.remote("terminate", False)
 
@@ -172,7 +179,10 @@ class MuZero:
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
-                self.checkpoint, self.Game, self.config, self.config.seed + seed,
+                self.checkpoint,
+                self.Game,
+                self.config,
+                self.config.seed + seed,
             )
             for seed in range(self.config.num_workers)
         ]
@@ -203,7 +213,8 @@ class MuZero:
         """
         # Launch the test worker to get performance metrics
         self.test_worker = self_play.SelfPlay.options(
-            num_cpus=0, num_gpus=num_gpus,
+            num_cpus=0,
+            num_gpus=num_gpus,
         ).remote(
             self.checkpoint,
             self.Game,
@@ -231,7 +242,8 @@ class MuZero:
         )
         # Save model representation
         writer.add_text(
-            "Model summary", self.summary,
+            "Model summary",
+            self.summary,
         )
         # Loop for updating the training performance
         counter = 0
@@ -256,16 +268,24 @@ class MuZero:
             while info["training_step"] < self.config.training_steps:
                 info = ray.get(self.shared_storage_worker.get_info.remote(keys))
                 writer.add_scalar(
-                    "1.Total_reward/1.Total_reward", info["total_reward"], counter,
+                    "1.Total_reward/1.Total_reward",
+                    info["total_reward"],
+                    counter,
                 )
                 writer.add_scalar(
-                    "1.Total_reward/2.Mean_value", info["mean_value"], counter,
+                    "1.Total_reward/2.Mean_value",
+                    info["mean_value"],
+                    counter,
                 )
                 writer.add_scalar(
-                    "1.Total_reward/3.Episode_length", info["episode_length"], counter,
+                    "1.Total_reward/3.Episode_length",
+                    info["episode_length"],
+                    counter,
                 )
                 writer.add_scalar(
-                    "1.Total_reward/4.MuZero_reward", info["muzero_reward"], counter,
+                    "1.Total_reward/4.MuZero_reward",
+                    info["muzero_reward"],
+                    counter,
                 )
                 writer.add_scalar(
                     "1.Total_reward/5.Opponent_reward",
@@ -273,7 +293,9 @@ class MuZero:
                     counter,
                 )
                 writer.add_scalar(
-                    "2.Workers/1.Self_played_games", info["num_played_games"], counter,
+                    "2.Workers/1.Self_played_games",
+                    info["num_played_games"],
+                    counter,
                 )
                 writer.add_scalar(
                     "2.Workers/2.Training_steps", info["training_step"], counter
@@ -311,7 +333,8 @@ class MuZero:
 
         if self.config.save_model:
             # Persist replay buffer to disk
-            print("\n\nPersisting replay buffer games to disk...")
+            path = self.config.results_path / "replay_buffer.pkl"
+            print(f"\n\nPersisting replay buffer games to disk at {path}")
             pickle.dump(
                 {
                     "buffer": self.replay_buffer,
@@ -319,7 +342,7 @@ class MuZero:
                     "num_played_steps": self.checkpoint["num_played_steps"],
                     "num_reanalysed_games": self.checkpoint["num_reanalysed_games"],
                 },
-                open(os.path.join(self.config.results_path, "replay_buffer.pkl"), "wb"),
+                open(path, "wb"),
             )
 
     def terminate_workers(self):
@@ -366,7 +389,8 @@ class MuZero:
         opponent = opponent if opponent else self.config.opponent
         muzero_player = muzero_player if muzero_player else self.config.muzero_player
         self_play_worker = self_play.SelfPlay.options(
-            num_cpus=0, num_gpus=num_gpus,
+            num_cpus=0,
+            num_gpus=num_gpus,
         ).remote(self.checkpoint, self.Game, self.config, numpy.random.randint(10000))
         results = []
         for i in range(num_tests):
@@ -374,7 +398,11 @@ class MuZero:
             results.append(
                 ray.get(
                     self_play_worker.play_game.remote(
-                        0, 0, render, opponent, muzero_player,
+                        0,
+                        0,
+                        render,
+                        opponent,
+                        muzero_player,
                     )
                 )
             )
@@ -406,37 +434,34 @@ class MuZero:
         """
         # Load checkpoint
         if checkpoint_path:
-            if os.path.exists(checkpoint_path):
-                self.checkpoint = torch.load(checkpoint_path)
-                print(f"\nUsing checkpoint from {checkpoint_path}")
-            else:
-                print(f"\nThere is no model saved in {checkpoint_path}.")
+            checkpoint_path = pathlib.Path(checkpoint_path)
+            self.checkpoint = torch.load(checkpoint_path)
+            print(f"\nUsing checkpoint from {checkpoint_path}")
 
         # Load replay buffer
         if replay_buffer_path:
-            if os.path.exists(replay_buffer_path):
-                with open(replay_buffer_path, "rb") as f:
-                    replay_buffer_infos = pickle.load(f)
-                self.replay_buffer = replay_buffer_infos["buffer"]
-                self.checkpoint["num_played_steps"] = replay_buffer_infos[
-                    "num_played_steps"
-                ]
-                self.checkpoint["num_played_games"] = replay_buffer_infos[
-                    "num_played_games"
-                ]
-                self.checkpoint["num_reanalysed_games"] = replay_buffer_infos[
-                    "num_reanalysed_games"
-                ]
+            replay_buffer_path = pathlib.Path(replay_buffer_path)
+            with open(replay_buffer_path, "rb") as f:
+                replay_buffer_infos = pickle.load(f)
+            self.replay_buffer = replay_buffer_infos["buffer"]
+            self.checkpoint["num_played_steps"] = replay_buffer_infos[
+                "num_played_steps"
+            ]
+            self.checkpoint["num_played_games"] = replay_buffer_infos[
+                "num_played_games"
+            ]
+            self.checkpoint["num_reanalysed_games"] = replay_buffer_infos[
+                "num_reanalysed_games"
+            ]
 
-                print(f"\nInitializing replay buffer with {replay_buffer_path}")
-            else:
-                print(
-                    f"Warning: Replay buffer path '{replay_buffer_path}' doesn't exist.  Using empty buffer."
-                )
-                self.checkpoint["training_step"] = 0
-                self.checkpoint["num_played_steps"] = 0
-                self.checkpoint["num_played_games"] = 0
-                self.checkpoint["num_reanalysed_games"] = 0
+            print(f"\nInitializing replay buffer with {replay_buffer_path}")
+        else:
+            print(f"Using empty buffer.")
+            self.replay_buffer = {}
+            self.checkpoint["training_step"] = 0
+            self.checkpoint["num_played_steps"] = 0
+            self.checkpoint["num_played_games"] = 0
+            self.checkpoint["num_reanalysed_games"] = 0
 
     def diagnose_model(self, horizon):
         """
@@ -541,14 +566,14 @@ def hyperparameter_search(
     print(recommendation.value)
     if best_training:
         # Save best training weights (but it's not the recommended weights)
-        os.makedirs(best_training["config"].results_path, exist_ok=True)
+        best_training["config"].results_path.mkdir(parents=True, exist_ok=True)
         torch.save(
             best_training["checkpoint"],
-            os.path.join(best_training["config"].results_path, "model.checkpoint"),
+            best_training["config"].results_path / "model.checkpoint",
         )
         # Save the recommended hyperparameters
         text_file = open(
-            os.path.join(best_training["config"].results_path, "best_parameters.txt"),
+            best_training["config"].results_path / "best_parameters.txt",
             "w",
         )
         text_file.write(str(recommendation.value))
@@ -558,7 +583,9 @@ def hyperparameter_search(
 
 def load_model_menu(muzero, game_name):
     # Configure running options
-    options = ["Specify paths manually"] + sorted(glob(f"results/{game_name}/*/"))
+    options = ["Specify paths manually"] + sorted(
+        (pathlib.Path("results") / game_name).glob("*/")
+    )
     options.reverse()
     print()
     for i in range(len(options)):
@@ -575,36 +602,40 @@ def load_model_menu(muzero, game_name):
         checkpoint_path = input(
             "Enter a path to the model.checkpoint, or ENTER if none: "
         )
-        while checkpoint_path and not os.path.isfile(checkpoint_path):
+        while checkpoint_path and not pathlib.Path(checkpoint_path).is_file():
             checkpoint_path = input("Invalid checkpoint path. Try again: ")
         replay_buffer_path = input(
             "Enter a path to the replay_buffer.pkl, or ENTER if none: "
         )
-        while replay_buffer_path and not os.path.isfile(replay_buffer_path):
+        while replay_buffer_path and not pathlib.Path(replay_buffer_path).is_file():
             replay_buffer_path = input("Invalid replay buffer path. Try again: ")
     else:
-        checkpoint_path = f"{options[choice]}model.checkpoint"
-        replay_buffer_path = f"{options[choice]}replay_buffer.pkl"
+        checkpoint_path = options[choice] / "model.checkpoint"
+        replay_buffer_path = options[choice] / "replay_buffer.pkl"
 
     muzero.load_model(
-        checkpoint_path=checkpoint_path, replay_buffer_path=replay_buffer_path,
+        checkpoint_path=checkpoint_path,
+        replay_buffer_path=replay_buffer_path,
     )
 
 
 if __name__ == "__main__":
     if len(sys.argv) == 2:
-        # Train directly with "python muzero.py cartpole"
+        # Train directly with: python muzero.py cartpole
         muzero = MuZero(sys.argv[1])
+        muzero.train()
+    elif len(sys.argv) == 3:
+        # Train directly with: python muzero.py cartpole '{"lr_init": 0.01}'
+        config = json.loads(sys.argv[2])
+        muzero = MuZero(sys.argv[1], config)
         muzero.train()
     else:
         print("\nWelcome to MuZero! Here's a list of games:")
         # Let user pick a game
         games = [
-            filename[:-3]
-            for filename in sorted(
-                os.listdir(os.path.dirname(os.path.realpath(__file__)) + "/games")
-            )
-            if filename.endswith(".py") and filename != "abstract_game.py"
+            filename.stem
+            for filename in sorted(list((pathlib.Path.cwd() / "games").glob("*.py")))
+            if filename.name != "abstract_game.py"
         ]
         for i in range(len(games)):
             print(f"{i}. {games[i]}")

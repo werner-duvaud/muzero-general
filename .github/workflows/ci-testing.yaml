@@ -1,0 +1,62 @@
+name: CI testing
+
+on: [push, pull_request]
+
+jobs:
+  training-test:
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.7]
+
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python ${{matrix.python-version}}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{matrix.python-version}}
+
+      - name: Install black
+        run: "pip install black"
+
+      - name: Run black
+        run: "black --check --diff ."
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Training test
+        shell: bash
+        run: |
+          # Launch cartpole experiment and store the last reward of the training
+          python muzero.py cartpole '{"training_steps": 7500}' 2>&1 | tee log.txt
+
+      - name: Archive log artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: training_test_logs
+          path: log.txt
+
+      - name: Retrieve training test log
+        uses: actions/download-artifact@v2
+        with:
+          name: training_test_logs
+
+      - name: Check reward
+        shell: bash
+        run: |
+          # Retrieve last reward
+          BEST_REWARD=$(cat log.txt | sed -n -E 's/^.*reward: ([0-9]+).*$/\1/p' | sort -n | tail -1)
+
+          # Display best reward
+          echo "Best reward of cartpole training: " $BEST_REWARD
+
+          # Validate reward value
+          if ((BEST_REWARD < 250)); then
+            exit 1
+          fi
