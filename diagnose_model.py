@@ -23,6 +23,9 @@ class DiagnoseModel:
         # Initialize the network
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(checkpoint["weights"])
+        self.model.to(
+            torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )  # on GPU if available since the DataParallel objects in MuZeroNetwork requires that
         self.model.eval()
 
     def get_virtual_trajectory_from_obs(
