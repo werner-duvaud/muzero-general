@@ -82,7 +82,7 @@ Network summary:
 git clone https://github.com/werner-duvaud/muzero-general.git
 cd muzero-general
 
-pip install -r requirements.txt
+pip install -r requirements.lock
 ```
 
 ### Run
