@@ -385,6 +385,8 @@ class MuZero:
             num_tests (int): Number of games to average. Defaults to 1.
 
             num_gpus (int): Number of GPUs to use, 0 forces to use the CPU. Defaults to 0.
+
+            render_history (bool): whether to store a history of the rendered environment
         """
         opponent = opponent if opponent else self.config.opponent
         muzero_player = muzero_player if muzero_player else self.config.muzero_player
