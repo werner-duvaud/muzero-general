@@ -11,7 +11,15 @@ from .abstract_game import AbstractGame
 class MuZeroConfig:
     def __init__(self):
         # fmt: off
-        # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
+        # More information is available here:
+        # https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
+
+        # Uncertainty params
+        self.intrinsic_reward_weight = 0
+        self.num_dynamics_models = 1
+        self.consistency_loss_weight = 0
+        self.diversity_loss_weight = 0
+
 
         self.seed = 0  # Seed for numpy, torch and the game
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
@@ -51,7 +59,7 @@ class MuZeroConfig:
         ### Network
         self.network = "resnet"  # "resnet" / "fullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
-        
+
         # Residual Network
         self.downsample = False  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
         self.blocks = 6  # Number of blocks in the ResNet
@@ -62,7 +70,7 @@ class MuZeroConfig:
         self.resnet_fc_reward_layers = [64]  # Define the hidden layers in the reward head of the dynamic network
         self.resnet_fc_value_layers = [64]  # Define the hidden layers in the value head of the prediction network
         self.resnet_fc_policy_layers = [64]  # Define the hidden layers in the policy head of the prediction network
-        
+
         # Fully Connected Network
         self.encoding_size = 32
         self.fc_representation_layers = []  # Define the hidden layers in the representation network

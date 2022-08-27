@@ -26,7 +26,14 @@ game = pyspiel.load_game("tic_tac_toe")
 class MuZeroConfig:
     def __init__(self):
         # fmt: off
-        # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
+        # More information is available here:
+        # https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
+
+        # Uncertainty params
+        self.intrinsic_reward_weight = 0
+        self.num_dynamics_models = 1
+        self.consistency_loss_weight = 0
+        self.diversity_loss_weight = 0
 
         self.game = game
 
