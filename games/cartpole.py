@@ -15,10 +15,10 @@ class MuZeroConfig:
         # https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
 
         # Uncertainty params
-        self.intrinsic_reward_weight = 0
+        self.intrinsic_reward_weight = 0.25
         self.num_dynamics_models = 5
         self.consistency_loss_weight = 0.5
-        self.diversity_loss_weight = 0.5
+        self.diversity_loss_weight = 0.25
 
         self.seed = 0  # Seed for numpy, torch and the game
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
@@ -56,7 +56,7 @@ class MuZeroConfig:
 
 
         ### Network
-        self.network = "fullyconnected"  # "resnet" / "fullyconnected"
+        self.network = "ensemblefullyconnected"  # "resnet" / "fullyconnected" / "ensemblefullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
 
         # Residual Network
