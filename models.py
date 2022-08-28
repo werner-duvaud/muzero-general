@@ -16,7 +16,7 @@ class EnsembleModel(torch.nn.Module):
         outputs_tensor = torch.cat(outputs, 0)
         variance = torch.var(outputs_tensor, 0)
         uncertainty = torch.mean(variance)
-        return outputs[selected], uncertainty
+        return outputs[selected], uncertainty.item()
 
     def reset_selected_model_id(self):
         self.selected_id = random.randint(0, len(self.models) - 1)
