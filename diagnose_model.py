@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy
 import seaborn
 import torch
+import random
 
 import models
 from self_play import MCTS, Node, SelfPlay
@@ -42,6 +43,7 @@ class DiagnoseModel:
         trajectory_info.store_info(root, mcts_info, None, numpy.NaN)
 
         virtual_to_play = to_play
+        dynamics_model_id = random.sample(list(range(self.config.num_dynamics_models)), 1)[0]
         for i in range(horizon):
             action = SelfPlay.select_action(root, 0)
 
@@ -55,6 +57,7 @@ class DiagnoseModel:
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                 root.hidden_state,
                 torch.tensor([[action]]).to(root.hidden_state.device),
+                dynamics_model_id
             )
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
