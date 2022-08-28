@@ -84,18 +84,12 @@ class ReplayBuffer:
         ):
             game_pos, pos_prob = self.sample_position(game_history)
 
-            values, rewards, policies, actions = self.make_target(
+            observations, values, rewards, policies, actions = self.make_target(
                 game_history, game_pos
             )
 
             index_batch.append([game_id, game_pos])
-            observation_batch.append(
-                game_history.get_stacked_observations(
-                    game_pos,
-                    self.config.stacked_observations,
-                    len(self.config.action_space),
-                )
-            )
+            observation_batch.append(observations)
             action_batch.append(actions)
             value_batch.append(values)
             reward_batch.append(rewards)
@@ -117,7 +111,7 @@ class ReplayBuffer:
                 weight_batch
             )
 
-        # observation_batch: batch, channels, height, width
+        # observation_batch: batch, num_unroll_steps+1, channels, height, width
         # action_batch: batch, num_unroll_steps+1
         # value_batch: batch, num_unroll_steps+1
         # reward_batch: batch, num_unroll_steps+1
@@ -265,11 +259,17 @@ class ReplayBuffer:
         """
         Generate targets for every unroll steps.
         """
-        target_values, target_rewards, target_policies, actions = [], [], [], []
+        target_observations, target_values, target_rewards, target_policies, actions = [], [], [], [], []
         for current_index in range(
             state_index, state_index + self.config.num_unroll_steps + 1
         ):
             value = self.compute_target_value(game_history, current_index)
+            observation = game_history.get_stacked_observations(
+                current_index,
+                self.config.stacked_observations,
+                len(self.config.action_space),
+            )
+            target_observations.append(observation)
 
             if current_index < len(game_history.root_values):
                 target_values.append(value)
@@ -300,7 +300,7 @@ class ReplayBuffer:
                 )
                 actions.append(numpy.random.choice(self.config.action_space))
 
-        return target_values, target_rewards, target_policies, actions
+        return target_observations, target_values, target_rewards, target_policies, actions
 
 
 @ray.remote
