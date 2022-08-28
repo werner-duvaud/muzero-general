@@ -97,7 +97,6 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
         self.num_dynamics_models = num_dynamics_models
-        self.dynamics_models = []
 
         self.representation_network = torch.nn.DataParallel(
             mlp(
@@ -110,7 +109,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
                 encoding_size,
             )
         )
-
+        dynamics_models = []
         for _ in range(self.num_dynamics_models):
             network = torch.nn.DataParallel(
                 mlp(
@@ -119,7 +118,8 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
                     encoding_size,
                 )
             )
-            self.dynamics_models.append(network)
+            dynamics_models.append(network)
+        self.dynamics_models = torch.nn.ModuleList(dynamics_models)
 
         self.dynamics_reward_network = torch.nn.DataParallel(
             mlp(encoding_size, fc_reward_layers, self.full_support_size)
