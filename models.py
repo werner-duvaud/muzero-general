@@ -14,7 +14,7 @@ class EnsembleModel(torch.nn.Module):
         selected = selected_id if selected_id is not None else self.selected_id
         outputs = [model(x) for model in self.models]
         outputs_tensor = torch.cat(outputs, 0)
-        variance = torch.var(outputs_tensor, 0)
+        variance = torch.var(outputs_tensor, 0, unbiased=False)
         uncertainty = torch.mean(variance)
         return outputs[selected], uncertainty.item()
 
