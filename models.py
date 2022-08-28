@@ -109,17 +109,41 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
                 encoding_size,
             )
         )
-        dynamics_models = []
-        for _ in range(self.num_dynamics_models):
-            network = torch.nn.DataParallel(
-                mlp(
-                    encoding_size + self.action_space_size,
-                    fc_dynamics_layers,
-                    encoding_size,
-                )
+        self.dynamics_1 = torch.nn.DataParallel(
+            mlp(
+                encoding_size + self.action_space_size,
+                fc_dynamics_layers,
+                encoding_size,
             )
-            dynamics_models.append(network)
-        self.dynamics_models = torch.nn.ModuleList(dynamics_models)
+        )
+        self.dynamics_2 = torch.nn.DataParallel(
+            mlp(
+                encoding_size + self.action_space_size,
+                fc_dynamics_layers,
+                encoding_size,
+            )
+        )
+        self.dynamics_3 = torch.nn.DataParallel(
+            mlp(
+                encoding_size + self.action_space_size,
+                fc_dynamics_layers,
+                encoding_size,
+            )
+        )
+        self.dynamics_4 = torch.nn.DataParallel(
+            mlp(
+                encoding_size + self.action_space_size,
+                fc_dynamics_layers,
+                encoding_size,
+            )
+        )
+        self.dynamics_5 = torch.nn.DataParallel(
+            mlp(
+                encoding_size + self.action_space_size,
+                fc_dynamics_layers,
+                encoding_size,
+            )
+        )
 
         self.dynamics_reward_network = torch.nn.DataParallel(
             mlp(encoding_size, fc_reward_layers, self.full_support_size)
@@ -161,8 +185,13 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         action_one_hot.scatter_(1, action.long(), 1.0)
         x = torch.cat((encoded_state, action_one_hot), dim=1)
 
-        dynamics_model = self.dynamics_models[dynamics_model_id]
-        next_encoded_state = dynamics_model(x)
+        out_1 = self.dynamcs_1(x)
+        out_2 = self.dynamcs_2(x)
+        out_3 = self.dynamcs_3(x)
+        out_4 = self.dynamcs_4(x)
+        out_5 = self.dynamcs_5(x)
+        outs = [out_1, out_2, out_3, out_4, out_5]
+        next_encoded_state = outs[dynamics_model_id]
 
         reward = self.dynamics_reward_network(next_encoded_state)
 
