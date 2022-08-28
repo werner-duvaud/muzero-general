@@ -18,6 +18,7 @@ class MuZeroNetwork:
                 config.fc_representation_layers,
                 config.fc_dynamics_layers,
                 config.support_size,
+                config.num_dynamics_models,
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(
@@ -63,7 +64,7 @@ class AbstractNetwork(ABC, torch.nn.Module):
         pass
 
     @abstractmethod
-    def recurrent_inference(self, encoded_state, action):
+    def recurrent_inference(self, encoded_state, action, dynamics_model_id):
         pass
 
     def get_weights(self):
@@ -90,10 +91,12 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         fc_representation_layers,
         fc_dynamics_layers,
         support_size,
+        num_dynamics_models,
     ):
         super().__init__()
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
+        self.num_dynamics_models = num_dynamics_models
 
         self.representation_network = torch.nn.DataParallel(
             mlp(
@@ -106,14 +109,18 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
                 encoding_size,
             )
         )
-
-        self.dynamics_encoded_state_network = torch.nn.DataParallel(
-            mlp(
-                encoding_size + self.action_space_size,
-                fc_dynamics_layers,
-                encoding_size,
+        dynamics_models = []
+        for _ in range(self.num_dynamics_models):
+            network = torch.nn.DataParallel(
+                mlp(
+                    encoding_size + self.action_space_size,
+                    fc_dynamics_layers,
+                    encoding_size,
+                )
             )
-        )
+            dynamics_models.append(network)
+        self.dynamics_models = torch.nn.ModuleList(dynamics_models)
+
         self.dynamics_reward_network = torch.nn.DataParallel(
             mlp(encoding_size, fc_reward_layers, self.full_support_size)
         )
@@ -144,7 +151,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         ) / scale_encoded_state
         return encoded_state_normalized
 
-    def dynamics(self, encoded_state, action):
+    def dynamics(self, encoded_state, action, dynamics_model_id):
         # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
         action_one_hot = (
             torch.zeros((action.shape[0], self.action_space_size))
@@ -154,7 +161,8 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         action_one_hot.scatter_(1, action.long(), 1.0)
         x = torch.cat((encoded_state, action_one_hot), dim=1)
 
-        next_encoded_state = self.dynamics_encoded_state_network(x)
+        dynamics_model = self.dynamics_models[dynamics_model_id]
+        next_encoded_state = dynamics_model(x)
 
         reward = self.dynamics_reward_network(next_encoded_state)
 
@@ -189,8 +197,8 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
             encoded_state,
         )
 
-    def recurrent_inference(self, encoded_state, action):
-        next_encoded_state, reward = self.dynamics(encoded_state, action)
+    def recurrent_inference(self, encoded_state, action, dynamics_model_id):
+        next_encoded_state, reward = self.dynamics(encoded_state, action, dynamics_model_id)
         policy_logits, value = self.prediction(next_encoded_state)
         return value, reward, policy_logits, next_encoded_state
 
@@ -617,7 +625,7 @@ class MuZeroResidualNetwork(AbstractNetwork):
             encoded_state,
         )
 
-    def recurrent_inference(self, encoded_state, action):
+    def recurrent_inference(self, encoded_state, action, dynamics_model_id):
         next_encoded_state, reward = self.dynamics(encoded_state, action)
         policy_logits, value = self.prediction(next_encoded_state)
         return value, reward, policy_logits, next_encoded_state

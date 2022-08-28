@@ -1,4 +1,5 @@
 import math
+import random
 import time
 
 import numpy
@@ -120,6 +121,9 @@ class SelfPlay:
         game_history.reward_history.append(0)
         game_history.to_play_history.append(self.game.to_play())
 
+        # Initialize dynamics mask at start of the game
+        dynamics_model_id = random.sample(list(range(self.config.num_dynamics_models)), 1)[0]
+
         done = False
 
         if render:
@@ -143,6 +147,7 @@ class SelfPlay:
                 if opponent == "self" or muzero_player == self.game.to_play():
                     root, mcts_info = MCTS(self.config).run(
                         self.model,
+                        dynamics_model_id,
                         stacked_observations,
                         self.game.legal_actions(),
                         self.game.to_play(),
@@ -185,13 +190,14 @@ class SelfPlay:
     def close_game(self):
         self.game.close()
 
-    def select_opponent_action(self, opponent, stacked_observations):
+    def select_opponent_action(self, opponent, stacked_observations, dynamics_model_id):
         """
         Select opponent action for evaluating MuZero level.
         """
         if opponent == "human":
             root, mcts_info = MCTS(self.config).run(
                 self.model,
+                dynamics_model_id,
                 stacked_observations,
                 self.game.legal_actions(),
                 self.game.to_play(),
@@ -260,6 +266,7 @@ class MCTS:
     def run(
         self,
         model,
+        dynamics_model_id,
         observation,
         legal_actions,
         to_play,
@@ -339,6 +346,7 @@ class MCTS:
             value, reward, policy_logits, hidden_state = model.recurrent_inference(
                 parent.hidden_state,
                 torch.tensor([[action]]).to(parent.hidden_state.device),
+                dynamics_model_id
             )
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()

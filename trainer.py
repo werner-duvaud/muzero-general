@@ -1,4 +1,5 @@
 import copy
+import random
 import time
 
 import numpy
@@ -70,6 +71,7 @@ class Trainer:
         ):
             index_batch, batch = ray.get(next_batch)
             next_batch = replay_buffer.get_batch.remote()
+            dynamics_model_id = random.sample(list(range(self.config.num_dynamics_models)), 1)[0]
             self.update_lr()
             (
                 priorities,
@@ -78,7 +80,7 @@ class Trainer:
                 reward_loss,
                 policy_loss,
                 consistency_loss
-            ) = self.update_weights(batch)
+            ) = self.update_weights(batch, dynamics_model_id)
 
             if self.config.PER:
                 # Save new priorities in the replay buffer (See https://arxiv.org/abs/1803.00933)
@@ -123,7 +125,7 @@ class Trainer:
                 ):
                     time.sleep(0.5)
 
-    def update_weights(self, batch):
+    def update_weights(self, batch, dynamics_model_id):
         """
         Perform one training step.
         """
@@ -174,7 +176,7 @@ class Trainer:
         predictions = [(value, reward, policy_logits, None)]
         for i in range(1, action_batch.shape[1]):
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                hidden_state, action_batch[:, i]
+                hidden_state, action_batch[:, i], dynamics_model_id
             )
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             hidden_state.register_hook(lambda grad: grad * 0.5)
