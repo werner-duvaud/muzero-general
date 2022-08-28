@@ -1,4 +1,5 @@
 import math
+import random
 import time
 
 import numpy
@@ -119,6 +120,9 @@ class SelfPlay:
         game_history.observation_history.append(observation)
         game_history.reward_history.append(0)
         game_history.to_play_history.append(self.game.to_play())
+        dynamics_masks = list(range(self.config.num_dynamics_models))
+        selected_masks = random.sample(dynamics_masks, 1)
+        selected_mask = selected_masks[0]
 
         done = False
 
@@ -147,6 +151,7 @@ class SelfPlay:
                         self.game.legal_actions(),
                         self.game.to_play(),
                         True,
+                        selected_mask
                     )
                     action = self.select_action(
                         root,
@@ -163,7 +168,7 @@ class SelfPlay:
                         )
                 else:
                     action, root = self.select_opponent_action(
-                        opponent, stacked_observations
+                        opponent, stacked_observations, selected_mask
                     )
 
                 observation, reward, done = self.game.step(action)
@@ -185,7 +190,7 @@ class SelfPlay:
     def close_game(self):
         self.game.close()
 
-    def select_opponent_action(self, opponent, stacked_observations):
+    def select_opponent_action(self, opponent, stacked_observations, selected_mask):
         """
         Select opponent action for evaluating MuZero level.
         """
@@ -196,6 +201,7 @@ class SelfPlay:
                 self.game.legal_actions(),
                 self.game.to_play(),
                 True,
+                selected_mask
             )
             print(f'Tree depth: {mcts_info["max_tree_depth"]}')
             print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
@@ -264,6 +270,7 @@ class MCTS:
         legal_actions,
         to_play,
         add_exploration_noise,
+        selected_ensemble_model_id,
         override_root_with=None,
     ):
         """
@@ -339,6 +346,7 @@ class MCTS:
             value, reward, policy_logits, hidden_state, uncertainty = model.recurrent_inference(
                 parent.hidden_state,
                 torch.tensor([[action]]).to(parent.hidden_state.device),
+                selected_ensemble_model_id=selected_ensemble_model_id
             )
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()

@@ -16,6 +16,8 @@ class MuZeroConfig:
         # Uncertainty params
         self.intrinsic_reward_weight = 0
         self.num_dynamics_models = 1
+        self.consistency_loss_weight = 0
+        self.diversity_loss_weight = 0
 
 
         self.seed = 0  # Seed for numpy, torch and the game
