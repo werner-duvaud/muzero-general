@@ -77,6 +77,7 @@ class Trainer:
                 value_loss,
                 reward_loss,
                 policy_loss,
+                consistency_loss
             ) = self.update_weights(batch)
 
             if self.config.PER:
@@ -103,6 +104,7 @@ class Trainer:
                     "value_loss": value_loss,
                     "reward_loss": reward_loss,
                     "policy_loss": policy_loss,
+                    "consistency_loss": consistency_loss,
                 }
             )
 
@@ -151,7 +153,7 @@ class Trainer:
         target_reward = torch.tensor(target_reward).float().to(device)
         target_policy = torch.tensor(target_policy).float().to(device)
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
-        # observation_batch: batch, channels, height, width
+        # observation_batch: batch, num_unroll_steps+1, channels, height, width
         # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
         # target_value: batch, num_unroll_steps+1
         # target_reward: batch, num_unroll_steps+1
@@ -167,29 +169,31 @@ class Trainer:
 
         ## Generate predictions
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
-            observation_batch
+            observation_batch[:, 0].squeeze(1)
         )
-        predictions = [(value, reward, policy_logits)]
+        predictions = [(value, reward, policy_logits, None)]
         for i in range(1, action_batch.shape[1]):
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                 hidden_state, action_batch[:, i]
             )
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             hidden_state.register_hook(lambda grad: grad * 0.5)
-            predictions.append((value, reward, policy_logits))
+            predictions.append((value, reward, policy_logits, hidden_state))
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
 
         ## Compute losses
-        value_loss, reward_loss, policy_loss = (0, 0, 0)
-        value, reward, policy_logits = predictions[0]
+        value_loss, reward_loss, policy_loss, consistency_loss = (0, 0, 0, 0)
+        value, reward, policy_logits, _ = predictions[0]
         # Ignore reward loss for the first batch step
-        current_value_loss, _, current_policy_loss = self.loss_function(
+        current_value_loss, _, current_policy_loss, _ = self.loss_function(
             value.squeeze(-1),
             reward.squeeze(-1),
             policy_logits,
+            None, # No predicted hidden state
             target_value[:, 0],
             target_reward[:, 0],
             target_policy[:, 0],
+            None, # No target hidden_state
         )
         value_loss += current_value_loss
         policy_loss += current_policy_loss
@@ -207,18 +211,24 @@ class Trainer:
         )
 
         for i in range(1, len(predictions)):
-            value, reward, policy_logits = predictions[i]
+            target_hidden_state = self.model.representation(
+                observation_batch[:, i].squeeze(1)
+            ).detach()
+            value, reward, policy_logits, hidden_state = predictions[i]
             (
                 current_value_loss,
                 current_reward_loss,
                 current_policy_loss,
+                current_consistency_loss,
             ) = self.loss_function(
                 value.squeeze(-1),
                 reward.squeeze(-1),
                 policy_logits,
+                hidden_state,
                 target_value[:, i],
                 target_reward[:, i],
                 target_policy[:, i],
+                target_hidden_state,
             )
 
             # Scale gradient by the number of unroll steps (See paper appendix Training)
@@ -231,10 +241,14 @@ class Trainer:
             current_policy_loss.register_hook(
                 lambda grad: grad / gradient_scale_batch[:, i]
             )
+            current_consistency_loss.register_hook(
+                lambda grad: grad / gradient_scale_batch[:, i]
+            )
 
             value_loss += current_value_loss
             reward_loss += current_reward_loss
             policy_loss += current_policy_loss
+            consistency_loss += current_consistency_loss
 
             # Compute priorities for the prioritized replay (See paper appendix Training)
             pred_value_scalar = (
@@ -250,7 +264,7 @@ class Trainer:
             )
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
-        loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
+        loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss + (self.config.consistency_loss_weight * consistency_loss)
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
             loss *= weight_batch
@@ -270,6 +284,7 @@ class Trainer:
             value_loss.mean().item(),
             reward_loss.mean().item(),
             policy_loss.mean().item(),
+            consistency_loss.mean().item(),
         )
 
     def update_lr(self):
@@ -287,9 +302,11 @@ class Trainer:
         value,
         reward,
         policy_logits,
+        hidden_state,
         target_value,
         target_reward,
         target_policy,
+        target_hidden_state,
     ):
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
@@ -297,4 +314,7 @@ class Trainer:
         policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(
             1
         )
-        return value_loss, reward_loss, policy_loss
+        consistency_loss = None
+        if hidden_state != None and target_hidden_state != None:
+            consistency_loss = torch.square(hidden_state - target_hidden_state).flatten(start_dim=1).mean(1)
+        return value_loss, reward_loss, policy_loss, consistency_loss
