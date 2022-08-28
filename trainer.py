@@ -341,8 +341,10 @@ class Trainer:
         total_entropy = 0
         num_layers = len(models[0].module)
         for layer_idx in range(num_layers):
-            layer_weights = [model.module[layer_idx].weight for model in models]
-            total_entropy += self.layer_entropy(layer_weights)
+            # Check to ignore layers without weights e.g. activation layers
+            if 'weight' in dir(models[0].module[layer_idx]):
+                layer_weights = [model.module[layer_idx].weight for model in models]
+                total_entropy += self.layer_entropy(layer_weights)
         # Return a negative value because we want to increase entropy and encourage diveristy
         return -total_entropy / num_layers
 
