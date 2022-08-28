@@ -350,7 +350,7 @@ class MCTS:
             )
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
-            reward = (reward * (1 - self.config.intrinsic_reward_weight) + (uncertainty * self.config.intrinsic_reward_weight))
+            reward = (reward * (1 - self.config.intrinsic_reward_weight)) + (uncertainty * self.config.intrinsic_reward_weight)
             node.expand(
                 self.config.action_space,
                 virtual_to_play,
