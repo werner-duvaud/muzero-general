@@ -296,7 +296,7 @@ class Trainer:
         self.training_step += 1
 
         return (
-            torch.mean(all_priorities, 0),
+            numpy.mean(all_priorities, axis=0),
             # For log purpose
             total_loss.item(),
             total_value_loss.mean().item(),
