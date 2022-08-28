@@ -173,6 +173,7 @@ class Trainer:
             observation_batch[:, 0].squeeze(1)
         )
         dynamics_masks = list(range(self.config.num_dynamics_models))
+        total_loss = 0
         total_value_loss, total_reward_loss, total_policy_loss, total_consistency_loss = (0, 0, 0, 0)
         for dynamic_mask in dynamics_masks:
             predictions = [(initial_value, initial_reward, initial_policy_logits, None)] # No next state prediction
