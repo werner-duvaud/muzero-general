@@ -43,7 +43,7 @@ class DiagnoseModel:
         trajectory_info.store_info(root, mcts_info, None, numpy.NaN)
 
         virtual_to_play = to_play
-        dynamics_model_id = random.sample(list(range(self.config.num_dynamics_models)), 1)[0]
+        dynamics_model_id = random.sample(self.config.dynamics_ids, 1)[0]
         for i in range(horizon):
             action = SelfPlay.select_action(root, 0)
 
