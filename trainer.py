@@ -71,7 +71,7 @@ class Trainer:
         ):
             index_batch, batch = ray.get(next_batch)
             next_batch = replay_buffer.get_batch.remote()
-            dynamics_model_id = random.sample(list(range(self.config.num_dynamics_models)), 1)[0]
+            dynamics_model_id = random.sample(self.config.dynamics_ids, 1)[0]
             self.update_lr()
             (
                 priorities,

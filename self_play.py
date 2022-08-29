@@ -122,7 +122,7 @@ class SelfPlay:
         game_history.to_play_history.append(self.game.to_play())
 
         # Initialize dynamics mask at start of the game
-        dynamics_model_id = random.sample(list(range(self.config.num_dynamics_models)), 1)[0]
+        dynamics_model_id = random.sample(self.config.dynamics_ids, 1)[0]
 
         done = False
 
