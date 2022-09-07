@@ -334,16 +334,16 @@ class Reanalyse:
         self.num_reanalysed_games = initial_checkpoint["num_reanalysed_games"]
 
     def reanalyse(self):
-        while ray.get(self._shared_storage.get_info.remote("num_played_games")) < 1:
-            time.sleep(0.1)
+        if ray.get(self._shared_storage.get_info.remote("num_played_games")) < 1:
+            return
 
-        while ray.get(
-            self._shared_storage.get_info.remote("training_step")
-        ) < self.config.training_steps and not ray.get(
-            self._shared_storage.get_info.remote("terminate")
-        ):
-            self.model.set_weights(ray.get(self._shared_storage.get_info.remote("weights")))
+        self.model.set_weights(ray.get(self._shared_storage.get_info.remote("weights")))
 
+        reanalyse_objective = self.num_reanalysed_games + self.config.max_moves
+        start_time = time.time()
+        loop_continue = lambda : time.time()<start_time+60 if self.config.ratio is None else self.num_reanalysed_games<reanalyse_objective
+
+        while loop_continue():
             game_id, game_history, _ = ray.get(
                 self._replay_buffer.sample_game.remote(force_uniform=True)
             )
@@ -376,6 +376,7 @@ class Reanalyse:
 
             self._replay_buffer.update_game_history.remote(game_id, game_history)
             self.num_reanalysed_games += 1
-            self._shared_storage.set_info.remote(
-                "num_reanalysed_games", self.num_reanalysed_games
-            )
+
+        self._shared_storage.set_info.remote(
+            "num_reanalysed_games", self.num_reanalysed_games
+        )

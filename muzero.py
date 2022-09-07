@@ -4,8 +4,8 @@ import json
 import math
 import pathlib
 import pickle
+import os
 import sys
-import time
 
 import nevergrad
 import numpy
@@ -93,7 +93,12 @@ class MuZero:
         if 1 < self.num_gpus:
             self.num_gpus = math.floor(self.num_gpus)
 
-        ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
+        # os.environ["RAY_PROFILING"]="1"  # needed to dump ray timeline.json
+        ray.init(num_gpus=total_gpus,
+            ignore_reinit_error=True,
+            # local_mode=True,  # enable to debug
+            # include_dashboard=True,
+            )
 
         # Checkpoint and replay buffer used to initialize workers
         self.checkpoint = {
@@ -113,7 +118,6 @@ class MuZero:
             "num_played_games": 0,
             "num_played_steps": 0,
             "num_reanalysed_games": 0,
-            "terminate": False,
         }
         self.replay_buffer = {}
 
@@ -157,10 +161,11 @@ class MuZero:
             self.checkpoint,
             self.config,
         )
-        self.shared_storage_worker.set_info.remote("terminate", False)
 
         self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(
-            self.checkpoint, self.replay_buffer, self.config
+            self.checkpoint,
+            self.replay_buffer,
+            self.config
         )
 
         self.training_worker = trainer.Trainer.options(
@@ -197,28 +202,10 @@ class MuZero:
             for seed in range(self.config.num_workers)
         ]
 
-        # Launch workers
-        [
-            self_play_worker.continuous_self_play.remote()
-            for self_play_worker in self.self_play_workers
-        ]
-        self.training_worker.continuous_update_weights.remote()
-        if self.config.use_last_model_value:
-            self.reanalyse_worker.reanalyse.remote()
-
-        if log_in_tensorboard:
-            self.logging_loop(
-                num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
-            )
-
-    def logging_loop(self, num_gpus):
-        """
-        Keep track of the training performance.
-        """
         # Launch the test worker to get performance metrics
         self.test_worker = self_play.SelfPlay.options(
             num_cpus=0,
-            num_gpus=num_gpus,
+            num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
         ).remote(
             self.shared_storage_worker,
             None,
@@ -227,115 +214,51 @@ class MuZero:
             self.config,
             self.config.seed + self.config.num_workers,
         )
-        self.test_worker.continuous_self_play.remote(
-            True
+
+        self.logger_worker = LoggerWorker.remote(
+            self.shared_storage_worker,
+            self.config,
         )
 
-        # Write everything in TensorBoard
-        writer = SummaryWriter(self.config.results_path)
-
-        print(
-            "\nTraining...\nRun tensorboard --logdir ./results and go to http://localhost:6006/ to see in real time the training performance.\n"
-        )
-
-        # Save hyperparameters to TensorBoard
-        hp_table = [
-            f"| {key} | {value} |" for key, value in self.config.__dict__.items()
-        ]
-        writer.add_text(
-            "Hyperparameters",
-            "| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table),
-        )
-        # Save model representation
-        writer.add_text(
-            "Model summary",
-            self.summary,
-        )
-        # Loop for updating the training performance
-        counter = 0
-        keys = [
-            "total_reward",
-            "muzero_reward",
-            "opponent_reward",
-            "episode_length",
-            "mean_value",
-            "training_step",
-            "lr",
-            "total_loss",
-            "value_loss",
-            "reward_loss",
-            "policy_loss",
-            "num_played_games",
-            "num_played_steps",
-            "num_reanalysed_games",
-        ]
-        info = ray.get(self.shared_storage_worker.get_info.remote(keys))
+        # Launch workers
+        def create_tasks():
+            tasks = [
+                self_play_worker.continuous_self_play.remote()
+                for self_play_worker in self.self_play_workers
+            ]
+            tasks.append(
+                self.test_worker.continuous_self_play.remote(
+                    test_mode=True
+                )
+            )
+            tasks.append(
+                self.training_worker.continuous_update_weights.remote()
+            )
+            if self.config.use_last_model_value:
+                tasks.append(self.reanalyse_worker.reanalyse.remote())
+            if log_in_tensorboard:
+                tasks.append(self.logger_worker.logging_loop.remote())
+            return tasks
+    
         try:
-            while info["training_step"] < self.config.training_steps:
-                info = ray.get(self.shared_storage_worker.get_info.remote(keys))
-                writer.add_scalar(
-                    "1.Total_reward/1.Total_reward",
-                    info["total_reward"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/2.Mean_value",
-                    info["mean_value"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/3.Episode_length",
-                    info["episode_length"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/4.MuZero_reward",
-                    info["muzero_reward"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/5.Opponent_reward",
-                    info["opponent_reward"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "2.Workers/1.Self_played_games",
-                    info["num_played_games"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "2.Workers/2.Training_steps", info["training_step"], counter
-                )
-                writer.add_scalar(
-                    "2.Workers/3.Self_played_steps", info["num_played_steps"], counter
-                )
-                writer.add_scalar(
-                    "2.Workers/4.Reanalysed_games",
-                    info["num_reanalysed_games"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "2.Workers/5.Training_steps_per_self_played_step_ratio",
-                    info["training_step"] / max(1, info["num_played_steps"]),
-                    counter,
-                )
-                writer.add_scalar("2.Workers/6.Learning_rate", info["lr"], counter)
-                writer.add_scalar(
-                    "3.Loss/1.Total_weighted_loss", info["total_loss"], counter
-                )
-                writer.add_scalar("3.Loss/Value_loss", info["value_loss"], counter)
-                writer.add_scalar("3.Loss/Reward_loss", info["reward_loss"], counter)
-                writer.add_scalar("3.Loss/Policy_loss", info["policy_loss"], counter)
-                print(
-                    f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
-                    end="\r",
-                )
-                counter += 1
-                time.sleep(0.5)
-        except KeyboardInterrupt:
-            pass
+            future_tasks = create_tasks()  # double buffering: push one task before
 
-        self.terminate_workers()
+            while ray.get(
+                self.shared_storage_worker.get_info.remote("training_step")
+            ) < self.config.training_steps:
+                tasks = future_tasks
+                future_tasks = create_tasks()
+
+                # do some stuff...
+                # ray.timeline(filename=os.path.join(os.environ['HOME'], "timeline.json"))  # open with chrome://tracing
+
+                ray.get(tasks)
+
+        except KeyboardInterrupt:
+            ray.get(future_tasks)
+            pass
+        except Exception as e:
+            print(e)
 
         if self.config.save_model:
             # Persist replay buffer to disk
@@ -350,27 +273,6 @@ class MuZero:
                 },
                 open(path, "wb"),
             )
-
-    def terminate_workers(self):
-        """
-        Softly terminate the running tasks and garbage collect the workers.
-        """
-        if self.shared_storage_worker:
-            self.shared_storage_worker.set_info.remote("terminate", True)
-            self.checkpoint = ray.get(
-                self.shared_storage_worker.get_checkpoint.remote()
-            )
-        if self.replay_buffer_worker:
-            self.replay_buffer = ray.get(self.replay_buffer_worker.get_buffer.remote())
-
-        print("\nShutting down workers...")
-
-        self.self_play_workers = None
-        self.test_worker = None
-        self.training_worker = None
-        self.reanalyse_worker = None
-        self.replay_buffer_worker = None
-        self.shared_storage_worker = None
 
     def test(
         self, render=True, opponent=None, muzero_player=None, num_tests=1, num_gpus=0
@@ -498,6 +400,120 @@ class CPUActor:
         return weigths, summary
 
 
+@ray.remote
+class LoggerWorker:
+    def __init__(self,
+        shared_storage,
+        config,
+        ):
+        """
+        Keep track of the training performance.
+        """
+        self._shared_storage = shared_storage
+        self.config = config
+
+        # Write everything in TensorBoard
+        self.writer = SummaryWriter(self.config.results_path)
+
+        print(
+            "\nTraining...\nRun tensorboard --logdir ./results and go to http://localhost:6006/ to see in real time the training performance.\n"
+        )
+
+        # Save hyperparameters to TensorBoard
+        hp_table = [
+            f"| {key} | {value} |" for key, value in self.config.__dict__.items()
+        ]
+        self.writer.add_text(
+            "Hyperparameters",
+            "| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table),
+        )
+        # Save model representation
+        # self.writer.add_text(
+        #     "Model summary",
+        #     self.summary,
+        # )
+        # Loop for updating the training performance
+        self.keys = [
+            "total_reward",
+            "muzero_reward",
+            "opponent_reward",
+            "episode_length",
+            "mean_value",
+            "training_step",
+            "lr",
+            "total_loss",
+            "value_loss",
+            "reward_loss",
+            "policy_loss",
+            "num_played_games",
+            "num_played_steps",
+            "num_reanalysed_games",
+        ]
+
+    def logging_loop(self):
+        # info = ray.get(self.shared_storage_worker.get_info.remote(self.keys))
+        # while info["training_step"] < self.config.training_steps:
+        info = ray.get(self._shared_storage.get_info.remote(self.keys))
+        counter = ray.get(self._shared_storage.get_info.remote("training_step"))
+        self.writer.add_scalar(
+            "1.Total_reward/1.Total_reward",
+            info["total_reward"],
+            counter,
+        )
+        self.writer.add_scalar(
+            "1.Total_reward/2.Mean_value",
+            info["mean_value"],
+            counter,
+        )
+        self.writer.add_scalar(
+            "1.Total_reward/3.Episode_length",
+            info["episode_length"],
+            counter,
+        )
+        self.writer.add_scalar(
+            "1.Total_reward/4.MuZero_reward",
+            info["muzero_reward"],
+            counter,
+        )
+        self.writer.add_scalar(
+            "1.Total_reward/5.Opponent_reward",
+            info["opponent_reward"],
+            counter,
+        )
+        self.writer.add_scalar(
+            "2.Workers/1.Self_played_games",
+            info["num_played_games"],
+            counter,
+        )
+        self.writer.add_scalar(
+            "2.Workers/2.Training_steps", info["training_step"], counter
+        )
+        self.writer.add_scalar(
+            "2.Workers/3.Self_played_steps", info["num_played_steps"], counter
+        )
+        self.writer.add_scalar(
+            "2.Workers/4.Reanalysed_games",
+            info["num_reanalysed_games"],
+            counter,
+        )
+        self.writer.add_scalar(
+            "2.Workers/5.Training_steps_per_self_played_step_ratio",
+            info["training_step"] / max(1, info["num_played_steps"]),
+            counter,
+        )
+        self.writer.add_scalar("2.Workers/6.Learning_rate", info["lr"], counter)
+        self.writer.add_scalar(
+            "3.Loss/1.Total_weighted_loss", info["total_loss"], counter
+        )
+        self.writer.add_scalar("3.Loss/Value_loss", info["value_loss"], counter)
+        self.writer.add_scalar("3.Loss/Reward_loss", info["reward_loss"], counter)
+        self.writer.add_scalar("3.Loss/Policy_loss", info["policy_loss"], counter)
+        print(
+            f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
+            end="\r",
+        )        
+
+
 def hyperparameter_search(
     game_name, parametrization, budget, parallel_experiments, num_tests
 ):
@@ -539,7 +555,6 @@ def hyperparameter_search(
                 if experiment and experiment.config.training_steps <= ray.get(
                     experiment.shared_storage_worker.get_info.remote("training_step")
                 ):
-                    experiment.terminate_workers()
                     result = experiment.test(False, num_tests=num_tests)
                     if not best_training or best_training["result"] < result:
                         best_training = {
@@ -563,9 +578,7 @@ def hyperparameter_search(
                         running_experiments[i] = None
 
     except KeyboardInterrupt:
-        for experiment in running_experiments:
-            if isinstance(experiment, MuZero):
-                experiment.terminate_workers()
+        print("")
 
     recommendation = optimizer.provide_recommendation()
     print("Best hyperparameters:")
@@ -700,7 +713,6 @@ if __name__ == "__main__":
             elif choice == 6:
                 # Define here the parameters to tune
                 # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
-                muzero.terminate_workers()
                 del muzero
                 budget = 20
                 parallel_experiments = 2

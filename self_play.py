@@ -39,13 +39,12 @@ class SelfPlay:
         self.model.eval()
 
     def continuous_self_play(self, test_mode=False):
-        while ray.get(
-            self._shared_storage.get_info.remote("training_step")
-        ) < self.config.training_steps and not ray.get(
-            self._shared_storage.get_info.remote("terminate")
-        ):
-            self.model.set_weights(ray.get(self._shared_storage.get_info.remote("weights")))
+        self.model.set_weights(ray.get(self._shared_storage.get_info.remote("weights")))
+        steps_to_collect = self.config.max_moves
+        start_time = time.time()
+        loop_continue = lambda : time.time()<start_time+60 if self.config.ratio is None else steps_to_collect>0
 
+        while loop_continue():
             if not test_mode:
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
@@ -60,6 +59,7 @@ class SelfPlay:
                 )
 
                 self._replay_buffer.save_game.remote(game_history, self._shared_storage)
+                steps_to_collect -= len(game_history.reward_history)
 
             else:
                 # Take the best action (no exploration) in test mode
@@ -98,24 +98,7 @@ class SelfPlay:
                             ),
                         }
                     )
-
-            # Managing the self-play / training ratio
-            if not test_mode and self.config.self_play_delay:
-                time.sleep(self.config.self_play_delay)
-            if not test_mode and self.config.ratio:
-                while (
-                    ray.get(self._shared_storage.get_info.remote("training_step"))
-                    / max(
-                        1, ray.get(self._shared_storage.get_info.remote("num_played_steps"))
-                    )
-                    < self.config.ratio
-                    and ray.get(self._shared_storage.get_info.remote("training_step"))
-                    < self.config.training_steps
-                    and not ray.get(self._shared_storage.get_info.remote("terminate"))
-                ):
-                    time.sleep(0.5)
-
-        self.close_game()
+                steps_to_collect -= len(game_history.reward_history)
 
     def play_game(
         self, temperature, temperature_threshold, render, opponent, muzero_player
