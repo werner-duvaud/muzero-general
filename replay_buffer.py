@@ -310,7 +310,15 @@ class Reanalyse:
     See paper appendix Reanalyse.
     """
 
-    def __init__(self, initial_checkpoint, config):
+    def __init__(self,
+        shared_storage,
+        replay_buffer,
+        initial_checkpoint,
+        config,
+        ):
+        self._shared_storage = shared_storage
+        self._replay_buffer = replay_buffer
+
         self.config = config
 
         # Fix random generator seed
@@ -325,19 +333,19 @@ class Reanalyse:
 
         self.num_reanalysed_games = initial_checkpoint["num_reanalysed_games"]
 
-    def reanalyse(self, replay_buffer, shared_storage):
-        while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
+    def reanalyse(self):
+        while ray.get(self._shared_storage.get_info.remote("num_played_games")) < 1:
             time.sleep(0.1)
 
         while ray.get(
-            shared_storage.get_info.remote("training_step")
+            self._shared_storage.get_info.remote("training_step")
         ) < self.config.training_steps and not ray.get(
-            shared_storage.get_info.remote("terminate")
+            self._shared_storage.get_info.remote("terminate")
         ):
-            self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
+            self.model.set_weights(ray.get(self._shared_storage.get_info.remote("weights")))
 
             game_id, game_history, _ = ray.get(
-                replay_buffer.sample_game.remote(force_uniform=True)
+                self._replay_buffer.sample_game.remote(force_uniform=True)
             )
 
             # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
@@ -366,8 +374,8 @@ class Reanalyse:
                     torch.squeeze(values).detach().cpu().numpy()
                 )
 
-            replay_buffer.update_game_history.remote(game_id, game_history)
+            self._replay_buffer.update_game_history.remote(game_id, game_history)
             self.num_reanalysed_games += 1
-            shared_storage.set_info.remote(
+            self._shared_storage.set_info.remote(
                 "num_reanalysed_games", self.num_reanalysed_games
             )

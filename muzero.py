@@ -153,11 +153,6 @@ class MuZero:
             num_gpus_per_worker = 0
 
         # Initialize workers
-        self.training_worker = trainer.Trainer.options(
-            num_cpus=0,
-            num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
-        ).remote(self.checkpoint, self.config)
-
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
             self.checkpoint,
             self.config,
@@ -168,17 +163,32 @@ class MuZero:
             self.checkpoint, self.replay_buffer, self.config
         )
 
+        self.training_worker = trainer.Trainer.options(
+            num_cpus=0,
+            num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
+        ).remote(
+            self.shared_storage_worker,
+            self.replay_buffer_worker,
+            self.checkpoint,
+            self.config)
+
         if self.config.use_last_model_value:
             self.reanalyse_worker = replay_buffer.Reanalyse.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
-            ).remote(self.checkpoint, self.config)
+            ).remote(
+                self.shared_storage_worker,
+                self.replay_buffer_worker,
+                self.checkpoint,
+                self.config)
 
         self.self_play_workers = [
             self_play.SelfPlay.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
+                self.shared_storage_worker,
+                self.replay_buffer_worker,
                 self.checkpoint,
                 self.Game,
                 self.config,
@@ -189,18 +199,12 @@ class MuZero:
 
         # Launch workers
         [
-            self_play_worker.continuous_self_play.remote(
-                self.shared_storage_worker, self.replay_buffer_worker
-            )
+            self_play_worker.continuous_self_play.remote()
             for self_play_worker in self.self_play_workers
         ]
-        self.training_worker.continuous_update_weights.remote(
-            self.replay_buffer_worker, self.shared_storage_worker
-        )
+        self.training_worker.continuous_update_weights.remote()
         if self.config.use_last_model_value:
-            self.reanalyse_worker.reanalyse.remote(
-                self.replay_buffer_worker, self.shared_storage_worker
-            )
+            self.reanalyse_worker.reanalyse.remote()
 
         if log_in_tensorboard:
             self.logging_loop(
@@ -216,13 +220,15 @@ class MuZero:
             num_cpus=0,
             num_gpus=num_gpus,
         ).remote(
+            self.shared_storage_worker,
+            None,
             self.checkpoint,
             self.Game,
             self.config,
             self.config.seed + self.config.num_workers,
         )
         self.test_worker.continuous_self_play.remote(
-            self.shared_storage_worker, None, True
+            True
         )
 
         # Write everything in TensorBoard
