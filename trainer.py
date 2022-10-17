@@ -15,8 +15,16 @@ class Trainer:
     in the shared storage.
     """
 
-    def __init__(self, initial_checkpoint, config):
+    def __init__(self,
+        shared_storage,
+        replay_buffer,
+        initial_checkpoint,
+        config,
+        ):
         self.config = config
+
+        self._shared_storage = shared_storage
+        self._replay_buffer = replay_buffer
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -58,18 +66,31 @@ class Trainer:
                 copy.deepcopy(initial_checkpoint["optimizer_state"])
             )
 
-    def continuous_update_weights(self, replay_buffer, shared_storage):
+    def continuous_update_weights(self):
         # Wait for the replay buffer to be filled
-        while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
-            time.sleep(0.1)
+        # while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
+        #     time.sleep(0.1)
+        if ray.get(self._shared_storage.get_info.remote("num_played_games")) < 1:
+            return
 
-        next_batch = replay_buffer.get_batch.remote()
+        next_batch = self._replay_buffer.get_batch.remote()
         # Training loop
-        while self.training_step < self.config.training_steps and not ray.get(
-            shared_storage.get_info.remote("terminate")
-        ):
+        # while self.training_step < self.config.training_steps:
+        num_played_steps = ray.get(self._shared_storage.get_info.remote("num_played_steps"))
+        num_played_steps += self.config.max_moves * self.config.num_workers
+        
+        if self.config.ratio is not None:
+            loops = int((num_played_steps - self.training_step / self.config.ratio) * self.config.ratio)
+        else:
+            loops = 0
+        start_time = time.time()
+        loop_continue = lambda : time.time()<start_time+60 if self.config.ratio is None else loops>0
+
+        while loop_continue():
+            loops -= 1
+
             index_batch, batch = ray.get(next_batch)
-            next_batch = replay_buffer.get_batch.remote()
+            next_batch = self._replay_buffer.get_batch.remote()
             self.update_lr()
             (
                 priorities,
@@ -81,11 +102,11 @@ class Trainer:
 
             if self.config.PER:
                 # Save new priorities in the replay buffer (See https://arxiv.org/abs/1803.00933)
-                replay_buffer.update_priorities.remote(priorities, index_batch)
+                self._replay_buffer.update_priorities.remote(priorities, index_batch)
 
             # Save to the shared storage
             if self.training_step % self.config.checkpoint_interval == 0:
-                shared_storage.set_info.remote(
+                self._shared_storage.set_info.remote(
                     {
                         "weights": copy.deepcopy(self.model.get_weights()),
                         "optimizer_state": copy.deepcopy(
@@ -94,8 +115,8 @@ class Trainer:
                     }
                 )
                 if self.config.save_model:
-                    shared_storage.save_checkpoint.remote()
-            shared_storage.set_info.remote(
+                    self._shared_storage.save_checkpoint.remote()
+            self._shared_storage.set_info.remote(
                 {
                     "training_step": self.training_step,
                     "lr": self.optimizer.param_groups[0]["lr"],
@@ -106,20 +127,7 @@ class Trainer:
                 }
             )
 
-            # Managing the self-play / training ratio
-            if self.config.training_delay:
-                time.sleep(self.config.training_delay)
-            if self.config.ratio:
-                while (
-                    self.training_step
-                    / max(
-                        1, ray.get(shared_storage.get_info.remote("num_played_steps"))
-                    )
-                    > self.config.ratio
-                    and self.training_step < self.config.training_steps
-                    and not ray.get(shared_storage.get_info.remote("terminate"))
-                ):
-                    time.sleep(0.5)
+        ray.get(next_batch)  # collect last ray request before quitting
 
     def update_weights(self, batch):
         """
