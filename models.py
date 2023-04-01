@@ -1,6 +1,7 @@
 import math
 from abc import ABC, abstractmethod
 
+import numpy
 import torch
 
 
@@ -10,7 +11,9 @@ class MuZeroNetwork:
             return MuZeroFullyConnectedNetwork(
                 config.observation_shape,
                 config.stacked_observations,
-                len(config.action_space),
+                config.action_shape,
+                config.sample_size,
+                config.policy_distribution,
                 config.encoding_size,
                 config.fc_reward_layers,
                 config.fc_value_layers,
@@ -82,7 +85,9 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         self,
         observation_shape,
         stacked_observations,
-        action_space_size,
+        action_shape,
+        sample_size,
+        policy_distribution,
         encoding_size,
         fc_reward_layers,
         fc_value_layers,
@@ -92,7 +97,10 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         support_size,
     ):
         super().__init__()
-        self.action_space_size = action_space_size
+        self.action_shape = action_shape
+        self.action_bins = numpy.prod(self.action_shape)
+        self.sample_size = sample_size
+        self.policy_distribution = policy_distribution
         self.full_support_size = 2 * support_size + 1
 
         self.representation_network = torch.nn.DataParallel(
@@ -106,10 +114,9 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
                 encoding_size,
             )
         )
-
         self.dynamics_encoded_state_network = torch.nn.DataParallel(
             mlp(
-                encoding_size + self.action_space_size,
+                encoding_size + self.action_bins,
                 fc_dynamics_layers,
                 encoding_size,
             )
@@ -119,7 +126,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         )
 
         self.prediction_policy_network = torch.nn.DataParallel(
-            mlp(encoding_size, fc_policy_layers, self.action_space_size)
+            mlp(encoding_size, fc_policy_layers, self.action_bins)
         )
         self.prediction_value_network = torch.nn.DataParallel(
             mlp(encoding_size, fc_value_layers, self.full_support_size)
@@ -127,6 +134,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
 
     def prediction(self, encoded_state):
         policy_logits = self.prediction_policy_network(encoded_state)
+        policy_logits = torch.reshape(policy_logits, [encoded_state.shape[0]] + self.action_shape)
         value = self.prediction_value_network(encoded_state)
         return policy_logits, value
 
@@ -146,18 +154,12 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
 
     def dynamics(self, encoded_state, action):
         # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
-        action_one_hot = (
-            torch.zeros((action.shape[0], self.action_space_size))
-            .to(action.device)
-            .float()
-        )
-        action_one_hot.scatter_(1, action.long(), 1.0)
+        action_one_hot = torch.zeros((action.shape[0], *self.action_shape)).to(action.device).float()
+        action_one_hot = torch.scatter(action_one_hot, 2, action.long().unsqueeze(-1), 1.0)
+        action_one_hot = torch.reshape(action_one_hot, (encoded_state.shape[0], self.action_bins))
         x = torch.cat((encoded_state, action_one_hot), dim=1)
-
         next_encoded_state = self.dynamics_encoded_state_network(x)
-
         reward = self.dynamics_reward_network(next_encoded_state)
-
         # Scale encoded state between [0, 1] (See paper appendix Training)
         min_next_encoded_state = next_encoded_state.min(1, keepdim=True)[0]
         max_next_encoded_state = next_encoded_state.max(1, keepdim=True)[0]
@@ -166,8 +168,16 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         next_encoded_state_normalized = (
             next_encoded_state - min_next_encoded_state
         ) / scale_next_encoded_state
-
         return next_encoded_state_normalized, reward
+
+    def sample_actions(self, policy_parameters):
+        return self.policy_distribution(logits=policy_parameters).sample((self.sample_size,)).squeeze(-1)
+
+    def log_prob(self, policy_parameters_batch, sampled_actions_batch):
+        batch_size, *action_size = tuple(policy_parameters_batch.shape)
+        policy_parameters_batch = policy_parameters_batch.unsqueeze(-2).expand(
+            torch.Size((batch_size, self.sample_size, *action_size)))
+        return self.policy_distribution(logits=policy_parameters_batch).log_prob(sampled_actions_batch).squeeze(-1)
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)

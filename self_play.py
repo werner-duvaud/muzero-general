@@ -115,7 +115,7 @@ class SelfPlay:
         """
         game_history = GameHistory()
         observation = self.game.reset()
-        game_history.action_history.append(0)
+        game_history.action_history.append([0] * self.config.action_shape[0])
         game_history.observation_history.append(observation)
         game_history.reward_history.append(0)
         game_history.to_play_history.append(self.game.to_play())
@@ -136,7 +136,7 @@ class SelfPlay:
                     numpy.array(observation).shape == self.config.observation_shape
                 ), f"Observation should match the observation_shape defined in MuZeroConfig. Expected {self.config.observation_shape} but got {numpy.array(observation).shape}."
                 stacked_observations = game_history.get_stacked_observations(
-                    -1, self.config.stacked_observations, len(self.config.action_space)
+                    -1, self.config.stacked_observations, self.config.sample_size
                 )
 
                 # Choose the action
@@ -172,7 +172,7 @@ class SelfPlay:
                     print(f"Played action: {self.game.action_to_string(action)}")
                     self.game.render()
 
-                game_history.store_search_statistics(root, self.config.action_space)
+                game_history.store_search_statistics(root)
 
                 # Next batch
                 game_history.action_history.append(action)
@@ -229,19 +229,18 @@ class SelfPlay:
         visit_counts = numpy.array(
             [child.visit_count for child in node.children.values()], dtype="int32"
         )
-        actions = [action for action in node.children.keys()]
+        actions = [list(action) for action in node.children.keys()]
         if temperature == 0:
             action = actions[numpy.argmax(visit_counts)]
         elif temperature == float("inf"):
-            action = numpy.random.choice(actions)
+            action = actions[numpy.random.choice(len(actions))]
         else:
             # See paper appendix Data Generation
             visit_count_distribution = visit_counts ** (1 / temperature)
             visit_count_distribution = visit_count_distribution / sum(
                 visit_count_distribution
             )
-            action = numpy.random.choice(actions, p=visit_count_distribution)
-
+            action = actions[numpy.random.choice(len(actions), p=visit_count_distribution)]
         return action
 
 
@@ -289,6 +288,7 @@ class MCTS:
                 policy_logits,
                 hidden_state,
             ) = model.initial_inference(observation)
+            sampled_actions = model.sample_actions(policy_logits)
             root_predicted_value = models.support_to_scalar(
                 root_predicted_value, self.config.support_size
             ).item()
@@ -296,14 +296,10 @@ class MCTS:
             assert (
                 legal_actions
             ), f"Legal actions should not be an empty array. Got {legal_actions}."
-            assert set(legal_actions).issubset(
-                set(self.config.action_space)
-            ), "Legal actions should be a subset of the action space."
             root.expand(
-                legal_actions,
+                sampled_actions,
                 to_play,
                 reward,
-                policy_logits,
                 hidden_state,
             )
 
@@ -338,15 +334,15 @@ class MCTS:
             parent = search_path[-2]
             value, reward, policy_logits, hidden_state = model.recurrent_inference(
                 parent.hidden_state,
-                torch.tensor([[action]]).to(parent.hidden_state.device),
+                torch.tensor([action]).to(parent.hidden_state.device),
             )
+            sampled_actions = model.sample_actions(policy_logits)
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
             node.expand(
-                self.config.action_space,
+                sampled_actions,
                 virtual_to_play,
                 reward,
-                policy_logits,
                 hidden_state,
             )
 
@@ -368,13 +364,9 @@ class MCTS:
             self.ucb_score(node, child, min_max_stats)
             for action, child in node.children.items()
         )
-        action = numpy.random.choice(
-            [
-                action
-                for action, child in node.children.items()
-                if self.ucb_score(node, child, min_max_stats) == max_ucb
-            ]
-        )
+        actions = [action for action, child in node.children.items() if
+                   self.ucb_score(node, child, min_max_stats) == max_ucb]
+        action = actions[numpy.random.choice(len(actions))]
         return action, node.children[action]
 
     def ucb_score(self, parent, child, min_max_stats):
@@ -437,6 +429,7 @@ class Node:
         self.prior = prior
         self.value_sum = 0
         self.children = {}
+        self.sampled_actions = []
         self.hidden_state = None
         self.reward = 0
 
@@ -448,7 +441,7 @@ class Node:
             return 0
         return self.value_sum / self.visit_count
 
-    def expand(self, actions, to_play, reward, policy_logits, hidden_state):
+    def expand(self, sampled_actions, to_play, reward, hidden_state):
         """
         We expand a node using the value, reward and policy prediction obtained from the
         neural network.
@@ -456,13 +449,11 @@ class Node:
         self.to_play = to_play
         self.reward = reward
         self.hidden_state = hidden_state
-
-        policy_values = torch.softmax(
-            torch.tensor([policy_logits[0][a] for a in actions]), dim=0
-        ).tolist()
-        policy = {a: policy_values[i] for i, a in enumerate(actions)}
-        for action, p in policy.items():
-            self.children[action] = Node(p)
+        uniques, counts = torch.unique(sampled_actions, dim=0, return_counts=True, sorted=True)
+        self.sampled_actions = uniques.tolist()
+        empirical_probabilities = counts / counts.sum()
+        for action, p in zip(self.sampled_actions, empirical_probabilities):
+            self.children[tuple(action)] = Node(p.item())
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
@@ -487,31 +478,25 @@ class GameHistory:
         self.reward_history = []
         self.to_play_history = []
         self.child_visits = []
+        self.sampled_actions = []
         self.root_values = []
         self.reanalysed_predicted_root_values = None
         # For PER
         self.priorities = None
         self.game_priority = None
 
-    def store_search_statistics(self, root, action_space):
+    def store_search_statistics(self, root):
         # Turn visit count from root into a policy
         if root is not None:
             sum_visits = sum(child.visit_count for child in root.children.values())
-            self.child_visits.append(
-                [
-                    root.children[a].visit_count / sum_visits
-                    if a in root.children
-                    else 0
-                    for a in action_space
-                ]
-            )
-
+            self.child_visits.append([root.children[a].visit_count / sum_visits for a in root.children])
+            self.sampled_actions.append([list(a) for a in root.children])
             self.root_values.append(root.value())
         else:
             self.root_values.append(None)
 
     def get_stacked_observations(
-        self, index, num_stacked_observations, action_space_size
+        self, index, num_stacked_observations, sample_size
     ):
         """
         Generate a new observation with the observation at the index position
@@ -531,7 +516,7 @@ class GameHistory:
                         [
                             numpy.ones_like(stacked_observations[0])
                             * self.action_history[past_observation_index + 1]
-                            / action_space_size
+                            / sample_size
                         ],
                     )
                 )
