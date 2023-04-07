@@ -46,7 +46,10 @@ class MuZeroConfig:
         self.pb_c_base = 19652
         self.pb_c_init = 1.25
 
-
+        ### Sampling
+        self.action_shape = [1, 2]
+        self.sample_size = 3
+        self.policy_distribution = torch.distributions.Categorical
 
         ### Network
         self.network = "fullyconnected"  # "resnet" / "fullyconnected"
@@ -66,10 +69,10 @@ class MuZeroConfig:
         # Fully Connected Network
         self.encoding_size = 8
         self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
-        self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
-        self.fc_value_layers = [16]  # Define the hidden layers in the value network
-        self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
+        self.fc_dynamics_layers = [32]  # Define the hidden layers in the dynamics network
+        self.fc_reward_layers = [32]  # Define the hidden layers in the reward network
+        self.fc_value_layers = [32]  # Define the hidden layers in the value network
+        self.fc_policy_layers = [128]  # Define the hidden layers in the policy network
 
 
 
@@ -148,7 +151,7 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        observation, reward, done, _ = self.env.step(action)
+        observation, reward, done, _ = self.env.step(action[0])
         return numpy.array([[observation]]), reward, done
 
     def legal_actions(self):

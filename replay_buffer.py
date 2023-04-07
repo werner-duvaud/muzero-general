@@ -75,8 +75,9 @@ class ReplayBuffer:
             reward_batch,
             value_batch,
             policy_batch,
+            sampled_action_batch,
             gradient_scale_batch,
-        ) = ([], [], [], [], [], [], [])
+        ) = ([], [], [], [], [], [], [], [])
         weight_batch = [] if self.config.PER else None
 
         for game_id, game_history, game_prob in self.sample_n_games(
@@ -84,7 +85,7 @@ class ReplayBuffer:
         ):
             game_pos, pos_prob = self.sample_position(game_history)
 
-            values, rewards, policies, actions = self.make_target(
+            values, rewards, policies, sampled_actions, actions = self.make_target(
                 game_history, game_pos
             )
 
@@ -93,13 +94,14 @@ class ReplayBuffer:
                 game_history.get_stacked_observations(
                     game_pos,
                     self.config.stacked_observations,
-                    len(self.config.action_space),
+                    self.config.sample_size
                 )
             )
             action_batch.append(actions)
             value_batch.append(values)
             reward_batch.append(rewards)
             policy_batch.append(policies)
+            sampled_action_batch.append(sampled_actions)
             gradient_scale_batch.append(
                 [
                     min(
@@ -132,6 +134,7 @@ class ReplayBuffer:
                 value_batch,
                 reward_batch,
                 policy_batch,
+                sampled_action_batch,
                 weight_batch,
                 gradient_scale_batch,
             ),
@@ -261,20 +264,28 @@ class ReplayBuffer:
 
         return value
 
+    def pad_sampled_actions(self, sampled_actions):
+        return list(map(lambda inner_sampled_actions: (inner_sampled_actions + self.config.sample_size * [
+            inner_sampled_actions[0]])[:self.config.sample_size], sampled_actions))
+
+    def pad_target_policies(self, target_policies):
+        return list(map(lambda target_policy: (target_policy + self.config.sample_size * [0])[:self.config.sample_size],
+                        target_policies))
+
     def make_target(self, game_history, state_index):
         """
         Generate targets for every unroll steps.
         """
-        target_values, target_rewards, target_policies, actions = [], [], [], []
+        target_values, target_rewards, target_policies, sampled_actions, actions = [], [], [], [], []
         for current_index in range(
             state_index, state_index + self.config.num_unroll_steps + 1
         ):
             value = self.compute_target_value(game_history, current_index)
-
             if current_index < len(game_history.root_values):
                 target_values.append(value)
                 target_rewards.append(game_history.reward_history[current_index])
                 target_policies.append(game_history.child_visits[current_index])
+                sampled_actions.append(game_history.sampled_actions[current_index])
                 actions.append(game_history.action_history[current_index])
             elif current_index == len(game_history.root_values):
                 target_values.append(0)
@@ -286,6 +297,7 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
+                sampled_actions.append(game_history.sampled_actions[0])
                 actions.append(game_history.action_history[current_index])
             else:
                 # States past the end of games are treated as absorbing states
@@ -298,9 +310,12 @@ class ReplayBuffer:
                         for _ in range(len(game_history.child_visits[0]))
                     ]
                 )
-                actions.append(numpy.random.choice(self.config.action_space))
-
-        return target_values, target_rewards, target_policies, actions
+                sampled_actions.append(game_history.sampled_actions[0])
+                actions.append(
+                    game_history.sampled_actions[0][numpy.random.choice(len(game_history.sampled_actions[0]))])
+        target_policies = self.pad_target_policies(target_policies)
+        sampled_actions = self.pad_sampled_actions(sampled_actions)
+        return target_values, target_rewards, target_policies, sampled_actions, actions
 
 
 @ray.remote
@@ -347,7 +362,7 @@ class Reanalyse:
                         game_history.get_stacked_observations(
                             i,
                             self.config.stacked_observations,
-                            len(self.config.action_space),
+                            self.config.sample_size
                         )
                         for i in range(len(game_history.root_values))
                     ]

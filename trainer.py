@@ -1,4 +1,5 @@
 import copy
+import math
 import time
 
 import numpy
@@ -132,6 +133,7 @@ class Trainer:
             target_value,
             target_reward,
             target_policy,
+            sampled_actions,
             weight_batch,
             gradient_scale_batch,
         ) = batch
@@ -146,10 +148,11 @@ class Trainer:
         observation_batch = (
             torch.tensor(numpy.array(observation_batch)).float().to(device)
         )
-        action_batch = torch.tensor(action_batch).long().to(device).unsqueeze(-1)
+        action_batch = torch.tensor(action_batch).long().to(device)
         target_value = torch.tensor(target_value).float().to(device)
         target_reward = torch.tensor(target_reward).float().to(device)
         target_policy = torch.tensor(target_policy).float().to(device)
+        sampled_actions = torch.tensor(sampled_actions).long().to(device)
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
@@ -169,24 +172,26 @@ class Trainer:
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
         )
-        predictions = [(value, reward, policy_logits)]
+        input_policy = self.model.log_prob(policy_logits, sampled_actions[:, 0])
+        predictions = [(value, reward, input_policy)]
         for i in range(1, action_batch.shape[1]):
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                 hidden_state, action_batch[:, i]
             )
+            input_policy = self.model.log_prob(policy_logits, sampled_actions[:, i])
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             hidden_state.register_hook(lambda grad: grad * 0.5)
-            predictions.append((value, reward, policy_logits))
+            predictions.append((value, reward, input_policy))
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
 
         ## Compute losses
         value_loss, reward_loss, policy_loss = (0, 0, 0)
-        value, reward, policy_logits = predictions[0]
+        value, reward, input_policy = predictions[0]
         # Ignore reward loss for the first batch step
         current_value_loss, _, current_policy_loss = self.loss_function(
             value.squeeze(-1),
             reward.squeeze(-1),
-            policy_logits,
+            input_policy,
             target_value[:, 0],
             target_reward[:, 0],
             target_policy[:, 0],
@@ -207,7 +212,7 @@ class Trainer:
         )
 
         for i in range(1, len(predictions)):
-            value, reward, policy_logits = predictions[i]
+            value, reward, input_policy = predictions[i]
             (
                 current_value_loss,
                 current_reward_loss,
@@ -215,7 +220,7 @@ class Trainer:
             ) = self.loss_function(
                 value.squeeze(-1),
                 reward.squeeze(-1),
-                policy_logits,
+                input_policy,
                 target_value[:, i],
                 target_reward[:, i],
                 target_policy[:, i],
@@ -276,9 +281,7 @@ class Trainer:
         """
         Update learning rate
         """
-        lr = self.config.lr_init * self.config.lr_decay_rate ** (
-            self.training_step / self.config.lr_decay_steps
-        )
+        lr = self.config.lr_init * 0.5 * (1 + math.cos(math.pi * (self.training_step / self.config.lr_decay_steps)))
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
@@ -286,7 +289,7 @@ class Trainer:
     def loss_function(
         value,
         reward,
-        policy_logits,
+        input_policy,
         target_value,
         target_reward,
         target_policy,
@@ -294,7 +297,5 @@ class Trainer:
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
-        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(
-            1
-        )
+        policy_loss = (-target_policy * input_policy).sum(1)
         return value_loss, reward_loss, policy_loss
