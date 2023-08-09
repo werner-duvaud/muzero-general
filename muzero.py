@@ -434,7 +434,7 @@ class MuZero:
         """
         # Load checkpoint
         if checkpoint_path:
-            checkpoint_path = pathlib.Path(checkpoint_path)
+            checkpoint_path = pathlib.Path(checkpoint_path).absolute()
             self.checkpoint = torch.load(checkpoint_path)
             print(f"\nUsing checkpoint from {checkpoint_path}")
 
