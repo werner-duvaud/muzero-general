@@ -138,11 +138,11 @@ class Game(AbstractGame):
     Game wrapper.
     """
 
-    def __init__(self, seed=None):
-        self.env = gym.make("MiniGrid-Empty-Random-6x6-v0")
+    def __init__(self, seed=None, render_mode=None):
+        self.env = gym.make("MiniGrid-Empty-Random-6x6-v0", render_mode=render_mode)
         self.env = gym_minigrid.wrappers.ImgObsWrapper(self.env)
         if seed is not None:
-            self.env.seed(seed)
+            self.env.reset(seed=seed)
 
     def step(self, action):
         """
@@ -154,7 +154,8 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        observation, reward, done, _ = self.env.step(action)
+        observation, reward, terminated, truncated, _ = self.env.step(action)
+        done = terminated or truncated
         return numpy.array(observation), reward, done
 
     def legal_actions(self):
@@ -177,7 +178,8 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        return numpy.array(self.env.reset())
+        observation, _ = self.env.reset()
+        return numpy.array(observation)
 
     def close(self):
         """

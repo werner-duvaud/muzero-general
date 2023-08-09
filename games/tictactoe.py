@@ -127,7 +127,7 @@ class Game(AbstractGame):
     Game wrapper.
     """
 
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, render_mode=None):
         self.env = TicTacToe()
 
     def step(self, action):
@@ -140,7 +140,8 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        observation, reward, done = self.env.step(action)
+        observation, reward, terminated, truncated, _ = self.env.step(action)
+        done = terminated or truncated
         return observation, reward * 20, done
 
     def to_play(self):
@@ -172,7 +173,8 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        return self.env.reset()
+        observation, _ = self.env.reset()
+        return observation
 
     def render(self):
         """

@@ -7,7 +7,7 @@ class AbstractGame(ABC):
     """
 
     @abstractmethod
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, render_mode=None):
         pass
 
     @abstractmethod

@@ -129,11 +129,11 @@ class Game(AbstractGame):
     Game wrapper.
     """
 
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, render_mode=None):
         self.env = DeterministicLunarLander()
         # self.env = gym.make("LunarLander-v2")
         if seed is not None:
-            self.env.seed(seed)
+            self.env.reset(seed=seed)
 
     def step(self, action):
         """
@@ -145,7 +145,8 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        observation, reward, done, _ = self.env.step(action)
+        observation, reward, terminated, truncated, _ = self.env.step(action)
+        done = terminated or truncated
         return numpy.array([[observation]]), reward / 3, done
 
     def legal_actions(self):
@@ -168,7 +169,8 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        return numpy.array([[self.env.reset()]])
+        observation, _ = self.env.reset()
+        return numpy.array([[observation]])
 
     def close(self):
         """
