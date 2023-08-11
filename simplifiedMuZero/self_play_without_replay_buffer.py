@@ -2,13 +2,13 @@ import math
 import time
 
 import numpy
-import ray
+# import ray
 import torch
 
 import models
 
 
-@ray.remote
+# @ray.remote
 class SelfPlay:
     """
     Class which run in a dedicated thread to play games and save them to the replay-buffer.
@@ -107,6 +107,9 @@ class SelfPlay:
 
         self.close_game()
 
+    # play game 与continuous self play 的区别：
+    #   1. play game 是实际运行游戏，游戏的结果存在game history里，不向replay buffer里写
+    #   2. continuous self play 调用play game，把获取到的game history 异步写进 replay buffer
     #play game 运行
     # 合法的actions是固定的，由游戏文件提供(在本函数中，可以看到调用legal_actions函数没有使用env，这表面现游戏环境于的改变于动作无关)。
     # 运行步骤：

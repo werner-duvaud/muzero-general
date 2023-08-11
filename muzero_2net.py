@@ -13,12 +13,14 @@ import ray
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
+sys.path.append("")
+
 import diagnose_model
-import models
-import replay_buffer
-import self_play
+import simplifiedMuZero.models_2net as models
+import simplifiedMuZero.replay_buffer3 as replay_buffer
+import simplifiedMuZero.self_play_2net as self_play
 import shared_storage
-import trainer
+import simplifiedMuZero.trainer_2net as trainer
 
 
 class MuZero:
@@ -487,7 +489,7 @@ class CPUActor:
         pass
 
     def get_initial_weights(self, config):
-        model = models.MuZeroNetwork(config)
+        model = models.SimplifiedMuZeroNetwork(config)
         weigths = model.get_weights()
         summary = str(model).replace("\n", " \n\n")
         return weigths, summary

@@ -169,6 +169,7 @@ class MuZero:
             self.checkpoint, self.replay_buffer, self.config
         )
 
+        #使用最后一个模型提供更新鲜、稳定的n步值（参见论文附录Reanalyze）
         if self.config.use_last_model_value:
             self.reanalyse_worker = replay_buffer.Reanalyse.options(
                 num_cpus=0,
@@ -188,16 +189,22 @@ class MuZero:
             for seed in range(self.config.num_workers)
         ]
 
+        # 这里调用continuous类的函数，主要是continuous函数会调用replay_buffer，
+
         # Launch workers
+        # 此处调用worker进行self play，把结果存在replay_buffer里
         [
             self_play_worker.continuous_self_play.remote(
                 self.shared_storage_worker, self.replay_buffer_worker
             )
             for self_play_worker in self.self_play_workers
         ]
+
+        # 此处使用trainer，从replay buffer里按batch抽取数据，进行网络训练和更新
         self.training_worker.continuous_update_weights.remote(
             self.replay_buffer_worker, self.shared_storage_worker
         )
+        # 使用最后一个模型提供更新鲜、稳定的n步值（参见论文附录Reanalyze）
         if self.config.use_last_model_value:
             self.reanalyse_worker.reanalyse.remote(
                 self.replay_buffer_worker, self.shared_storage_worker

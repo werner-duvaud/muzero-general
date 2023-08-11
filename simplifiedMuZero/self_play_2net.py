@@ -5,7 +5,7 @@ import numpy
 import ray
 import torch
 
-import models
+import simplifiedMuZero.models_2net as models
 
 
 @ray.remote
@@ -23,7 +23,8 @@ class SelfPlay:
         torch.manual_seed(seed)
 
         # Initialize the network
-        self.model = models.MuZeroNetwork(self.config)
+        self.model = models.SimplifiedMuZeroNetwork(self.config)
+        # self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_checkpoint["weights"])
         self.model.to(torch.device("cuda" if self.config.selfplay_on_gpu else "cpu"))
         self.model.eval()
