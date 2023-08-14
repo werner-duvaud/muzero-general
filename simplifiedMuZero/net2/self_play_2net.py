@@ -5,7 +5,7 @@ import numpy
 import ray
 import torch
 
-import simplifiedMuZero.models_2net as models
+import simplifiedMuZero.net2.models_2net as models
 
 
 @ray.remote

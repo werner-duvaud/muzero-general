@@ -100,20 +100,21 @@ class SimplifiedMuZeroFullyConnectedNetwork(AbstractNetwork):
                     stacked_observations + 1) \
                                     + stacked_observations * observation_shape[1] * observation_shape[2]
 
+        # 输出等于输入，即编码维度等于输入维度
         encoding_size = representation_input_size
 
-        self.representation_network = torch.nn.DataParallel(
-            # mlp(
-            #     representation_input_size,
-            #     fc_representation_layers,
-            #     encoding_size,
-            # )
-            mlp(
-                representation_input_size + self.action_space_size,
-                fc_representation_layers,
-                encoding_size,
-            )
-        )
+        # self.representation_network = torch.nn.DataParallel(
+        #     # mlp(
+        #     #     representation_input_size,
+        #     #     fc_representation_layers,
+        #     #     encoding_size,
+        #     # )
+        #     mlp(
+        #         representation_input_size + self.action_space_size,
+        #         fc_representation_layers,
+        #         encoding_size,
+        #     )
+        # )
 
         #dynamics的输入是encoding_size+action_space_size
         self.dynamics_encoded_state_network = torch.nn.DataParallel(

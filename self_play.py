@@ -128,7 +128,7 @@ class SelfPlay:
         game_history.action_history.append(0)
         game_history.observation_history.append(observation) # 添加reset之后的observation
         game_history.reward_history.append(0)
-        game_history.to_play_history.append(self.game.to_play())
+        game_history.to_play_history.append(self.game.to_play()) # to_play_history是用来存放玩家id的
 
         done = False
 

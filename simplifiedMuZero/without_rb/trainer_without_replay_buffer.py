@@ -2,10 +2,10 @@ import copy
 import time
 
 import numpy
-import ray
+# import ray
 import torch
 
-import models
+import simplifiedMuZero.without_rb.models_without_replay_buffer as models
 
 
 @ray.remote
@@ -69,7 +69,7 @@ class Trainer:
         next_batch = replay_buffer.get_batch.remote()
         # Training loop
         while self.training_step < self.config.training_steps and not ray.get(
-            shared_storage.get_info.remote("terminate")
+            shared_storage.get_info.remote("terminate") # terminate是用来记录replay buffer等其它程序是否终止的，跟game的状态无关
         ):
             index_batch, batch = ray.get(next_batch)
             next_batch = replay_buffer.get_batch.remote()

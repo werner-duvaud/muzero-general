@@ -16,7 +16,7 @@ class ReplayBuffer:
 
     def __init__(self, initial_checkpoint, initial_buffer, config):
         self.config = config
-        self.buffer = copy.deepcopy(initial_buffer)
+        self.buffer = copy.deepcopy(initial_buffer) # buffer是一个字典，key是game id，value是game_history
         self.num_played_games = initial_checkpoint["num_played_games"]
         self.num_played_steps = initial_checkpoint["num_played_steps"]
         self.total_samples = sum(
@@ -79,11 +79,14 @@ class ReplayBuffer:
         ) = ([], [], [], [], [], [], [])
         weight_batch = [] if self.config.PER else None
 
+        # 从buffer里抽取n鸽样本，有probs的话安装probs的概率抽取，没有的话按照uniform抽取
         for game_id, game_history, game_prob in self.sample_n_games(
             self.config.batch_size
         ):
+            # 每个game_history都是一个游戏运行的序列，使用sample_position从这些序列里随机抽取一个位置
             game_pos, pos_prob = self.sample_position(game_history)
 
+            # 计算从该位置开始的值，rewards等数据
             values, rewards, policies, actions = self.make_target(
                 game_history, game_pos
             )
@@ -165,11 +168,11 @@ class ReplayBuffer:
                 game_id_list.append(game_id)
                 game_probs.append(game_history.game_priority)
             game_probs = numpy.array(game_probs, dtype="float32")
-            game_probs /= numpy.sum(game_probs)
+            game_probs /= numpy.sum(game_probs) # 每一个都除以game_probs的总和，可以看成是归一化
             game_prob_dict = dict(
                 [(game_id, prob) for game_id, prob in zip(game_id_list, game_probs)]
             )
-            selected_games = numpy.random.choice(game_id_list, n_games, p=game_probs)
+            selected_games = numpy.random.choice(game_id_list, n_games, p=game_probs) # 抽取n个样本， 抽取的概率是根据game_probs确定的
         else:
             selected_games = numpy.random.choice(list(self.buffer.keys()), n_games)
             game_prob_dict = {}
@@ -177,10 +180,11 @@ class ReplayBuffer:
             (game_id, self.buffer[game_id], game_prob_dict.get(game_id))
             for game_id in selected_games
         ]
-        return ret
+        return ret # ret格式为[game_id, game_history, game_prob]
 
     def sample_position(self, game_history, force_uniform=False):
         """
+        统一或根据某些优先级从游戏中采样位置。
         Sample position from game either uniformly or according to some priority.
         See paper appendix Training.
         """
@@ -230,6 +234,8 @@ class ReplayBuffer:
     def compute_target_value(self, game_history, index):
         # The value target is the discounted root value of the search tree td_steps into the
         # future, plus the discounted sum of all rewards until then.
+        # 价值目标是未来搜索树 td_steps 的折扣根值，加上到那时为止的所有奖励的折扣总和。
+        # 计算公式  ∑r*γ^n
         bootstrap_index = index + self.config.td_steps
         if bootstrap_index < len(game_history.root_values):
             root_values = (
@@ -237,6 +243,8 @@ class ReplayBuffer:
                 if game_history.reanalysed_predicted_root_values is None
                 else game_history.reanalysed_predicted_root_values
             )
+
+            # 检查当前的id和目标id是否一致，如果不一致则取负
             last_step_value = (
                 root_values[bootstrap_index]
                 if game_history.to_play_history[bootstrap_index]
@@ -244,13 +252,15 @@ class ReplayBuffer:
                 else -root_values[bootstrap_index]
             )
 
+            # 计算公式 r*γ^n
             value = last_step_value * self.config.discount**self.config.td_steps
-        else:
+        else: # 因为终点的长度超过了数据，因此设为0
             value = 0
 
         for i, reward in enumerate(
-            game_history.reward_history[index + 1 : bootstrap_index + 1]
+            game_history.reward_history[index + 1 : bootstrap_index + 1] # 获取reward,从index+1到最大（如果长度不够则只会取到最后）
         ):
+            # 根据对手决定正负号，只会累计到value上
             # The value is oriented from the perspective of the current player
             value += (
                 reward
@@ -259,12 +269,13 @@ class ReplayBuffer:
                 else -reward
             ) * self.config.discount**i
 
-        return value
+        return value # 返回value
 
     def make_target(self, game_history, state_index):
         """
         Generate targets for every unroll steps.
         """
+        # target policies 是 策略选择的概率序列，如[[0.4,0.6], [0.5,0.5],...]
         target_values, target_rewards, target_policies, actions = [], [], [], []
         for current_index in range(
             state_index, state_index + self.config.num_unroll_steps + 1
@@ -280,6 +291,7 @@ class ReplayBuffer:
                 target_values.append(0)
                 target_rewards.append(game_history.reward_history[current_index])
                 # Uniform policy
+                # 因为是游戏结束的状态，因此选择各个策略的概率是平均分布的
                 target_policies.append(
                     [
                         1 / len(game_history.child_visits[0])
@@ -287,8 +299,9 @@ class ReplayBuffer:
                     ]
                 )
                 actions.append(game_history.action_history[current_index])
-            else:
+            else: # 如果current index 大于 game_history的长度
                 # States past the end of games are treated as absorbing states
+                # 游戏结束后的状态被视为吸收状态，因此都为0
                 target_values.append(0)
                 target_rewards.append(0)
                 # Uniform policy

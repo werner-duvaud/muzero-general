@@ -5,7 +5,7 @@ import numpy
 # import ray
 import torch
 
-import models
+import simplifiedMuZero.without_rb.models_without_replay_buffer as models
 
 
 # @ray.remote

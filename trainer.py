@@ -66,7 +66,7 @@ class Trainer:
         next_batch = replay_buffer.get_batch.remote()
         # Training loop
         while self.training_step < self.config.training_steps and not ray.get(
-            shared_storage.get_info.remote("terminate")
+            shared_storage.get_info.remote("terminate") # terminate是用来记录replay buffer等其它程序是否终止的，跟game的状态无关
         ):
             index_batch, batch = ray.get(next_batch)
             next_batch = replay_buffer.get_batch.remote()
@@ -117,7 +117,7 @@ class Trainer:
                     )
                     > self.config.ratio
                     and self.training_step < self.config.training_steps
-                    and not ray.get(shared_storage.get_info.remote("terminate"))
+                    and not ray.get(shared_storage.get_info.remote("terminate")) # terminate是用来记录replay buffer等其它程序是否终止的，跟game的状态无关
                 ):
                     time.sleep(0.5)
 

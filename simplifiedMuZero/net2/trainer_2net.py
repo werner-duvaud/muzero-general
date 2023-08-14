@@ -5,7 +5,7 @@ import numpy
 import ray
 import torch
 
-import simplifiedMuZero.models_2net as models
+import simplifiedMuZero.net2.models_2net as models
 
 
 @ray.remote
@@ -69,6 +69,8 @@ class Trainer:
             shared_storage.get_info.remote("terminate")
         ):
             index_batch, batch = ray.get(next_batch)
+            print("train batch size is  :   ", batch[0].shape)
+            print("train index_batch size is  :   ", index_batch.shape)
             next_batch = replay_buffer.get_batch.remote()
             self.update_lr()
             (

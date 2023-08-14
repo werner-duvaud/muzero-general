@@ -5,7 +5,7 @@ import numpy
 import ray
 import torch
 
-import simplifiedMuZero.models_2net as models
+import simplifiedMuZero.net2.models_2net as models
 
 
 @ray.remote
@@ -31,7 +31,7 @@ class ReplayBuffer:
         numpy.random.seed(self.config.seed)
 
     def save_game(self, game_history, shared_storage=None):
-        if self.config.PER:
+        if self.config.PER: # config.PER指的是优先重放 Prioritized Replay（参见论文附录训练），优先选择重放缓冲区中网络意外的元素
             if game_history.priorities is not None:
                 # Avoid read only array when loading replay buffer from disk
                 game_history.priorities = numpy.copy(game_history.priorities)

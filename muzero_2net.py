@@ -16,11 +16,11 @@ from torch.utils.tensorboard import SummaryWriter
 sys.path.append("")
 
 import diagnose_model
-import simplifiedMuZero.models_2net as models
-import simplifiedMuZero.replay_buffer3 as replay_buffer
-import simplifiedMuZero.self_play_2net as self_play
+import simplifiedMuZero.net2.models_2net as models
+import simplifiedMuZero.net2.replay_buffer_2net as replay_buffer
+import simplifiedMuZero.net2.self_play_2net as self_play
 import shared_storage
-import simplifiedMuZero.trainer_2net as trainer
+import simplifiedMuZero.net2.trainer_2net as trainer
 
 
 class MuZero:
