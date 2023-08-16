@@ -675,7 +675,15 @@ if __name__ == "__main__":
 
         # print(game_id)
         # print(game_history.action_history)
-        # print(game_history.reward_history)
+        print(game_history.reward_history)
+        muzero_reward = sum(
+            reward
+            for i, reward in enumerate(game_history.reward_history)
+            if game_history.to_play_history[i - 1]
+            == config.muzero_player
+        )
+
+        print(muzero_reward)
         # print(game_history.to_play_history)
         # # print(game_history.observation_history)
         # print("child visits", game_history.child_visits)

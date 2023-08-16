@@ -279,7 +279,7 @@ class Trainer:
         lr = self.config.lr_init * self.config.lr_decay_rate ** (
             self.training_step / self.config.lr_decay_steps
         )
-        for param_group in self.optimizer.param_groups:
+        for param_group in self.optimizer.param_groups: # 更新optimizer的lr
             param_group["lr"] = lr
 
     @staticmethod

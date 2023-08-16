@@ -2,13 +2,13 @@ import math
 import time
 
 import numpy
-# import ray
+import ray
 import torch
 
-import simplifiedMuZero.without_rb.models_without_replay_buffer as models
+import models
 
 
-# @ray.remote
+@ray.remote
 class SelfPlay:
     """
     Class which run in a dedicated thread to play games and save them to the replay-buffer.
@@ -107,9 +107,6 @@ class SelfPlay:
 
         self.close_game()
 
-    # play game 与continuous self play 的区别：
-    #   1. play game 是实际运行游戏，游戏的结果存在game history里，不向replay buffer里写
-    #   2. continuous self play 调用play game，把获取到的game history 异步写进 replay buffer
     #play game 运行
     # 合法的actions是固定的，由游戏文件提供(在本函数中，可以看到调用legal_actions函数没有使用env，这表面现游戏环境于的改变于动作无关)。
     # 运行步骤：
@@ -131,7 +128,7 @@ class SelfPlay:
         game_history.action_history.append(0)
         game_history.observation_history.append(observation) # 添加reset之后的observation
         game_history.reward_history.append(0)
-        game_history.to_play_history.append(self.game.to_play())
+        game_history.to_play_history.append(self.game.to_play()) # to_play_history是用来存放玩家id的
 
         done = False
 
@@ -157,7 +154,7 @@ class SelfPlay:
                 # 一下的if-else部分主要是为了选择一个动作
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
-                    root, mcts_info = MCTS(self.config).run(
+                    root, mcts_info = UniformSearch(self.config).run(
                         self.model,
                         stacked_observations,
                         self.game.legal_actions(),
@@ -206,7 +203,7 @@ class SelfPlay:
         Select opponent action for evaluating MuZero level.
         """
         if opponent == "human":
-            root, mcts_info = MCTS(self.config).run(
+            root, mcts_info = UniformSearch(self.config).run(
                 self.model,
                 stacked_observations,
                 self.game.legal_actions(),
@@ -267,7 +264,7 @@ class SelfPlay:
 
 
 # Game independent
-class MCTS:
+class UniformSearch:
     """
     Core Monte Carlo Tree Search algorithm.
     To decide on an action, we run N simulations, always starting at the root of
@@ -411,46 +408,47 @@ class MCTS:
         """
         Select the child with the highest UCB score.
         """
-        max_ucb = max(
-            self.ucb_score(node, child, min_max_stats)
-            for action, child in node.children.items()
-        )
-        action = numpy.random.choice( # 随机选择ucb值等于最大ucb的动作（因为可能有多个动作的值都达到了最大的ucb,如果只有一个，那么就会选取这个)
-            [
-                action
-                for action, child in node.children.items()
-                if self.ucb_score(node, child, min_max_stats) == max_ucb
-            ]
-        )
+        # max_ucb = max(
+        #     self.ucb_score(node, child, min_max_stats)
+        #     for action, child in node.children.items()
+        # )
+        # action = numpy.random.choice( # 随机选择ucb值等于最大ucb的动作（因为可能有多个动作的值都达到了最大的ucb,如果只有一个，那么就会选取这个)
+        #     [
+        #         action
+        #         for action, child in node.children.items()
+        #         if self.ucb_score(node, child, min_max_stats) == max_ucb
+        #     ]
+        # )
+        action = numpy.random.choice([action for action,child in node.children.items()])
         return action, node.children[action]
 
-    def ucb_score(self, parent, child, min_max_stats): #该函数只进行一步查询，不进行多步
-        """
-        The score for a node is based on its value, plus an exploration bonus based on the prior.
-        """
-        pb_c = (
-            math.log(
-                (parent.visit_count + self.config.pb_c_base + 1) / self.config.pb_c_base # pc_c_base由配置文件决定
-            )
-            + self.config.pb_c_init
-        )
-        pb_c *= math.sqrt(parent.visit_count) / (child.visit_count + 1)
-
-        prior_score = pb_c * child.prior # prior 之前的p_value
-        # 公式 pb_c = (log((N+C+1)/C)+init ) * sqrt(N/(VC+1))
-        # prior_score = pbc * prior
-
-        if child.visit_count > 0:
-            # Mean value Q
-            value_score = min_max_stats.normalize( # 括号里的是Q值，Q=E[r+r*Q'。此处在对其进行正则化
-                child.reward
-                + self.config.discount # 衰减系数， 之后乘以子节点的值
-                * (child.value() if len(self.config.players) == 1 else -child.value()) # 根据players的个数，如果大于1，则子节点必定是对手，因此子节点的取负。
-            )
-        else:
-            value_score = 0
-
-        return prior_score + value_score # 先前的分数加上Q值就是新的UCB值
+    # def ucb_score(self, parent, child, min_max_stats): #该函数只进行一步查询，不进行多步
+    #     """
+    #     The score for a node is based on its value, plus an exploration bonus based on the prior.
+    #     """
+    #     pb_c = (
+    #         math.log(
+    #             (parent.visit_count + self.config.pb_c_base + 1) / self.config.pb_c_base # pc_c_base由配置文件决定
+    #         )
+    #         + self.config.pb_c_init
+    #     )
+    #     pb_c *= math.sqrt(parent.visit_count) / (child.visit_count + 1)
+    #
+    #     prior_score = pb_c * child.prior # prior 之前的p_value
+    #     # 公式 pb_c = (log((N+C+1)/C)+init ) * sqrt(N/(VC+1))
+    #     # prior_score = pbc * prior
+    #
+    #     if child.visit_count > 0:
+    #         # Mean value Q
+    #         value_score = min_max_stats.normalize( # 括号里的是Q值，Q=E[r+r*Q'。此处在对其进行正则化
+    #             child.reward
+    #             + self.config.discount # 衰减系数， 之后乘以子节点的值
+    #             * (child.value() if len(self.config.players) == 1 else -child.value()) # 根据players的个数，如果大于1，则子节点必定是对手，因此子节点的取负。
+    #         )
+    #     else:
+    #         value_score = 0
+    #
+    #     return prior_score + value_score # 先前的分数加上Q值就是新的UCB值
 
     # 反向传播算法
     # 对路径上的所有访问次数+1，value值加reward
