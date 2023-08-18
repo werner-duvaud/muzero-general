@@ -1,4 +1,4 @@
-import models
+from simplifiedMuZero.net2.models_2net import SimplifiedMuZeroNetwork
 from muzero_general import MuZeroGeneral
 from muzero import load_model_menu, hyperparameter_search
 
@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # muzero.train()
     # end_time = time.time()
     # print("耗时: {:.2f}秒".format(end_time - start_time))
-    model_cls = models.MuZeroNetwork
+    model_cls = SimplifiedMuZeroNetwork
     if len(sys.argv) == 2:
         # Train directly with: python muzero.py cartpole
         muzero = MuZeroGeneral(sys.argv[1], model_cls=model_cls)
