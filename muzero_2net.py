@@ -16,7 +16,9 @@ from torch.utils.tensorboard import SummaryWriter
 sys.path.append("")
 
 import diagnose_model
-import simplifiedMuZero.net2.models_2net as models
+# import simplifiedMuZero.net2.models_2net as models
+import models
+from simplifiedMuZero.net2.models2 import MuZeroNetwork_2net
 import simplifiedMuZero.net2.replay_buffer_2net as replay_buffer
 import simplifiedMuZero.net2.self_play_2net as self_play
 import shared_storage
@@ -69,6 +71,7 @@ class MuZero_2Net:
 
         # 重命名路径，以便区分不同的模型
         self.config.results_path /= "muzero_2net"
+        self.config.training_steps = 100000
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
@@ -491,7 +494,8 @@ class CPUActor:
         pass
 
     def get_initial_weights(self, config):
-        model = models.SimplifiedMuZeroNetwork(config)
+        # model = models.SimplifiedMuZeroNetwork(config)
+        model = MuZeroNetwork_2net(config)
         weigths = model.get_weights()
         summary = str(model).replace("\n", " \n\n")
         return weigths, summary

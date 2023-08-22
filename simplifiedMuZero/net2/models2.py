@@ -7,7 +7,6 @@ from models import support_to_scalar, scalar_to_support, mlp, AbstractNetwork, c
 
 class MuZeroNetwork_2net:
     def __new__(cls, config):
-        print("MuZeroNetwork_2net")
         if config.network == "fullyconnected":
             return MuZeroFullyConnectedNetwork_2net(
                 config.observation_shape,
@@ -57,6 +56,7 @@ class MuZeroFullyConnectedNetwork_2net(AbstractNetwork):
         support_size,
     ):
         super().__init__()
+        print(self.__class__.__name__)
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
         # support_size 表示的应该是一个选择的范围【-support_size, support_size】.最后+1是因为range最后不包含最后的数
@@ -100,6 +100,7 @@ class MuZeroFullyConnectedNetwork_2net(AbstractNetwork):
             mlp(encoding_size, fc_value_layers, self.full_support_size) #最后的输出为full_support_size，因为范围是[-support_size, support_size]
         )
 
+
     def prediction(self, encoded_state):
         policy_logits = self.prediction_policy_network(encoded_state)
         value = self.prediction_value_network(encoded_state)
@@ -128,10 +129,11 @@ class MuZeroFullyConnectedNetwork_2net(AbstractNetwork):
 
         return self.encoded_stated_normalized(encoded_state)
 
+
     # dynamic同representation的唯一不同就是前者需要将encoded_state和action合并在一起作为输入，而representation不需要绑定action
     def dynamics(self, encoded_state, action):
         action_one_hot = (torch.zeros((action.shape[0], self.action_space_size)).to(action.device).float())
-        action_one_hot.scatter(1, action.long(), 1.0)
+        action_one_hot.scatter_(1, action.long(), 1.0)
         x = torch.cat((encoded_state, action_one_hot), dim=1)
 
         next_encoded_state = self.dynamics_encoded_state_network(x)
@@ -185,9 +187,6 @@ class MuZeroResidualNetwork_2net(AbstractNetwork):
         downsample,
     ):
         super().__init__()
-        print("observation shape is ", observation_shape)
-        print("num channels is ", num_channels)
-
         num_channels = observation_shape[1]
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1

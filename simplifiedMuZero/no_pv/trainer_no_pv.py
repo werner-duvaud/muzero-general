@@ -5,9 +5,7 @@ import numpy
 import ray
 import torch
 
-# import simplifiedMuZero.net2.models_2net as models
 import models
-from simplifiedMuZero.net2.models2 import MuZeroNetwork_2net
 
 
 @ray.remote
@@ -25,7 +23,7 @@ class Trainer:
         torch.manual_seed(self.config.seed)
 
         # Initialize the network
-        self.model = MuZeroNetwork_2net(self.config)
+        self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
         self.model.to(torch.device("cuda" if self.config.train_on_gpu else "cpu"))
         self.model.train()
@@ -68,7 +66,7 @@ class Trainer:
         next_batch = replay_buffer.get_batch.remote()
         # Training loop
         while self.training_step < self.config.training_steps and not ray.get(
-            shared_storage.get_info.remote("terminate")
+            shared_storage.get_info.remote("terminate") # terminate是用来记录replay buffer等其它程序是否终止的，跟game的状态无关
         ):
             index_batch, batch = ray.get(next_batch)
             next_batch = replay_buffer.get_batch.remote()
@@ -119,7 +117,7 @@ class Trainer:
                     )
                     > self.config.ratio
                     and self.training_step < self.config.training_steps
-                    and not ray.get(shared_storage.get_info.remote("terminate"))
+                    and not ray.get(shared_storage.get_info.remote("terminate")) # terminate是用来记录replay buffer等其它程序是否终止的，跟game的状态无关
                 ):
                     time.sleep(0.5)
 
@@ -252,6 +250,7 @@ class Trainer:
             )
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
+        # loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
         loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
@@ -281,7 +280,7 @@ class Trainer:
         lr = self.config.lr_init * self.config.lr_decay_rate ** (
             self.training_step / self.config.lr_decay_steps
         )
-        for param_group in self.optimizer.param_groups:
+        for param_group in self.optimizer.param_groups: # 更新optimizer的lr
             param_group["lr"] = lr
 
     @staticmethod

@@ -4,6 +4,7 @@ import random
 import deap
 from games.tictactoe import Game, MuZeroConfig
 import numpy as np
+from functools import partial
 
 config = MuZeroConfig()
 
@@ -20,36 +21,33 @@ toolbox = base.Toolbox()
 # 注册生成基因的函数。第一个参数是函数名，因此下面的调用是toolbox.Actions。
 # 第二鸽参数是生成action的函数。
 # 后边的参数是生成函数的参数，如此为np.random.choice(range(n), N, replace=False)
-toolbox.register("Actions", np.random.choice, range(legal_actions), config.max_moves, replace=False)
-# tools.initIterate返回一个生成的动作序列
-toolbox.register("Individual", tools.initIterate, creator.Individual, toolbox.Actions)
+# toolbox.register("Actions", np.random.choice, range(legal_actions), config.max_moves, replace=False)
+# # tools.initIterate返回一个生成的动作序列
+# toolbox.register("Individual", tools.initIterate, creator.Individual, toolbox.Actions)
 
-# ind1 = toolbox.Individual()
-# print(ind1)
+def individual(actions, max_moves, replace=False):
+    max_moves = max_moves if replace else len(actions)
+    return tools.initIterate(creator.Individual, partial(np.random.choice, actions, max_moves, replace=replace))
 
-# 重复生成动作序列
-toolbox.register("population", tools.initRepeat, list, toolbox.Individual)
+# print(individual([0,1,2,3,4], 9, replace=False))
+# print(individual([0,1,2,3,4], 9, replace=True))
+# exit()
 
-# pop = toolbox.population(n=36)
-# print(len(pop))
+def population(actions, max_moves, N, replace=False):
+    return tools.initRepeat(list, partial(individual, actions, max_moves, replace), N)
 
+pop = population(range(9),9,  N=4, replace=False)
+print(pop)
 
+# exit()
+#
+# # 重复生成动作序列
+# toolbox.register("population", tools.initRepeat, list, toolbox.Individual)
 
 game = Game(0)
-game2 = copy.deepcopy(game)
-game.reset()
-game2.reset()
 
 actions = game.legal_actions()
 np.random.shuffle(actions)
-
-# for i in range(config.max_moves):
-#     # game.render()
-#     print(game.legal_actions())
-#     observation, reward, done = game.step(np.random.choice(game.legal_actions()))
-#
-#     if done:
-#         break
 
 def evaluate(actions):
     game = Game(1)
@@ -94,14 +92,15 @@ toolbox.register("mutate", tools.mutFlipBit, indpb=0.05)
 # toolbox.register("select", tools.selBest)
 toolbox.register("select", tools.selStochasticUniversalSampling)
 
-pop = toolbox.population(n=100)
+# pop = toolbox.population(n=100)
+# pop = [[0, 6, 8, 7, 4, 5, 2, 1, 3], [0, 6, 3, 7, 4, 5, 2, 1, 8]]
 
-# from deap import algorithms
-# pop, logbook = algorithms.eaSimple(pop, toolbox, cxpb=0.5, mutpb=0.2, ngen=10, verbose=False)
+from deap import algorithms
+pop, logbook = algorithms.eaSimple(pop, toolbox, cxpb=0.5, mutpb=0.2, ngen=10, verbose=False)
 # # print(logbook)
-# result = tools.selBest(pop, k=1)
+results = tools.selBest(pop, k=1)
 
-results = [[0, 6, 8, 7, 4, 5, 2, 1, 3]]
+# results = [[0, 6, 8, 7, 4, 5, 2, 1, 3]]
 print(results)
 print(evaluate(results[0]))
 reward = game_evaluate(results[0],game,0)

@@ -5,7 +5,9 @@ import numpy
 import ray
 import torch
 
-import simplifiedMuZero.net2.models_2net as models
+# import simplifiedMuZero.net2.models_2net as models
+import models
+from simplifiedMuZero.net2.models2 import MuZeroNetwork_2net
 
 
 @ray.remote
@@ -318,7 +320,8 @@ class Reanalyse:
         torch.manual_seed(self.config.seed)
 
         # Initialize the network
-        self.model = models.SimplifiedMuZeroNetwork(self.config)
+        # self.model = models.SimplifiedMuZeroNetwork(self.config)
+        self.model = MuZeroNetwork_2net(self.config)
         self.model.set_weights(initial_checkpoint["weights"])
         self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu"))
         self.model.eval()

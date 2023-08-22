@@ -16,13 +16,12 @@ from torch.utils.tensorboard import SummaryWriter
 import diagnose_model
 import models
 import replay_buffer
-import self_play
-# import simplifiedMuZero.search_policy.self_play_uniform_search as self_play
+import simplifiedMuZero.search_policy.rhea_self_play as self_play
 import shared_storage
 import trainer
 
 
-class MuZero_uniform:
+class MuZero_Rhea:
     """
     Main class to manage MuZero.
 
@@ -35,7 +34,7 @@ class MuZero_uniform:
         split_resources_in (int, optional): Split the GPU usage when using concurent muzero instances.
 
     Example:
-        >>> muzero = MuZero_uniform("cartpole")
+        >>> muzero = MuZero_Rhea("cartpole")
         >>> muzero.train()
         >>> muzero.test(render=True)
     """
@@ -67,8 +66,7 @@ class MuZero_uniform:
                 self.config = config
 
         # 重命名路径，以便区分不同的模型
-        self.config.results_path /= "muzero_uniform"
-        self.config.temperature_threshold = 0
+        self.config.results_path /= self.__class__.__name__
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -181,7 +179,7 @@ class MuZero_uniform:
             ).remote(self.checkpoint, self.config)
 
         self.self_play_workers = [
-            self_play.SelfPlay.options(
+            self_play.SelfPlayRhea.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
@@ -218,7 +216,7 @@ class MuZero_uniform:
         Keep track of the training performance.
         """
         # Launch the test worker to get performance metrics
-        self.test_worker = self_play.SelfPlay.options(
+        self.test_worker = self_play.SelfPlayRhea.options(
             num_cpus=0,
             num_gpus=num_gpus,
         ).remote(
@@ -394,7 +392,7 @@ class MuZero_uniform:
         """
         opponent = opponent if opponent else self.config.opponent
         muzero_player = muzero_player if muzero_player else self.config.muzero_player
-        self_play_worker = self_play.SelfPlay.options(
+        self_play_worker = self_play.SelfPlayRhea.options(
             num_cpus=0,
             num_gpus=num_gpus,
         ).remote(self.checkpoint, self.Game, self.config, numpy.random.randint(10000))
@@ -528,7 +526,7 @@ def hyperparameter_search(
             if 0 < budget:
                 param = optimizer.ask()
                 print(f"Launching new experiment: {param.value}")
-                muzero = MuZero_uniform(game_name, param.value, parallel_experiments)
+                muzero = MuZero_Rhea(game_name, param.value, parallel_experiments)
                 muzero.param = param
                 muzero.train(False)
                 running_experiments.append(muzero)
@@ -554,7 +552,7 @@ def hyperparameter_search(
                     if 0 < budget:
                         param = optimizer.ask()
                         print(f"Launching new experiment: {param.value}")
-                        muzero = MuZero_uniform(game_name, param.value, parallel_experiments)
+                        muzero = MuZero_Rhea(game_name, param.value, parallel_experiments)
                         muzero.param = param
                         muzero.train(False)
                         running_experiments[i] = muzero
@@ -564,7 +562,7 @@ def hyperparameter_search(
 
     except KeyboardInterrupt:
         for experiment in running_experiments:
-            if isinstance(experiment, MuZero_uniform):
+            if isinstance(experiment, MuZero_Rhea):
                 experiment.terminate_workers()
 
     recommendation = optimizer.provide_recommendation()
@@ -628,12 +626,12 @@ def load_model_menu(muzero, game_name):
 if __name__ == "__main__":
     if len(sys.argv) == 2:
         # Train directly with: python muzero.py cartpole
-        muzero = MuZero_uniform(sys.argv[1])
+        muzero = MuZero_Rhea(sys.argv[1])
         muzero.train()
     elif len(sys.argv) == 3:
         # Train directly with: python muzero.py cartpole '{"lr_init": 0.01}'
         config = json.loads(sys.argv[2])
-        muzero = MuZero_uniform(sys.argv[1], config)
+        muzero = MuZero_Rhea(sys.argv[1], config)
         muzero.train()
     else:
         print("\nWelcome to MuZero! Here's a list of games:")
@@ -653,7 +651,7 @@ if __name__ == "__main__":
         # Initialize MuZero
         choice = int(choice)
         game_name = games[choice]
-        muzero = MuZero_uniform(game_name)
+        muzero = MuZero_Rhea(game_name)
 
         while True:
             # Configure running options
@@ -713,7 +711,7 @@ if __name__ == "__main__":
                 best_hyperparameters = hyperparameter_search(
                     game_name, parametrization, budget, parallel_experiments, 20
                 )
-                muzero = MuZero_uniform(game_name, best_hyperparameters)
+                muzero = MuZero_Rhea(game_name, best_hyperparameters)
             else:
                 break
             print("\nDone")
