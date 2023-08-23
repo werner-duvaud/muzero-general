@@ -338,43 +338,46 @@ def load_model(model_cls, model_path, config):
 if __name__ == "__main__":
     config = MuZeroConfig()
 
+    config.network = "fullyconnected"
     # checkpoint_path1 = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-10--20-03-39\model.checkpoint"
-    checkpoint_path1 = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-21--09-40-26\model.checkpoint"
+    checkpoint_path1 = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-23--14-25-59\model.checkpoint"
     muzero_model = load_model(models.MuZeroNetwork, checkpoint_path1, config)
 
     # muzero_2net_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-15--11-08-42\muzero_2net\model.checkpoint"
     # muzero_2net_model = load_model(models.MuZeroNetwork, muzero_2net_checkpoint_path, config)
 
+    config2 = MuZeroConfig()
+    config2.network = "resnet"
     # muzero_2net_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-21--22-01-34\muzero_2net\model.checkpoint"
     muzero_2net_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-22--20-25-51\muzero_2net\model.checkpoint"
-    muzero_2net_model = load_model(models2.MuZeroNetwork_2net, muzero_2net_checkpoint_path, config)
+    muzero_2net_model = load_model(models2.MuZeroNetwork_2net, muzero_2net_checkpoint_path, config2)
 
-    uniform_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-15--08-20-50\muzero_uniform\model.checkpoint"
-    uniform_model = load_model(models.MuZeroNetwork, uniform_checkpoint_path, config)
-
-    without_rb_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-16--04-35-40\muzero_without_rb\model.checkpoint"
-    without_rb_model = load_model(models.MuZeroNetwork, without_rb_checkpoint_path, config)
-
-    muzero_no_policy_value_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-15--11-08-42\muzero_2net\model.checkpoint"
-    muzero_no_policy_model = load_model(models.MuZeroNetwork, muzero_no_policy_value_checkpoint_path, config)
-
-
-    simplified_muzero_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-15--11-08-42\muzero_2net\model.checkpoint"
-    simplified_muzero = load_model(models.MuZeroNetwork, simplified_muzero_checkpoint_path, config)
-
-    # simplified_muzero_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-18--03-02-10\MuZeroNetwork_2net\model.checkpoint"
-    # simplified_muzero = load_model(models_2net.SimplifiedMuZeroNetwork, simplified_muzero_checkpoint_path, config)
+    # uniform_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-15--08-20-50\muzero_uniform\model.checkpoint"
+    # uniform_model = load_model(models.MuZeroNetwork, uniform_checkpoint_path, config)
+    #
+    # without_rb_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-16--04-35-40\muzero_without_rb\model.checkpoint"
+    # without_rb_model = load_model(models.MuZeroNetwork, without_rb_checkpoint_path, config)
+    #
+    # muzero_no_policy_value_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-15--11-08-42\muzero_2net\model.checkpoint"
+    # muzero_no_policy_model = load_model(models.MuZeroNetwork, muzero_no_policy_value_checkpoint_path, config)
+    #
+    #
+    # simplified_muzero_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-15--11-08-42\muzero_2net\model.checkpoint"
+    # simplified_muzero = load_model(models.MuZeroNetwork, simplified_muzero_checkpoint_path, config)
+    #
+    # # simplified_muzero_checkpoint_path = r"C:\Users\chunchang\workspace\muzero-general\results\tictactoe\2023-08-18--03-02-10\MuZeroNetwork_2net\model.checkpoint"
+    # # simplified_muzero = load_model(models_2net.SimplifiedMuZeroNetwork, simplified_muzero_checkpoint_path, config)
 
 
     game_tournament = GameTournament(config)
 
     models = [
         {"name":"muzero_2net", "model":muzero_2net_model},
-        {"name":"uniform", "model":uniform_model},
+        # {"name":"uniform", "model":uniform_model},
         {"name":"muzero", "model":muzero_model},
-        {"name": "without_rb", "model": without_rb_model},
-        {"name": "no policy value", "model": muzero_no_policy_model},
-        {"name": "simplified_muzero", "model": without_rb_model},
+        # {"name": "without_rb", "model": without_rb_model},
+        # {"name": "no policy value", "model": muzero_no_policy_model},
+        # {"name": "simplified_muzero", "model": without_rb_model},
     ]
 
 
