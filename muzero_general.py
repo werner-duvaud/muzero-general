@@ -11,7 +11,7 @@ import copy
 
 from simplifiedMuZero.without_rb.game_play import GamePlay
 from simplifiedMuZero.without_rb.play_buffer import PlayBuffer
-from simplifiedMuZero.without_rb.trainer import Trainer
+from simplifiedMuZero.without_rb.trainer_no_PV import Trainer
 from muzero import load_model_menu, hyperparameter_search
 
 import models
@@ -60,6 +60,9 @@ class MuZeroGeneral:
                         )
             else:
                 self.config = config
+
+        # using random search instand of MCTS
+        self.config.temperature_threshold = 0
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)

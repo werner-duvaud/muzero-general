@@ -71,7 +71,6 @@ class MuZero_2Net:
 
         # 重命名路径，以便区分不同的模型
         self.config.results_path /= "muzero_2net"
-        self.config.training_steps = 100000
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
