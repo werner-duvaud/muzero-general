@@ -1,21 +1,14 @@
-import copy
-import time
-
 import numpy
-import ray
 import torch
-
 import models
 
-
-@ray.remote
 class Trainer:
     """
     Class which run in a dedicated thread to train a neural network and save it
     in the shared storage.
     """
 
-    def __init__(self, initial_checkpoint, config):
+    def __init__(self, model_cls, initial_checkpoint, config):
         self.config = config
 
         # Fix random generator seed
@@ -23,8 +16,8 @@ class Trainer:
         torch.manual_seed(self.config.seed)
 
         # Initialize the network
-        self.model = models.MuZeroNetwork(self.config)
-        self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
+        self.model = model_cls(self.config)
+        # self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
         self.model.to(torch.device("cuda" if self.config.train_on_gpu else "cpu"))
         self.model.train()
 
@@ -52,74 +45,29 @@ class Trainer:
                 f"{self.config.optimizer} is not implemented. You can change the optimizer manually in trainer.py."
             )
 
-        if initial_checkpoint["optimizer_state"] is not None:
-            print("Loading optimizer...\n")
-            self.optimizer.load_state_dict(
-                copy.deepcopy(initial_checkpoint["optimizer_state"])
-            )
+        # if initial_checkpoint["optimizer_state"] is not None:
+        #     print("Loading optimizer...\n")
+        #     self.optimizer.load_state_dict(
+        #         copy.deepcopy(initial_checkpoint["optimizer_state"])
+        #     )
 
-    def continuous_update_weights(self, replay_buffer, shared_storage):
-        # Wait for the replay buffer to be filled
-        while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
-            time.sleep(0.1)
-
-        next_batch = replay_buffer.get_batch.remote()
-        # Training loop
-        while self.training_step < self.config.training_steps and not ray.get(
-            shared_storage.get_info.remote("terminate") # terminate是用来记录replay buffer等其它程序是否终止的，跟game的状态无关
-        ):
-            index_batch, batch = ray.get(next_batch)
-            next_batch = replay_buffer.get_batch.remote()
-            self.update_lr()
-            (
-                priorities,
-                total_loss,
-                value_loss,
-                reward_loss,
-                policy_loss,
-            ) = self.update_weights(batch)
-
-            if self.config.PER:
-                # Save new priorities in the replay buffer (See https://arxiv.org/abs/1803.00933)
-                replay_buffer.update_priorities.remote(priorities, index_batch)
-
-            # Save to the shared storage
-            if self.training_step % self.config.checkpoint_interval == 0:
-                shared_storage.set_info.remote(
-                    {
-                        "weights": copy.deepcopy(self.model.get_weights()),
-                        "optimizer_state": copy.deepcopy(
-                            models.dict_to_cpu(self.optimizer.state_dict())
-                        ),
-                    }
-                )
-                if self.config.save_model:
-                    shared_storage.save_checkpoint.remote()
-            shared_storage.set_info.remote(
-                {
-                    "training_step": self.training_step,
-                    "lr": self.optimizer.param_groups[0]["lr"],
-                    "total_loss": total_loss,
-                    "value_loss": value_loss,
-                    "reward_loss": reward_loss,
-                    "policy_loss": policy_loss,
-                }
-            )
-
-            # Managing the self-play / training ratio
-            if self.config.training_delay:
-                time.sleep(self.config.training_delay)
-            if self.config.ratio:
-                while (
-                    self.training_step
-                    / max(
-                        1, ray.get(shared_storage.get_info.remote("num_played_steps"))
-                    )
-                    > self.config.ratio
-                    and self.training_step < self.config.training_steps
-                    and not ray.get(shared_storage.get_info.remote("terminate")) # terminate是用来记录replay buffer等其它程序是否终止的，跟game的状态无关
-                ):
-                    time.sleep(0.5)
+    # # update weights 与 continuous update weights 的区别
+    # #   1. update weights 是实际计算更新network的权重
+    # #   2. continuous update weights 从replay buffer 里获取数据batch， 并将batch传递给update weights，使update weights完成参数更新
+    # def continuous_update_weights(self, play_buffer, terminate): # terminate是用来记录replay buffer等其它程序是否终止的，跟game的状态无关
+    #     next_batch = play_buffer.get_batch()
+    #     # Training loop
+    #     while self.training_step < self.config.training_steps and not terminate:
+    #         index_batch, batch = next_batch
+    #         next_batch = play_buffer.get_batch()
+    #         self.update_lr()
+    #         (
+    #             priorities,
+    #             total_loss,
+    #             value_loss,
+    #             reward_loss,
+    #             policy_loss,
+    #         ) = self.update_weights(batch)
 
     def update_weights(self, batch):
         """
@@ -141,8 +89,6 @@ class Trainer:
         priorities = numpy.zeros_like(target_value_scalar)
 
         device = next(self.model.parameters()).device
-        if self.config.PER:
-            weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
         observation_batch = (
             torch.tensor(numpy.array(observation_batch)).float().to(device)
         )
@@ -251,9 +197,7 @@ class Trainer:
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
         loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
-        if self.config.PER:
-            # Correct PER bias by using importance-sampling (IS) weights
-            loss *= weight_batch
+
         # Mean over batch dimension (pseudocode do a sum)
         loss = loss.mean()
 
@@ -279,7 +223,7 @@ class Trainer:
         lr = self.config.lr_init * self.config.lr_decay_rate ** (
             self.training_step / self.config.lr_decay_steps
         )
-        for param_group in self.optimizer.param_groups: # 更新optimizer的lr
+        for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
     @staticmethod
@@ -294,7 +238,6 @@ class Trainer:
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
-        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(
-            1
-        )
+        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1)
+
         return value_loss, reward_loss, policy_loss

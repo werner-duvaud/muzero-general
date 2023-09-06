@@ -5,7 +5,9 @@ import numpy
 import ray
 import torch
 
+# import simplifiedMuZero.net2.models_2net as models
 import models
+from simplifiedMuZero.net2.models2 import MuZeroNetwork_2net
 
 
 @ray.remote
@@ -23,7 +25,8 @@ class SelfPlay:
         torch.manual_seed(seed)
 
         # Initialize the network
-        self.model = models.MuZeroNetwork(self.config)
+        self.model = MuZeroNetwork_2net(self.config)
+        # self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(initial_checkpoint["weights"])
         self.model.to(torch.device("cuda" if self.config.selfplay_on_gpu else "cpu"))
         self.model.eval()
@@ -128,7 +131,7 @@ class SelfPlay:
         game_history.action_history.append(0)
         game_history.observation_history.append(observation) # 添加reset之后的observation
         game_history.reward_history.append(0)
-        game_history.to_play_history.append(self.game.to_play()) # to_play_history是用来存放玩家id的
+        game_history.to_play_history.append(self.game.to_play())
 
         done = False
 

@@ -17,11 +17,12 @@ import diagnose_model
 import models
 import replay_buffer
 import self_play
+# import simplifiedMuZero.search_policy.self_play_uniform_search as self_play
 import shared_storage
 import trainer
 
 
-class MuZero:
+class MuZero_uniform:
     """
     Main class to manage MuZero.
 
@@ -34,7 +35,7 @@ class MuZero:
         split_resources_in (int, optional): Split the GPU usage when using concurent muzero instances.
 
     Example:
-        >>> muzero = MuZero("cartpole")
+        >>> muzero = MuZero_uniform("cartpole")
         >>> muzero.train()
         >>> muzero.test(render=True)
     """
@@ -64,6 +65,10 @@ class MuZero:
                         )
             else:
                 self.config = config
+
+        # 重命名路径，以便区分不同的模型
+        self.config.results_path /= "muzero_uniform"
+        self.config.temperature_threshold = 0
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -523,7 +528,7 @@ def hyperparameter_search(
             if 0 < budget:
                 param = optimizer.ask()
                 print(f"Launching new experiment: {param.value}")
-                muzero = MuZero(game_name, param.value, parallel_experiments)
+                muzero = MuZero_uniform(game_name, param.value, parallel_experiments)
                 muzero.param = param
                 muzero.train(False)
                 running_experiments.append(muzero)
@@ -549,7 +554,7 @@ def hyperparameter_search(
                     if 0 < budget:
                         param = optimizer.ask()
                         print(f"Launching new experiment: {param.value}")
-                        muzero = MuZero(game_name, param.value, parallel_experiments)
+                        muzero = MuZero_uniform(game_name, param.value, parallel_experiments)
                         muzero.param = param
                         muzero.train(False)
                         running_experiments[i] = muzero
@@ -559,7 +564,7 @@ def hyperparameter_search(
 
     except KeyboardInterrupt:
         for experiment in running_experiments:
-            if isinstance(experiment, MuZero):
+            if isinstance(experiment, MuZero_uniform):
                 experiment.terminate_workers()
 
     recommendation = optimizer.provide_recommendation()
@@ -623,12 +628,12 @@ def load_model_menu(muzero, game_name):
 if __name__ == "__main__":
     if len(sys.argv) == 2:
         # Train directly with: python muzero.py cartpole
-        muzero = MuZero(sys.argv[1])
+        muzero = MuZero_uniform(sys.argv[1])
         muzero.train()
     elif len(sys.argv) == 3:
         # Train directly with: python muzero.py cartpole '{"lr_init": 0.01}'
         config = json.loads(sys.argv[2])
-        muzero = MuZero(sys.argv[1], config)
+        muzero = MuZero_uniform(sys.argv[1], config)
         muzero.train()
     else:
         print("\nWelcome to MuZero! Here's a list of games:")
@@ -648,7 +653,7 @@ if __name__ == "__main__":
         # Initialize MuZero
         choice = int(choice)
         game_name = games[choice]
-        muzero = MuZero(game_name)
+        muzero = MuZero_uniform(game_name)
 
         while True:
             # Configure running options
@@ -708,7 +713,7 @@ if __name__ == "__main__":
                 best_hyperparameters = hyperparameter_search(
                     game_name, parametrization, budget, parallel_experiments, 20
                 )
-                muzero = MuZero(game_name, best_hyperparameters)
+                muzero = MuZero_uniform(game_name, best_hyperparameters)
             else:
                 break
             print("\nDone")

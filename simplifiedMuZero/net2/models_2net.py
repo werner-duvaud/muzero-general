@@ -4,10 +4,10 @@ from abc import ABC, abstractmethod
 import torch
 
 
-class MuZeroNetwork:
+class SimplifiedMuZeroNetwork:
     def __new__(cls, config):
         if config.network == "fullyconnected":
-            return MuZeroFullyConnectedNetwork(
+            return SimplifiedMuZeroFullyConnectedNetwork(
                 config.observation_shape,
                 config.stacked_observations,
                 len(config.action_space),
@@ -77,7 +77,7 @@ class AbstractNetwork(ABC, torch.nn.Module):
 ######## Fully Connected #########
 
 
-class MuZeroFullyConnectedNetwork(AbstractNetwork):
+class SimplifiedMuZeroFullyConnectedNetwork(AbstractNetwork):
     def __init__(
         self,
         observation_shape,
@@ -96,17 +96,25 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         self.full_support_size = 2 * support_size + 1
         # support_size 表示的应该是一个选择的范围【-support_size, support_size】.最后+1是因为range最后不包含最后的数
 
-        self.representation_network = torch.nn.DataParallel(
-            mlp(
-                observation_shape[0]
-                * observation_shape[1]
-                * observation_shape[2]
-                * (stacked_observations + 1)
-                + stacked_observations * observation_shape[1] * observation_shape[2],
-                fc_representation_layers,
-                encoding_size,
-            )
-        )
+        representation_input_size = observation_shape[0] * observation_shape[1] * observation_shape[2] * (
+                    stacked_observations + 1) \
+                                    + stacked_observations * observation_shape[1] * observation_shape[2]
+
+        # 输出等于输入，即编码维度等于输入维度
+        encoding_size = representation_input_size
+
+        # self.representation_network = torch.nn.DataParallel(
+        #     # mlp(
+        #     #     representation_input_size,
+        #     #     fc_representation_layers,
+        #     #     encoding_size,
+        #     # )
+        #     mlp(
+        #         representation_input_size + self.action_space_size,
+        #         fc_representation_layers,
+        #         encoding_size,
+        #     )
+        # )
 
         #dynamics的输入是encoding_size+action_space_size
         self.dynamics_encoded_state_network = torch.nn.DataParallel(
@@ -132,46 +140,39 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         value = self.prediction_value_network(encoded_state)
         return policy_logits, value
 
-    def representation(self, observation):
-        encoded_state = self.representation_network(
-            observation.view(observation.shape[0], -1)
-        )
-
-        # 正则化
-        # Scale encoded state between [0, 1] (See appendix paper Training)
+        # 将encoded_stated标准化
+    def encoded_stated_normalized(self, encoded_state):
         min_encoded_state = encoded_state.min(1, keepdim=True)[0]
         max_encoded_state = encoded_state.max(1, keepdim=True)[0]
         scale_encoded_state = max_encoded_state - min_encoded_state
-        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5 # 防止为0，造成NAN
-        encoded_state_normalized = (
-            encoded_state - min_encoded_state
-        ) / scale_encoded_state
+        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5  # 防止为0，出现NAN
+        encoded_state_normalized = (encoded_state - min_encoded_state) / scale_encoded_state
+
         return encoded_state_normalized
+    def representation(self, observation):
+        observation = observation.view(observation.shape[0], -1)
+        action_zeros = (torch.zeros((observation.shape[0], self.action_space_size)).to(observation.device).float())
+        x = torch.cat((observation, action_zeros), dim=1)
+
+        # encoded_state = self.representation_network(x)
+        encoded_state = self.dynamics_encoded_state_network(x)
+
+        # encoded_state = self.representation_network(
+        #     observation.view(observation.shape[0], -1)
+        # )
+
+        return self.encoded_stated_normalized(encoded_state)
 
     # dynamic同representation的唯一不同就是前者需要将encoded_state和action合并在一起作为输入，而representation不需要绑定action
     def dynamics(self, encoded_state, action):
-        # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
-        action_one_hot = (
-            torch.zeros((action.shape[0], self.action_space_size))
-            .to(action.device)
-            .float()
-        )
-        action_one_hot.scatter_(1, action.long(), 1.0) #将action的位置赋值为1
+        action_one_hot = (torch.zeros((action.shape[0], self.action_space_size)).to(action.device).float())
+        action_one_hot.scatter(1, action.long(), 1.0)
         x = torch.cat((encoded_state, action_one_hot), dim=1)
 
         next_encoded_state = self.dynamics_encoded_state_network(x)
 
         reward = self.dynamics_reward_network(next_encoded_state)
-
-        # 正则化
-        # Scale encoded state between [0, 1] (See paper appendix Training)
-        min_next_encoded_state = next_encoded_state.min(1, keepdim=True)[0]
-        max_next_encoded_state = next_encoded_state.max(1, keepdim=True)[0]
-        scale_next_encoded_state = max_next_encoded_state - min_next_encoded_state
-        scale_next_encoded_state[scale_next_encoded_state < 1e-5] += 1e-5 # 防止为0，造成NAN
-        next_encoded_state_normalized = (
-            next_encoded_state - min_next_encoded_state
-        ) / scale_next_encoded_state
+        next_encoded_state_normalized = self.encoded_stated_normalized(next_encoded_state)
 
         return next_encoded_state_normalized, reward
 

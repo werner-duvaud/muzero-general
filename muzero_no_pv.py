@@ -18,7 +18,7 @@ import models
 import replay_buffer
 import self_play
 import shared_storage
-import trainer
+import simplifiedMuZero.no_pv.trainer_no_pv as trainer
 
 
 class MuZero:
