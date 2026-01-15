@@ -1,0 +1,25 @@
+{
+    "generation_info": {
+        "timestamp": "2026-01-14T16:04:12.629322",
+        "main_model": "claude-sonnet-4-5-20250929",
+        "generator_version": "1.0.1",
+        "repo_path": "/Users/charlesgum/Projects/Jumal/Project1-generate",
+        "commit_id": null
+    },
+    "statistics": {
+        "total_components": 61,
+        "leaf_nodes": 54,
+        "max_depth": 2
+    },
+    "files_generated": [
+        "overview.md",
+        "module_tree.json",
+        "first_module_tree.json",
+        "replay_buffer.md",
+        "neural_networks.md",
+        "shared_storage.md",
+        "self_play_mcts.md",
+        "trainer.md",
+        "main_orchestrator.md"
+    ]
+}

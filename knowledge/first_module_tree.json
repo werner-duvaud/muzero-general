@@ -1,0 +1,104 @@
+{
+    "neural_networks": {
+        "path": "knowledge/models.py",
+        "components": [
+            "knowledge.models.AbstractNetwork",
+            "knowledge.models.MuZeroNetwork",
+            "knowledge.models.RepresentationNetwork",
+            "knowledge.models.DynamicsNetwork",
+            "knowledge.models.PredictionNetwork",
+            "knowledge.models.MuZeroResidualNetwork",
+            "knowledge.models.MuZeroFullyConnectedNetwork",
+            "knowledge.models.ResidualBlock",
+            "knowledge.models.DownSample",
+            "knowledge.models.DownsampleCNN"
+        ],
+        "children": {}
+    },
+    "self_play_mcts": {
+        "path": "knowledge/self_play.py",
+        "components": [
+            "knowledge.self_play.SelfPlay",
+            "knowledge.self_play.MCTS",
+            "knowledge.self_play.Node",
+            "knowledge.self_play.GameHistory",
+            "knowledge.self_play.MinMaxStats"
+        ],
+        "children": {}
+    },
+    "replay_buffer": {
+        "path": "knowledge/replay_buffer.py",
+        "components": [
+            "knowledge.replay_buffer.ReplayBuffer",
+            "knowledge.replay_buffer.Reanalyse"
+        ],
+        "children": {}
+    },
+    "trainer": {
+        "path": "knowledge/trainer.py",
+        "components": [
+            "knowledge.trainer.Trainer"
+        ],
+        "children": {}
+    },
+    "shared_storage": {
+        "path": "knowledge/shared_storage.py",
+        "components": [
+            "knowledge.shared_storage.SharedStorage"
+        ],
+        "children": {}
+    },
+    "main_orchestrator": {
+        "path": "knowledge/muzero.py",
+        "components": [
+            "knowledge.muzero.MuZero",
+            "knowledge.muzero.CPUActor"
+        ],
+        "children": {}
+    },
+    "game_environments": {
+        "path": "knowledge/games",
+        "components": [
+            "knowledge.games.abstract_game.AbstractGame",
+            "knowledge.games.atari.Game",
+            "knowledge.games.atari.MuZeroConfig",
+            "knowledge.games.breakout.Game",
+            "knowledge.games.breakout.MuZeroConfig",
+            "knowledge.games.cartpole.Game",
+            "knowledge.games.cartpole.MuZeroConfig",
+            "knowledge.games.connect4.Game",
+            "knowledge.games.connect4.Connect4",
+            "knowledge.games.connect4.MuZeroConfig",
+            "knowledge.games.gomoku.Game",
+            "knowledge.games.gomoku.Gomoku",
+            "knowledge.games.gomoku.MuZeroConfig",
+            "knowledge.games.gridworld.Game",
+            "knowledge.games.gridworld.MuZeroConfig",
+            "knowledge.games.lunarlander.Game",
+            "knowledge.games.lunarlander.DeterministicLunarLander",
+            "knowledge.games.lunarlander.ContactDetector",
+            "knowledge.games.lunarlander.MuZeroConfig",
+            "knowledge.games.simple_grid.Game",
+            "knowledge.games.simple_grid.GridEnv",
+            "knowledge.games.simple_grid.MuZeroConfig",
+            "knowledge.games.spiel.Game",
+            "knowledge.games.spiel.Spiel",
+            "knowledge.games.spiel.MuZeroConfig",
+            "knowledge.games.tictactoe.Game",
+            "knowledge.games.tictactoe.TicTacToe",
+            "knowledge.games.tictactoe.MuZeroConfig",
+            "knowledge.games.twentyone.Game",
+            "knowledge.games.twentyone.TwentyOne",
+            "knowledge.games.twentyone.MuZeroConfig"
+        ],
+        "children": {}
+    },
+    "diagnostics": {
+        "path": "knowledge/diagnose_model.py",
+        "components": [
+            "knowledge.diagnose_model.DiagnoseModel",
+            "knowledge.diagnose_model.Trajectoryinfo"
+        ],
+        "children": {}
+    }
+}
