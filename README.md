@@ -1,130 +1,178 @@
-![supported platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Mac%20%7C%20Windows%20(soon)-929292)
-![supported python versions](https://img.shields.io/badge/python-%3E%3D%203.6-306998)
-![dependencies status](https://img.shields.io/badge/dependencies-up%20to%20date-brightgreen)
-[![style black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-![license MIT](https://img.shields.io/badge/licence-MIT-green)
-[![discord badge](https://img.shields.io/badge/discord-join-6E60EF)](https://discord.gg/GB2vwsF)
-
-![ci-testing workflow](https://github.com/werner-duvaud/muzero-general/workflows/CI%20testing/badge.svg)
-
 # MuZero General
 
-A commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) implementation of MuZero based on the Google DeepMind [paper](https://arxiv.org/abs/1911.08265) (Schrittwieser et al., Nov 2019) and the associated [pseudocode](https://arxiv.org/src/1911.08265v2/anc/pseudocode.py).
-It is designed to be easily adaptable for every games or reinforcement learning environments (like [gym](https://github.com/openai/gym)). You only need to add a [game file](https://github.com/werner-duvaud/muzero-general/tree/master/games) with the hyperparameters and the game class. Please refer to the [documentation](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) and the [example](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py).
-This implementation is primarily for educational purpose.\
-[Explanatory video of MuZero](https://youtu.be/We20YSAJZSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-306998)](requirements.txt)
+[![MIT license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-MuZero is a state of the art RL algorithm for board games (Chess, Go, ...) and Atari games.
-It is the successor to [AlphaZero](https://arxiv.org/abs/1712.01815) but without any knowledge of the environment underlying dynamics. MuZero learns a model of the environment and uses an internal representation that contains only the useful information for predicting the reward, value, policy and transitions. MuZero is also close to [Value prediction networks](https://arxiv.org/abs/1707.03497). See [How it works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works).
+An educational and commented implementation of [MuZero](https://arxiv.org/abs/1911.08265), based on DeepMind's 2019 paper and [original pseudocode](https://arxiv.org/src/1911.08265v2/anc/pseudocode.py), built with PyTorch and Ray.
 
-## Features
+MuZero builds on [AlphaZero](https://arxiv.org/abs/1712.01815) by learning the dynamics used for planning from experience. Its network represents observations as a latent state, predicts how actions change that state, and estimates rewards, values and policies. Monte Carlo tree search (MCTS) uses these predictions to choose actions.
 
-* [x] Residual Network and Fully connected network in [PyTorch](https://github.com/pytorch/pytorch)
-* [x] Multi-Threaded/Asynchronous/[Cluster](https://docs.ray.io/en/latest/cluster-index.html) with [Ray](https://github.com/ray-project/ray)
-* [X] Multi GPU support for the training and the selfplay
-* [x] TensorBoard real-time monitoring
-* [x] Model weights automatically saved at checkpoints
-* [x] Single and two player mode
-* [x] Commented and [documented](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation)
-* [x] Easily adaptable for new games
-* [x] [Examples](https://github.com/werner-duvaud/muzero-general/blob/master/games/cartpole.py) of board games, Gym and Atari games (See [list of implemented games](https://github.com/werner-duvaud/muzero-general#games-already-implemented))
-* [x] [Pretrained weights](https://github.com/werner-duvaud/muzero-general/tree/master/results) available
-* [ ] Windows support (Experimental / Workaround: Use the [notebook](https://github.com/werner-duvaud/muzero-general/blob/master/notebook.ipynb) in [Google Colab](https://colab.research.google.com))
+For an introduction, watch the [MuZero explanatory video](https://youtu.be/We20YSAJZSE) or read [How MuZero works](https://github.com/werner-duvaud/muzero-general/wiki/How-MuZero-works) and the [project wiki](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation).
 
-### Further improvements
-Here is a list of features which could be interesting to add but which are not in MuZero's paper. We are open to contributions and other ideas.
+The implementation supports fully connected and residual networks, parallel self-play, prioritized replay, reanalysis, and single-player or two-player turn-based games with discrete actions.
 
-* [x] [Hyperparameter search](https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization)
-* [x] [Continuous action space](https://github.com/werner-duvaud/muzero-general/tree/continuous)
-* [x] [Tool to understand the learned model](https://github.com/werner-duvaud/muzero-general/blob/master/diagnose_model.py)
-* [ ] Batch MCTS
-* [ ] Support of more than two player games
+To adapt it to a new environment, add a [game file](games) containing its configuration and `Game` adapter. See [CartPole](games/cartpole.py) for an example and [Add an environment](#add-an-environment) for the interface.
 
-## Demo
+## Trained examples
 
-All performances are tracked and displayed in real time in [TensorBoard](https://www.tensorflow.org/tensorboard) :
+| [CartPole](games/cartpole.py) | [Lunar Lander](games/lunarlander.py) | [Breakout](games/breakout.py) |
+| :---: | :---: | :---: |
+| <img src="checkpoints/cartpole/episode.gif" height="200" alt="CartPole policy balancing for 500 steps"> | <img src="checkpoints/lunarlander/episode.gif" height="200" alt="Lunar Lander policy completing a successful landing with a score of 304.46"> | <img src="checkpoints/breakout/episode.gif" height="200" alt="Breakout policy scoring 303 points"> |
+| [Learning curve](checkpoints/cartpole/training.png) · [Checkpoint](checkpoints/cartpole/model.checkpoint) | [Learning curve](checkpoints/lunarlander/training.png) · [Checkpoint](checkpoints/lunarlander/model.checkpoint) | [Learning curve](checkpoints/breakout/training.png) · [Checkpoint](checkpoints/breakout/model.checkpoint) |
 
-![cartpole training summary](https://github.com/werner-duvaud/muzero-general/blob/master/docs/cartpole-training-summary.png)
+## Quick start
 
-Testing Lunar Lander :
+### Install
 
-![lunarlander training preview](https://github.com/werner-duvaud/muzero-general/blob/master/docs/lunarlander-training-preview.png)
-
-## Games already implemented
-
-* Cartpole      (Tested with the fully connected network)
-* Lunar Lander  (Tested in deterministic mode with the fully connected network)
-* Gridworld     (Tested with the fully connected network)
-* Tic-tac-toe   (Tested with the fully connected network and the residual network)
-* Connect4      (Slightly tested with the residual network)
-* Gomoku
-* Twenty-One / Blackjack    (Tested with the residual network)
-* Atari Breakout
-
-Tests are done on Ubuntu with 16 GB RAM / Intel i7 / GTX 1050Ti Max-Q. We make sure to obtain a progression and a level which ensures that it has learned. But we do not systematically reach a human level. For certain environments, we notice a regression after a certain time. The proposed configurations are certainly not optimal and we do not focus for now on the optimization of hyperparameters. Any help is welcome.
-
-## Code structure
-
-![code structure](https://github.com/werner-duvaud/muzero-general/blob/master/docs/code-structure-werner-duvaud.png)
-
-Network summary:
-
-<p align="center">
-<a href="https://github.com/werner-duvaud/muzero-general/blob/master/docs/muzero-network-werner-duvaud.png">
-<img src="https://github.com/werner-duvaud/muzero-general/blob/master/docs/muzero-network-werner-duvaud.png" width="250"/>
-</a>
-</p>
-
-## Getting started
-### Installation
+Use Python 3.12 or later. The included checkpoints were trained on Linux with Python 3.12.
 
 ```bash
 git clone https://github.com/werner-duvaud/muzero-general.git
 cd muzero-general
-
-pip install -r requirements.lock
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-### Run
+See the official [PyTorch installation guide](https://docs.pytorch.org/get-started/locally/) for GPU setup and [Gymnasium Box2D instructions](https://gymnasium.farama.org/environments/box2d/) for Lunar Lander build dependencies. MCTS tree visualization also needs the system [Graphviz executable](https://graphviz.readthedocs.io/en/stable/manual.html#installation), in addition to its Python package.
+
+### Train
+
+Choose an environment:
 
 ```bash
-python muzero.py
+python muzero.py cartpole
+python muzero.py lunarlander
+python muzero.py breakout
 ```
-To visualize the training results, run in a new terminal:
+
+Each command starts a fresh model using that game's default config, runs the configured training budget, then evaluates the selected checkpoint. The defaults use CPU training for CartPole and Lunar Lander, and a GPU for Breakout when CUDA is available. Use `--cpu` to force CPU execution.
+
+From Python:
+
+```python
+from muzero import MuZero
+
+agent = MuZero("cartpole")
+agent.train()
+```
+
+### Evaluate a checkpoint
+
+```bash
+python muzero.py cartpole --evaluate
+python muzero.py lunarlander --evaluate
+python muzero.py breakout --evaluate
+```
+
+These commands load `checkpoints/<env>/model.checkpoint` and evaluate it on CPU, without training or rendering. The default is 100 episodes. Checkpoints contain their saved configuration; no JSON sidecar is needed.
+
+### Monitor and render
+
+Run TensorBoard in another terminal:
+
 ```bash
 tensorboard --logdir ./results
 ```
 
-### Config
+For interactive rendering, human play, model diagnostics or hyperparameter search, open the menu:
 
-You can adapt the configurations of each game by editing the `MuZeroConfig` class of the respective file in the [games folder](https://github.com/werner-duvaud/muzero-general/tree/master/games).
-
-## Related work
-
-* [EfficientZero](https://arxiv.org/abs/2111.00210) (Weirui Ye, Shaohuai Liu, Thanard Kurutach, Pieter Abbeel, Yang Gao)
-* [Sampled MuZero](https://arxiv.org/abs/2104.06303) (Thomas Hubert, Julian Schrittwieser, Ioannis Antonoglou, Mohammadamin Barekatain, Simon Schmitt, David Silver)
-
-## Authors
-
-* Werner Duvaud
-* Aurèle Hainaut
-* Paul Lenoir
-* [Contributors](https://github.com/werner-duvaud/muzero-general/graphs/contributors)
-
-Please use this bibtex if you want to cite this repository (master branch) in your publications:
 ```bash
+python muzero.py
+```
+
+Run `python muzero.py --help` for all command-line options.
+
+## Configuration and saved runs
+
+Each [game file](games) contains a complete, commented `MuZeroConfig`. All games share the same parameter names; values are tuned per environment. Edit the Python config to change the default recipe. [config.py](config.py) provides shared validation and temperature-schedule helpers.
+
+You can also override fields for one run:
+
+```bash
+python muzero.py cartpole --config '{"num_workers": 4}' --output results/cartpole/example
+```
+
+`--config` accepts a JSON object or a JSON file. `--seed` changes the training seed; evaluation seeds are configured separately.
+
+By default, runs are saved under `results/<env>/<timestamp>/`:
+
+| File | Contents |
+| --- | --- |
+| `model.checkpoint` | Latest saved training state, including weights and optimizer state |
+| `model-best.checkpoint` | Best validation checkpoint, when validation is enabled |
+| `replay_buffer.pkl` | Collected games for resuming training |
+| `config.json`, `run.json` | Effective configuration and runtime/source metadata |
+| `validation.json`, `evaluation.json` | Validation history and final evaluation results |
+
+TensorBoard event files are saved in the same directory. With `checkpoint_selection="best"`, the final evaluation uses the best validation checkpoint, which may precede the last gradient update.
+
+Replay snapshots can be many gigabytes for image-based environments.
+
+To evaluate your own run or resume interrupted training, replace `RUN` with its directory name:
+
+```bash
+python muzero.py cartpole --evaluate --checkpoint results/cartpole/RUN/model-best.checkpoint
+
+python muzero.py cartpole --checkpoint results/cartpole/RUN/model.checkpoint --replay-buffer results/cartpole/RUN/replay_buffer.pkl
+```
+
+Resume with both the checkpoint and replay buffer to retain collected experience. To train beyond the saved budget, increase `training_steps` through `--config`.
+
+## Other environments
+
+Additional adapters are available for:
+
+- [MiniGrid](games/gridworld.py) (`gridworld`) and [a simple grid world](games/simple_grid.py) (`simple_grid`).
+- [Tic-tac-toe](games/tictactoe.py), [Connect4](games/connect4.py) and [Gomoku](games/gomoku.py).
+- [Twenty-One](games/twentyone.py) (`twentyone`), a simplified card game.
+- [OpenSpiel](games/spiel.py) (`spiel`), configured for tic-tac-toe by default. The adapter supports deterministic games with one player or two alternating players and 1D–3D observation tensors. Chance-based games such as backgammon and simultaneous-action games are unsupported.
+- [An Atari template](games/atari.py) (`atari`), configured for Breakout by default. Use `breakout` for the tuned recipe and packaged checkpoint shown above.
+
+Only CartPole, Lunar Lander and Breakout currently include packaged checkpoints.
+
+## Add an environment
+
+1. Copy [games/cartpole.py](games/cartpole.py) to `games/my_game.py`, keeping the common config fields.
+2. Set the observation shape, action/player lists, network and training parameters. Observations must have shape `(channels, height, width)`; reshape a vector of length `n` to `(1, 1, n)`.
+3. Implement `Game` using [AbstractGame](games/abstract_game.py): initialization, `reset()`, `step(action)`, `legal_actions()` and `render()`. `step()` returns `(observation, reward, done)`. Implement `to_play()` for multiplayer games and `close()` to release resources.
+4. Run `python muzero.py my_game`.
+
+Actions and players use consecutive IDs starting at zero. Wrap Gymnasium's `terminated` and `truncated` flags into `done`. Trajectory indexing and training-target alignment are documented in [game_history.py](game_history.py).
+
+## Code guide
+
+| File | Role |
+| --- | --- |
+| [muzero.py](muzero.py) | CLI, worker orchestration, training and checkpoint loading |
+| [self_play.py](self_play.py) | MCTS, action selection and self-play |
+| [models.py](models.py) | Fully connected and residual networks |
+| [trainer.py](trainer.py) | Losses, recurrent unrolling and optimizer updates |
+| [replay_buffer.py](replay_buffer.py) | Replay sampling, eviction and reanalysis |
+| [game_history.py](game_history.py) | Trajectories, observation stacks and training targets |
+| [evaluation.py](evaluation.py) | Validation, checkpoint selection and evaluation reports |
+| [random_bootstrap.py](random_bootstrap.py) | Random-episode collection and replay initialization |
+| [diagnose_model.py](diagnose_model.py) | Compare learned dynamics with real environment transitions |
+
+Format code with [Ruff](https://docs.astral.sh/ruff/): `ruff format --target-version py312 .`
+
+## Further reading
+
+- [MuZero paper](https://arxiv.org/abs/1911.08265) and [original pseudocode](https://arxiv.org/src/1911.08265v2/anc/pseudocode.py).
+- [Project wiki](https://github.com/werner-duvaud/muzero-general/wiki/MuZero-Documentation) and [explanatory video](https://youtu.be/We20YSAJZSE).
+- [Network diagram](docs/muzero-network-werner-duvaud.png).
+- [EfficientZero](https://arxiv.org/abs/2111.00210) and [Sampled MuZero](https://arxiv.org/abs/2104.06303).
+
+## Authors and citation
+
+Werner Duvaud, Aurèle Hainaut, Paul Lenoir, and [contributors](https://github.com/werner-duvaud/muzero-general/graphs/contributors). Released under the [MIT license](LICENSE).
+
+```bibtex
 @misc{muzero-general,
   author       = {Werner Duvaud, Aurèle Hainaut},
   title        = {MuZero General: Open Reimplementation of MuZero},
   year         = {2019},
   publisher    = {GitHub},
-  journal      = {GitHub repository},
-  howpublished = {\url{https://github.com/werner-duvaud/muzero-general}},
+  url          = {https://github.com/werner-duvaud/muzero-general},
 }
 ```
-
-## Getting involved
-
-* [GitHub Issues](https://github.com/werner-duvaud/muzero-general/issues): For reporting bugs.
-* [Pull Requests](https://github.com/werner-duvaud/muzero-general/pulls): For submitting code contributions.
-* [Discord server](https://discord.gg/GB2vwsF): For discussions about development or any general questions.

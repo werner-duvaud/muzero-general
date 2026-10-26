@@ -57,6 +57,7 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+.ruff_cache/
 
 # Translations
 *.mo
@@ -91,3 +92,5 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+/results

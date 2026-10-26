@@ -4,54 +4,70 @@ import seaborn
 import torch
 
 import models
-from self_play import MCTS, Node, SelfPlay
+from game_history import GameHistory
+from self_play import MCTS, Node, SelfPlay, next_player
 
 
 class DiagnoseModel:
-    """
-    Tools to understand the learned model.
+    """Tools to understand the learned model.
 
     Args:
-        weights: weights for the model to diagnose.
-
-        config: configuration class instance related to the weights.
+        checkpoint (dict): Checkpoint containing network weights.
+        config (MuZeroConfig): Configuration matching the checkpoint architecture.
     """
 
     def __init__(self, checkpoint, config):
         self.config = config
 
-        # Initialize the network
+        # Initialize the network.
         self.model = models.MuZeroNetwork(self.config)
         self.model.set_weights(checkpoint["weights"])
         self.model.to(
             torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        )  # on GPU if available since the DataParallel objects in MuZeroNetwork requires that
+        )  # on GPU if available since the DataParallel objects in MuZeroNetwork requires that.
         self.model.eval()
 
+    @torch.no_grad()
     def get_virtual_trajectory_from_obs(
         self, observation, horizon, plot=True, to_play=0
     ):
+        """Play a game using the learned model instead of the environment.
+
+        Run MCTS with root exploration noise at each imagined state, choosing the
+        most visited action and advancing with recurrent inference. Imagined states
+        use the full configured action space.
+
+        Args:
+            observation (array-like): Initial, unstacked game observation.
+            horizon (int): Number of imagined actions.
+            plot (bool): Display trajectory diagnostic plots.
+            to_play (int): Player at the initial state.
+
+        Returns:
+            TrajectoryInfo: Actions, rewards, and search diagnostics.
         """
-        MuZero plays a game but uses its model instead of using the environment.
-        We still do an MCTS at each step.
-        """
-        trajectory_info = Trajectoryinfo("Virtual trajectory", self.config)
+        trajectory_info = TrajectoryInfo("Virtual trajectory", self.config)
+        history = GameHistory()
+        history.observation_history.append(observation)
+        observation = history.get_stacked_observations(
+            -1,
+            self.config.stacked_observations,
+            len(self.config.action_space),
+            getattr(self.config, "observation_scale", 1),
+        )
         root, mcts_info = MCTS(self.config).run(
             self.model, observation, self.config.action_space, to_play, True
         )
-        trajectory_info.store_info(root, mcts_info, None, numpy.NaN)
+        trajectory_info.store_info(root, mcts_info, None, numpy.nan)
 
         virtual_to_play = to_play
         for i in range(horizon):
             action = SelfPlay.select_action(root, 0)
 
-            # Players play turn by turn
-            if virtual_to_play + 1 < len(self.config.players):
-                virtual_to_play = self.config.players[virtual_to_play + 1]
-            else:
-                virtual_to_play = self.config.players[0]
+            # Players play turn by turn.
+            virtual_to_play = next_player(virtual_to_play, self.config.players)
 
-            # Generate new root
+            # Generate new root.
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                 root.hidden_state,
                 torch.tensor([[action]]).to(root.hidden_state.device),
@@ -79,54 +95,84 @@ class DiagnoseModel:
 
         return trajectory_info
 
+    @torch.no_grad()
     def compare_virtual_with_real_trajectories(
         self, first_obs, game, horizon, plot=True
     ):
-        """
-        First, MuZero plays a game but uses its model instead of using the environment.
-        Then, MuZero plays the optimal trajectory according precedent trajectory but performs it in the
-        real environment until arriving at an action impossible in the real environment.
-        It does an MCTS too, but doesn't take it into account.
-        All information during the two trajectories are recorded and displayed.
+        """Compare a model trajectory with the same actions in the real game.
+
+        The game must already be at first_obs. Real-state searches record diagnostics;
+        the executed actions come from the virtual trajectory. Stop at episode end,
+        an illegal action, or the horizon. Rewards use training units. Search graphs
+        are saved as PDFs even when plot is False.
+
+        Args:
+            first_obs (array-like): Initial, unstacked game observation.
+            game (AbstractGame): Environment positioned at first_obs.
+            horizon (int): Maximum number of actions to compare.
+            plot (bool): Display trajectory plots and open search graphs.
+
+        Returns:
+            tuple: Virtual TrajectoryInfo, real TrajectoryInfo, and the index of the
+            first illegal virtual action, or None if no illegal action is encountered.
         """
         virtual_trajectory_info = self.get_virtual_trajectory_from_obs(
             first_obs, horizon, False
         )
-        real_trajectory_info = Trajectoryinfo("Real trajectory", self.config)
+        real_trajectory_info = TrajectoryInfo("Real trajectory", self.config)
+        history = GameHistory()
+        history.observation_history.append(first_obs)
+        stacked_observation = history.get_stacked_observations(
+            -1,
+            self.config.stacked_observations,
+            len(self.config.action_space),
+            getattr(self.config, "observation_scale", 1),
+        )
         trajectory_divergence_index = None
         real_trajectory_end_reason = "Reached horizon"
 
-        # Illegal moves are masked at the root
+        # Illegal moves are masked at the root.
         root, mcts_info = MCTS(self.config).run(
             self.model,
-            first_obs,
+            stacked_observation,
             game.legal_actions(),
             game.to_play(),
             True,
         )
         self.plot_mcts(root, plot)
-        real_trajectory_info.store_info(root, mcts_info, None, numpy.NaN)
+        real_trajectory_info.store_info(root, mcts_info, None, numpy.nan)
         for i, action in enumerate(virtual_trajectory_info.action_history):
-            # Follow virtual trajectory until it reaches an illegal move in the real env
+            # Follow virtual trajectory until it reaches an illegal move in the real env.
             if action not in game.legal_actions():
-                break  # Comment to keep playing after trajectory divergence
-                action = SelfPlay.select_action(root, 0)
-                if trajectory_divergence_index is None:
-                    trajectory_divergence_index = i
-                    real_trajectory_end_reason = f"Virtual trajectory reached an illegal move at timestep {trajectory_divergence_index}."
+                trajectory_divergence_index = i
+                real_trajectory_end_reason = (
+                    f"Virtual trajectory reached an illegal move at timestep {i}."
+                )
+                break
 
             observation, reward, done = game.step(action)
+            reward /= self.config.reward_scale
+            history.action_history.append(action)
+            history.observation_history.append(observation)
+            if done:
+                real_trajectory_info.action_history.append(action)
+                real_trajectory_info.reward_history.append(reward)
+                real_trajectory_end_reason = "Real trajectory reached Done"
+                break
+            stacked_observation = history.get_stacked_observations(
+                -1,
+                self.config.stacked_observations,
+                len(self.config.action_space),
+                getattr(self.config, "observation_scale", 1),
+            )
             root, mcts_info = MCTS(self.config).run(
                 self.model,
-                observation,
+                stacked_observation,
                 game.legal_actions(),
                 game.to_play(),
                 True,
             )
             real_trajectory_info.store_info(root, mcts_info, action, reward)
-            if done:
-                real_trajectory_end_reason = "Real trajectory reached Done"
-                break
 
         if plot:
             virtual_trajectory_info.plot_trajectory()
@@ -140,11 +186,19 @@ class DiagnoseModel:
         )
 
     def close_all(self):
+        """Close all Matplotlib figures."""
         plt.close("all")
 
     def plot_mcts(self, root, plot=True):
-        """
-        Plot the MCTS, pdf file is saved in the current directory.
+        """Save visited search nodes to mcts.pdf in the current directory.
+
+        Args:
+            root (Node): Root of the search tree.
+            plot (bool): Open the rendered graph in a viewer.
+
+        Returns:
+            graphviz.Digraph or None: Rendered graph, or None when the Python
+            graphviz package is unavailable.
         """
         try:
             from graphviz import Digraph
@@ -180,9 +234,12 @@ class DiagnoseModel:
                         child,
                         action,
                         node_id,
-                        True
-                        if best_visit_count and child.visit_count == best_visit_count
-                        else False,
+                        (
+                            True
+                            if best_visit_count
+                            and child.visit_count == best_visit_count
+                            else False
+                        ),
                     )
 
         traverse(root, None, None, True)
@@ -192,10 +249,8 @@ class DiagnoseModel:
         return graph
 
 
-class Trajectoryinfo:
-    """
-    Store the information about a trajectory (rewards, search information for every step, ...).
-    """
+class TrajectoryInfo:
+    """Store and display trajectory rewards and search information."""
 
     def __init__(self, title, config):
         self.title = title + ": "
@@ -204,60 +259,70 @@ class Trajectoryinfo:
         self.reward_history = []
         self.prior_policies = []
         self.policies_after_planning = []
-        # Not implemented, need to store them in every nodes of the mcts
+        # Not implemented, need to store them in every nodes of the mcts.
         self.prior_values = []
-        self.values_after_planning = [[numpy.NaN] * len(self.config.action_space)]
+        self.values_after_planning = [[numpy.nan] * len(self.config.action_space)]
         self.prior_root_value = []
         self.root_value_after_planning = []
-        self.prior_rewards = [[numpy.NaN] * len(self.config.action_space)]
+        self.prior_rewards = [[numpy.nan] * len(self.config.action_space)]
         self.mcts_depth = []
 
     def store_info(self, root, mcts_info, action, reward, new_prior_root_value=None):
+        """Append one step of action, reward, and search diagnostics."""
         if action is not None:
             self.action_history.append(action)
         if reward is not None:
             self.reward_history.append(reward)
         self.prior_policies.append(
             [
-                root.children[action].prior
-                if action in root.children.keys()
-                else numpy.NaN
+                (
+                    root.children[action].prior
+                    if action in root.children.keys()
+                    else numpy.nan
+                )
                 for action in self.config.action_space
             ]
         )
         self.policies_after_planning.append(
             [
-                root.children[action].visit_count / self.config.num_simulations
-                if action in root.children.keys()
-                else numpy.NaN
+                (
+                    root.children[action].visit_count / self.config.num_simulations
+                    if action in root.children.keys()
+                    else numpy.nan
+                )
                 for action in self.config.action_space
             ]
         )
         self.values_after_planning.append(
             [
-                root.children[action].value()
-                if action in root.children.keys()
-                else numpy.NaN
+                (
+                    root.children[action].value()
+                    if action in root.children.keys()
+                    else numpy.nan
+                )
                 for action in self.config.action_space
             ]
         )
         self.prior_root_value.append(
             mcts_info["root_predicted_value"]
-            if not new_prior_root_value
+            if new_prior_root_value is None
             else new_prior_root_value
         )
         self.root_value_after_planning.append(root.value())
         self.prior_rewards.append(
             [
-                root.children[action].reward
-                if action in root.children.keys()
-                else numpy.NaN
+                (
+                    root.children[action].reward
+                    if action in root.children.keys()
+                    else numpy.nan
+                )
                 for action in self.config.action_space
             ]
         )
         self.mcts_depth.append(mcts_info["max_tree_depth"])
 
     def plot_trajectory(self):
+        """Print trajectory diagnostics and display their heatmaps without blocking."""
         name = "Prior policies"
         print(name, self.prior_policies, "\n")
         plt.figure(self.title + name)
