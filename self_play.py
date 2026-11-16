@@ -389,7 +389,7 @@ class SelfPlay:
                 stacked_observations,
                 self.game.legal_actions(),
                 self.game.to_play(),
-                True,
+                False,
             )
             print(f"Tree depth: {mcts_info['max_tree_depth']}")
             print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
