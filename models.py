@@ -52,7 +52,7 @@ class MuZeroNetwork:
                 config.support_size,
                 config.downsample,
                 config.train_reward,
-                getattr(config, "resnet_state_normalization", "channel"),
+                config.resnet_state_normalization,
             )
         else:
             raise NotImplementedError(

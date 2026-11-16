@@ -29,6 +29,9 @@ class SelfPlay:
     def __init__(self, initial_checkpoint, Game, config, seed, render=False):
         self.config = config
         self.Game = Game
+        self.seed = seed
+        self.extra_games = []
+        self.active_games = []
 
         # Fix random generator seed.
         numpy.random.seed(seed)
@@ -68,19 +71,16 @@ class SelfPlay:
                 self.model_version = status["weights_version"]
 
             if not test_mode:
-                game_history = self.play_game(
+                for game_history in self.play_games(
                     self.config.visit_softmax_temperature_fn(
                         trained_steps=status["training_step"]
                     ),
                     self.config.temperature_threshold,
-                    False,
-                    "self",
-                    self.config.muzero_player,
-                )
-
-                # Wait for storage before collecting another game. This bounds
-                # pending replay saves to one per worker when replay is slower.
-                ray.get(replay_buffer.save_game.remote(game_history, shared_storage))
+                ):
+                    # Bound pending replay saves to one per worker.
+                    ray.get(
+                        replay_buffer.save_game.remote(game_history, shared_storage)
+                    )
 
             else:
                 # Take the best action (no exploration) in test mode.
@@ -204,7 +204,7 @@ class SelfPlay:
                     -1,
                     self.config.stacked_observations,
                     len(self.config.action_space),
-                    getattr(self.config, "observation_scale", 1),
+                    self.config.observation_scale,
                 )
 
                 # Choose the action.
@@ -241,10 +241,13 @@ class SelfPlay:
                 game_history.store_search_statistics(
                     root, self.config.action_space, legal_actions
                 )
+                action_description = (
+                    self.game.action_to_string(action) if render else None
+                )
                 observation, reward, done = self.game.step(action)
 
                 if render:
-                    print(f"Played action: {self.game.action_to_string(action)}")
+                    print(f"Played action: {action_description}")
                     self.game.render()
 
                 game_history.action_history.append(action)
@@ -257,31 +260,123 @@ class SelfPlay:
         )
         return game_history
 
+    def play_games(self, temperature, temperature_threshold):
+        """Yield completed self-play games, batching search across active games.
+
+        Each tree still completes one simulation before selecting its next leaf.
+        Finished games enter replay immediately and their slots restart. Return
+        after a batch of completions so the caller can refresh weights, retaining
+        unfinished games for the next call.
+        """
+        batch_size = self.config.selfplay_batch_size
+        if batch_size == 1:
+            yield self.play_game(
+                temperature,
+                temperature_threshold,
+                False,
+                "self",
+                self.config.muzero_player,
+            )
+            return
+        while len(self.extra_games) < batch_size - 1:
+            # Reserve one seed per worker and the monitoring worker in each block.
+            seed = self.seed + (len(self.extra_games) + 1) * (
+                self.config.num_workers + 1
+            )
+            self.extra_games.append(self.Game(seed))
+        if not self.active_games:
+            for game in [self.game, *self.extra_games]:
+                history = GameHistory()
+                history.observation_history.append(game.reset())
+                history.to_play_history.append(game.to_play())
+                self.active_games.append((game, history))
+        active = self.active_games
+        search = MCTS(self.config)
+        completed = 0
+        while completed < batch_size:
+            for _, history in active:
+                assert (
+                    numpy.shape(history.observation_history[-1])
+                    == self.config.observation_shape
+                ), "Observation must match the configured observation_shape."
+            observations = [
+                history.get_stacked_observations(
+                    -1,
+                    self.config.stacked_observations,
+                    len(self.config.action_space),
+                    self.config.observation_scale,
+                )
+                for _, history in active
+            ]
+            legal_actions = [game.legal_actions() for game, _ in active]
+            roots, _ = search.run_batch(
+                self.model,
+                observations,
+                legal_actions,
+                [game.to_play() for game, _ in active],
+                True,
+            )
+            for index, ((game, history), root, actions) in enumerate(
+                zip(active, roots, legal_actions)
+            ):
+                move = len(history.action_history)
+                action = self.select_action(
+                    root,
+                    temperature
+                    if temperature_threshold is None or move < temperature_threshold
+                    else 0,
+                )
+                history.store_search_statistics(root, self.config.action_space, actions)
+                observation, reward, done = game.step(action)
+                history.action_history.append(action)
+                history.reward_history.append(reward / self.config.reward_scale)
+                history.observation_history.append(observation)
+                history.to_play_history.append(game.to_play())
+                if done or len(history.action_history) >= self.config.max_moves:
+                    history.observation_history = numpy.asarray(
+                        history.observation_history
+                    )
+                    next_history = GameHistory()
+                    next_history.observation_history.append(game.reset())
+                    next_history.to_play_history.append(game.to_play())
+                    active[index] = (game, next_history)
+                    completed += 1
+                    yield history
+
     def close_game(self):
-        """Close the underlying game environment."""
-        self.game.close()
+        """Close all environments owned by this worker."""
+        for game in [self.game, *self.extra_games]:
+            game.close()
 
     def evaluate_episode(self, seed):
         """Return seed, raw reward, and length from greedy MCTS without root noise."""
+        player = (
+            self.config.players[seed % len(self.config.players)]
+            if self.config.evaluation_both_players
+            else self.config.muzero_player
+        )
         history = self.play_game(
             0,
             0,
             False,
             self.config.opponent,
-            self.config.muzero_player,
+            player,
             False,
             seed,
         )
         reward = (
             sum(history.reward_history)
             if len(self.config.players) == 1
-            else player_reward(history, self.config.muzero_player)
+            else player_reward(history, player)
         )
-        return {
+        episode = {
             "seed": seed,
             "reward": float(reward * self.config.reward_scale),
             "length": len(history.action_history),
         }
+        if len(self.config.players) > 1:
+            episode["player"] = player
+        return episode
 
     def select_opponent_action(self, opponent, stacked_observations):
         """Return an opponent action and a diagnostic search root if available.
@@ -365,7 +460,6 @@ class MCTS:
     def __init__(self, config):
         self.config = config
 
-    @torch.inference_mode()
     def run(
         self,
         model,
@@ -375,108 +469,126 @@ class MCTS:
         add_exploration_noise,
         override_root_with=None,
     ):
-        """Run simulations from an observation or an expanded override root.
+        """Search one root; see run_batch for the shared search implementation."""
+        roots, info = self.run_batch(
+            model,
+            [observation],
+            [legal_actions],
+            [to_play],
+            add_exploration_noise,
+            None if override_root_with is None else [override_root_with],
+        )
+        return roots[0], info[0]
 
-        Args:
-            model (AbstractNetwork): Network used for initial and recurrent inference.
-            observation (array-like): Stacked and scaled network observation.
-            legal_actions (list[int]): Actions allowed at the real root. Imagined
-                states use the full configured action space.
-            to_play (int): Player at the root.
-            add_exploration_noise (bool): Mix Dirichlet noise into root priors.
-            override_root_with (Node, optional): Expanded root whose latent state is
-                reused.
+    @torch.inference_mode()
+    def run_batch(
+        self,
+        model,
+        observations,
+        legal_actions,
+        to_play,
+        add_exploration_noise,
+        override_roots=None,
+    ):
+        """Search independent roots with one batched network call per simulation.
 
-        Returns:
-            tuple: Search root and a dict containing max_tree_depth and
-            root_predicted_value. The predicted value is None for an override root.
+        Observations, legal-action lists and players have one entry per root.
+        Each root has separate value bounds and receives num_simulations visits;
+        selection and backup within a tree remain sequential. The model must be
+        in evaluation mode. Optional expanded roots reuse their latent states.
+
+        Return roots and per-root max_tree_depth/root_predicted_value dictionaries.
         """
-        if override_root_with is not None:
-            root = override_root_with
-            root_predicted_value = None
-        else:
-            root = Node(0)
-            observation = numpy.asarray(observation)
-            if not observation.flags.writeable:
-                observation = observation.copy()
-            observation = torch.as_tensor(
-                observation,
+        batch_size = len(to_play)
+        if (
+            not batch_size
+            or len(observations) != batch_size
+            or len(legal_actions) != batch_size
+        ):
+            raise ValueError("Search requires equally sized, nonempty input batches")
+        if override_roots is None:
+            roots = [Node(0) for _ in to_play]
+            for actions in legal_actions:
+                assert actions and set(actions).issubset(self.config.action_space), (
+                    "Legal actions must be a nonempty subset of the action space."
+                )
+            observations = numpy.asarray(observations)
+            if not observations.flags.writeable:
+                observations = observations.copy()
+            observations = torch.as_tensor(
+                observations,
                 dtype=torch.float32,
                 device=next(model.parameters()).device,
-            ).unsqueeze(0)
-            (
-                root_predicted_value,
-                reward,
-                policy_logits,
-                hidden_state,
-            ) = model.initial_inference(observation)
-            root_predicted_value = models.support_to_scalar(
-                root_predicted_value, self.config.support_size
-            ).item()
-            reward = models.support_to_scalar(reward, self.config.support_size).item()
-            assert legal_actions, (
-                f"Legal actions should not be an empty array. Got {legal_actions}."
             )
-            assert set(legal_actions).issubset(set(self.config.action_space)), (
-                "Legal actions should be a subset of the action space."
+            root_values = self.expand_nodes(
+                roots, model.initial_inference(observations), legal_actions, to_play
             )
-            root.expand(
-                legal_actions,
-                to_play,
-                reward,
-                policy_logits,
-                hidden_state,
-            )
-
+        else:
+            if len(override_roots) != batch_size:
+                raise ValueError("Expected one override root per input")
+            roots = override_roots
+            root_values = [None] * batch_size
         if add_exploration_noise:
-            root.add_exploration_noise(
-                dirichlet_alpha=self.config.root_dirichlet_alpha,
-                exploration_fraction=self.config.root_exploration_fraction,
-            )
-
-        min_max_stats = MinMaxStats(self.config.known_bounds)
-
-        max_tree_depth = 0
+            for root in roots:
+                root.add_exploration_noise(
+                    self.config.root_dirichlet_alpha,
+                    self.config.root_exploration_fraction,
+                )
+        bounds = [MinMaxStats(self.config.known_bounds) for _ in roots]
+        depths = [0] * batch_size
         for _ in range(self.config.num_simulations):
-            virtual_to_play = to_play
-            node = root
-            search_path = [node]
-            current_tree_depth = 0
-
-            while node.expanded():
-                current_tree_depth += 1
-                action, node = self.select_child(node, min_max_stats)
-                search_path.append(node)
-
-                # Players play turn by turn.
-                virtual_to_play = next_player(virtual_to_play, self.config.players)
-
-            # Inside the search tree we use the dynamics function to obtain the next hidden
-            # state given an action and the previous hidden state.
-            parent = search_path[-2]
-            value, reward, policy_logits, hidden_state = model.recurrent_inference(
-                parent.hidden_state,
-                parent.hidden_state.new_tensor([[action]], dtype=torch.long),
+            paths, actions, players = [], [], []
+            for i, root in enumerate(roots):
+                node, player = root, to_play[i]
+                path = [node]
+                while node.expanded():
+                    action, node = self.select_child(node, bounds[i])
+                    path.append(node)
+                    player = next_player(player, self.config.players)
+                paths.append(path)
+                actions.append(action)
+                players.append(player)
+                depths[i] = max(depths[i], len(path) - 1)
+            states = torch.cat([path[-2].hidden_state for path in paths])
+            outputs = model.recurrent_inference(
+                states,
+                torch.tensor(actions, dtype=torch.long, device=states.device).unsqueeze(
+                    1
+                ),
             )
-            value = models.support_to_scalar(value, self.config.support_size).item()
-            reward = models.support_to_scalar(reward, self.config.support_size).item()
+            values = self.expand_nodes(
+                [path[-1] for path in paths],
+                outputs,
+                [self.config.action_space] * batch_size,
+                players,
+            )
+            for path, value, player, stats in zip(paths, values, players, bounds):
+                self.backpropagate(path, value, player, stats)
+        return roots, [
+            {"max_tree_depth": depth, "root_predicted_value": value}
+            for depth, value in zip(depths, root_values)
+        ]
+
+    def expand_nodes(self, nodes, outputs, legal_actions, players):
+        """Transfer predictions to CPU once per batch, retaining latents on device."""
+        values, rewards, policies, states = outputs
+        scalars = (
+            models.support_to_scalar(
+                torch.cat((values, rewards)), self.config.support_size
+            )
+            .flatten()
+            .tolist()
+        )
+        policies = policies.cpu()
+        for i, node in enumerate(nodes):
             node.expand(
-                self.config.action_space,
-                virtual_to_play,
-                reward,
-                policy_logits,
-                hidden_state,
+                legal_actions[i],
+                players[i],
+                scalars[len(nodes) + i],
+                policies[i : i + 1],
+                states[i : i + 1],
             )
-
-            self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
-
-            max_tree_depth = max(max_tree_depth, current_tree_depth)
-
-        extra_info = {
-            "max_tree_depth": max_tree_depth,
-            "root_predicted_value": root_predicted_value,
-        }
-        return root, extra_info
+        return scalars[: len(nodes)]
 
     def select_child(self, node, min_max_stats):
         """Return the action and child with highest UCB, breaking ties randomly."""

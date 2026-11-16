@@ -408,6 +408,10 @@ class Trainer:
         # Optimize.
         self.optimizer.zero_grad()
         loss.backward()
+        if self.config.max_grad_norm is not None:
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), self.config.max_grad_norm
+            )
         self.optimizer.step()
         self.training_step += 1
 

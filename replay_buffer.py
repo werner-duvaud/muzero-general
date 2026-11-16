@@ -6,8 +6,8 @@ import ray
 import torch
 
 import models
+import self_play
 from game_history import GameHistory
-from self_play import MCTS
 
 PRIORITY_EPSILON = 1e-6
 
@@ -178,7 +178,7 @@ class ReplayBuffer:
                 game_pos,
                 self.config.stacked_observations,
                 len(self.config.action_space),
-                getattr(self.config, "observation_scale", 1),
+                self.config.observation_scale,
                 observation_batch[batch_index],
             )
             action_batch.append(actions)
@@ -433,7 +433,7 @@ class Reanalyse:
                         -1,
                         self.config.stacked_observations,
                         len(self.config.action_space),
-                        getattr(self.config, "observation_scale", 1),
+                        self.config.observation_scale,
                     )
                 )
             observations = numpy.asarray(observations)
@@ -458,21 +458,13 @@ class Reanalyse:
             # action masks are part of the trajectory because they cannot be
             # reconstructed from visit counts.
             if self.config.reanalyse_policy:
-                policies = []
-                with torch.inference_mode():
-                    for observation, actions, to_play in zip(
-                        observations, legal_actions, players
-                    ):
-                        root, _ = MCTS(self.config).run(
-                            self.model,
-                            observation,
-                            actions,
-                            to_play,
-                            False,
-                        )
-                        policies.append(
-                            GameHistory.policy_from_root(root, self.config.action_space)
-                        )
+                roots, _ = self_play.MCTS(self.config).run_batch(
+                    self.model, observations, legal_actions, players, False
+                )
+                policies = [
+                    GameHistory.policy_from_root(root, self.config.action_space)
+                    for root in roots
+                ]
             else:
                 policies = None
 

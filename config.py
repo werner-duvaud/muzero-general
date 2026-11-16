@@ -66,9 +66,10 @@ class MuZeroConfig:
         self.validate()
 
     def validate(self):
-        """Raise ValueError for invalid shared settings or incompatible options."""
+        """Validate shared settings and reject incompatible options."""
         for name in (
             "num_workers",
+            "selfplay_batch_size",
             "num_threads",
             "max_moves",
             "num_simulations",
@@ -112,6 +113,24 @@ class MuZeroConfig:
             )
         if self.muzero_player not in self.players:
             raise ValueError("muzero_player must be in players")
+        both_players = self.evaluation_both_players
+        if not isinstance(both_players, bool):
+            raise TypeError("evaluation_both_players must be a boolean")
+        if both_players and (
+            len(self.players) != 2
+            or self.evaluation_episodes % 2
+            or (self.validation_interval and self.validation_episodes % 2)
+        ):
+            raise ValueError(
+                "Evaluating both players requires two players and even episode counts"
+            )
+        max_grad_norm = self.max_grad_norm
+        if max_grad_norm is not None and (
+            isinstance(max_grad_norm, bool)
+            or not math.isfinite(max_grad_norm)
+            or max_grad_norm <= 0
+        ):
+            raise ValueError("max_grad_norm must be positive and finite or None")
         if self.ratio is not None and self.ratio <= 0:
             raise ValueError("ratio must be positive or None")
         if not self.temperature_schedule or self.temperature_schedule[0][0] != 0:

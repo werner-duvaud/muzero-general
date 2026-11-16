@@ -18,11 +18,11 @@ def evaluate_episode_group(checkpoint, Game, config, seeds):
     Return one episode result per seed, closing the game even if evaluation fails.
     The seed group must be nonempty.
     """
-    from self_play import SelfPlay
+    import self_play
 
     settings = copy.deepcopy(config)
     settings.selfplay_on_gpu = False
-    worker = SelfPlay.__ray_metadata__.modified_class(
+    worker = self_play.SelfPlay.__ray_metadata__.modified_class(
         checkpoint, Game, settings, seeds[0]
     )
     try:
@@ -196,7 +196,7 @@ def summarize_evaluation(episodes, target):
     if not numpy.isfinite(rewards).all():
         raise ValueError("Evaluation returned nonfinite rewards")
     mean = float(numpy.mean(rewards))
-    return {
+    report = {
         "episode_count": len(episodes),
         "mean_reward": mean,
         "std_reward": float(numpy.std(rewards)),
@@ -207,3 +207,21 @@ def summarize_evaluation(episodes, target):
         "target_met": None if target is None else mean >= target,
         "episodes": episodes,
     }
+    if all("player" in episode for episode in episodes):
+        report["by_player"] = {}
+        for player in sorted({episode["player"] for episode in episodes}):
+            returns = numpy.array(
+                [
+                    episode["reward"]
+                    for episode in episodes
+                    if episode["player"] == player
+                ]
+            )
+            report["by_player"][str(player)] = {
+                "episode_count": len(returns),
+                "mean_reward": float(numpy.mean(returns)),
+                "wins": int(numpy.sum(returns > 0)),
+                "draws": int(numpy.sum(returns == 0)),
+                "losses": int(numpy.sum(returns < 0)),
+            }
+    return report

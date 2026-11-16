@@ -6,8 +6,8 @@ import heapq
 import numpy
 import ray
 
-from evaluation import write_json
-from game_history import GameHistory
+import evaluation
+import game_history
 
 
 def play_random_game(game, config, rng):
@@ -29,7 +29,7 @@ def play_game(game, config, select_action):
         uniform initial priorities, and one-hot executed-action policy targets.
         In multiplayer games, opponent actions have zero policy targets.
     """
-    history = GameHistory()
+    history = game_history.GameHistory()
     history.observation_history.append(game.reset())
     history.to_play_history.append(game.to_play())
     done = False
@@ -39,7 +39,7 @@ def play_game(game, config, select_action):
         observation, reward, done = game.step(action)
         history.legal_actions_history.append(legal_actions)
         history.action_history.append(action)
-        history.reward_history.append(reward / getattr(config, "reward_scale", 1))
+        history.reward_history.append(reward / config.reward_scale)
         history.observation_history.append(observation)
         history.to_play_history.append(game.to_play())
         imitate_player = (
@@ -127,19 +127,12 @@ def bootstrap_replay_buffer(Game, config):
         dict: Integer IDs mapped to GameHistory objects, inserted from lower to
         higher return for FIFO eviction. Empty when random collection is disabled.
     """
-    episodes = getattr(config, "random_bootstrap_episodes", 0)
-    if not isinstance(episodes, int) or episodes < 0:
-        raise ValueError("random_bootstrap_episodes must be a nonnegative integer")
+    episodes = config.random_bootstrap_episodes
     if not episodes:
         return {}
-    keep_best = config.random_bootstrap_keep_best
-    if not isinstance(keep_best, int) or keep_best < 1:
-        raise ValueError("random_bootstrap_keep_best must be a positive integer")
-    if min(config.num_workers, config.max_moves, config.replay_buffer_size) < 1:
-        raise ValueError(
-            "Random replay bootstrap needs workers, moves and buffer space"
-        )
-    keep_best = min(keep_best, episodes, config.replay_buffer_size)
+    keep_best = min(
+        config.random_bootstrap_keep_best, episodes, config.replay_buffer_size
+    )
 
     print(f"Collecting {episodes} bootstrap episodes; keeping the best {keep_best}.")
     # Small batches provide progress and avoid storing all random trajectories
@@ -180,8 +173,8 @@ def bootstrap_replay_buffer(Game, config):
         f"{min(returns):.2f} to {max(returns):.2f}, mean {numpy.mean(returns):.2f}.",
         flush=True,
     )
-    if getattr(config, "save_model", False):
-        write_json(
+    if config.save_model:
+        evaluation.write_json(
             config.results_path / "bootstrap-replay.json",
             {
                 "sampled_episodes": episodes,

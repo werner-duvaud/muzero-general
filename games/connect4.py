@@ -6,7 +6,7 @@ import torch
 
 from config import MuZeroConfig as BaseMuZeroConfig
 
-from .abstract_game import AbstractGame
+from games.abstract_game import AbstractGame
 
 
 class MuZeroConfig(BaseMuZeroConfig):
@@ -14,24 +14,25 @@ class MuZeroConfig(BaseMuZeroConfig):
         # fmt: off
         # Resources
         self.seed = 0  # Seed for NumPy, PyTorch and game resets.
-        self.max_num_gpus = None  # GPU limit; None uses all available GPUs.
+        self.max_num_gpus = 1  # Use at most one GPU when CUDA is available.
         self.num_threads = 1  # PyTorch CPU threads per worker.
 
         # Game
         self.observation_shape = (3, 6, 7)  # Observation shape: (channels, height, width).
         self.observation_scale = 1  # Divide observations by this value before network inference.
         self.reward_scale = 1  # Divide rewards during training; evaluation restores environment units.
-        self.action_space = list(range(7))  # Consecutive action IDs starting at zero; change the number of actions.
+        self.action_space = list(range(7))  # Consecutive discrete action IDs, or the number of continuous action dimensions.
         self.players = list(range(2))  # Consecutive player IDs; one player for a single-agent environment.
         self.stacked_observations = 0  # Previous observations and actions appended to the current observation.
         self.muzero_player = 0  # Player ID controlled by MuZero during multiplayer evaluation.
         self.opponent = "expert"  # Evaluation opponent: None, "random" or "expert"; does not affect training.
 
         # Self-play and search
-        self.num_workers = 1  # Parallel self-play workers; also limits random collection workers.
-        self.selfplay_on_gpu = False  # Run self-play network inference on GPU.
+        self.num_workers = 2  # Parallel self-play workers; also limits random collection workers.
+        self.selfplay_batch_size = 4  # Independent games searched together per worker; 1 disables batching.
+        self.selfplay_on_gpu = torch.cuda.is_available()  # Run self-play network inference on GPU when True; otherwise CPU.
         self.max_moves = 42  # Maximum environment transitions per episode.
-        self.num_simulations = 200  # MCTS simulations performed for each real action.
+        self.num_simulations = 50  # MCTS simulations performed for each real action.
         self.discount = 1  # Reward discount factor per environment transition.
         self.temperature_threshold = None  # Episode move count before greedy play; None uses the schedule throughout.
         self.root_dirichlet_alpha = 0.3  # Dirichlet concentration for self-play root exploration noise.
@@ -47,7 +48,7 @@ class MuZeroConfig(BaseMuZeroConfig):
 
         # Residual network (used when network = "resnet")
         self.downsample = False  # Observation downsampling: False, "CNN" or "resnet" (See paper appendix Network Architecture).
-        self.blocks = 3  # Residual blocks in the representation, dynamics and prediction networks.
+        self.blocks = 1  # Residual blocks in the representation, dynamics and prediction networks.
         self.channels = 64  # Number of channels in the residual latent state.
         self.resnet_state_normalization = "global"  # Latent min/max normalization: "global" or per-"channel".
         self.reduced_channels_reward = 2  # Channels retained before the residual reward head.
@@ -73,25 +74,26 @@ class MuZeroConfig(BaseMuZeroConfig):
             / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S-%f")
         )
         self.save_model = True  # Save model/replay snapshots and run metadata under results_path.
-        self.training_steps = 100000  # Total gradient updates, including random-buffer warmup.
-        self.temperature_schedule = [(0, 1.0)]  # Pairs of (gradient update, action-sampling temperature); zero is greedy.
-        self.batch_size = 64  # Replay positions sampled for each gradient update.
+        self.training_steps = 125000  # Total gradient updates, including random-buffer warmup.
+        self.temperature_schedule = [(0, 0.25)]  # Pairs of (gradient update, action-sampling temperature); zero is greedy.
+        self.batch_size = 256  # Replay positions sampled for each gradient update.
         self.checkpoint_interval = 10  # Gradient updates between publishing weights to self-play workers.
         self.value_loss_weight = 0.25  # Value loss multiplier; paper recommends 0.25 (See paper appendix Reanalyze).
         self.policy_loss_weight = 1  # Multiplier on the policy prediction loss.
-        self.train_on_gpu = torch.cuda.is_available()  # Train the network on GPU rather than CPU.
+        self.train_on_gpu = torch.cuda.is_available()  # Use GPU for training when available; otherwise CPU.
         self.optimizer = "Adam"  # Optimizer: "Adam" or "SGD"; paper uses SGD.
+        self.max_grad_norm = 0.5  # Clip the gradient norm before each update; None disables clipping.
         self.weight_decay = 0.0001  # L2 regularization strength.
         self.momentum = 0.9  # SGD momentum; unused with Adam.
-        self.lr_init = 0.005  # Initial learning rate.
+        self.lr_init = 0.003  # Initial learning rate.
         self.lr_decay_rate = 1  # Exponential decay factor; 1 keeps the learning rate constant.
         self.lr_decay_steps = 10000  # Gradient updates per learning rate decay factor.
 
         # Replay buffer
-        self.replay_buffer_size = 10000  # Maximum complete games retained in FIFO replay.
-        self.num_unroll_steps = 42  # Recurrent model steps trained after each sampled state.
+        self.replay_buffer_size = 2500  # Maximum complete games retained in FIFO replay.
+        self.num_unroll_steps = 5  # Recurrent model steps trained after each sampled state.
         self.td_steps = 42  # Reward horizon before value bootstrapping; episode end uses observed returns.
-        self.PER = True  # Prioritize replay games and positions by prediction error (See paper appendix Training).
+        self.PER = False  # Prioritize replay games and positions by prediction error (See paper appendix Training).
         self.PER_alpha = 0.5  # Priority exponent when PER is enabled; zero samples uniformly, paper suggests 1.
 
         # Initialization
@@ -101,24 +103,25 @@ class MuZeroConfig(BaseMuZeroConfig):
 
         # Reanalysis (See paper appendix Reanalyse)
         self.reanalyse_batch_size = 32  # Maximum positions refreshed per reanalysis iteration.
-        self.use_last_model_value = True  # Refresh replay value targets with the latest network (See paper appendix Reanalyze).
-        self.reanalyse_policy = True  # Refresh replay policy targets with MCTS using the latest network.
+        self.use_last_model_value = False  # Refresh replay value targets with the latest network (See paper appendix Reanalyze).
+        self.reanalyse_policy = False  # Refresh replay policy targets with MCTS using the latest network.
         self.reanalyse_policy_ratio = 0.8  # Fraction of eligible samples that use refreshed policy targets.
-        self.reanalyse_on_gpu = False  # Run reanalysis network inference on GPU.
+        self.reanalyse_on_gpu = torch.cuda.is_available()  # Use GPU for reanalysis when available; otherwise CPU.
 
         # Synchronization
         self.self_play_delay = 0  # Seconds to pause after each self-play game; 0 disables the delay.
         self.training_delay = 0  # Seconds to pause after each gradient update; 0 disables the delay.
-        self.ratio = None  # Target gradient updates per new self-play transition; None disables pacing.
+        self.ratio = 0.25  # Target gradient updates per new self-play transition; None disables pacing.
 
         # Evaluation
-        self.evaluation_episodes = 100  # Final evaluation episode count; 0 disables final evaluation.
+        self.evaluation_both_players = True  # Alternate player seats across seeded evaluation episodes.
+        self.evaluation_episodes = 200  # Final evaluation episode count; 0 disables final evaluation.
         self.evaluation_seed = 1000000  # First seed of consecutive final evaluation episodes.
-        self.evaluation_target = None  # Required mean environment reward; None disables the pass threshold.
-        self.validation_interval = 0  # Gradient updates between validation checkpoints; 0 disables validation.
-        self.validation_episodes = 20  # Episodes used to evaluate each validation checkpoint.
+        self.evaluation_target = 0.9  # Required mean environment reward; None disables the pass threshold.
+        self.validation_interval = 2000  # Gradient updates between validation checkpoints; 0 disables validation.
+        self.validation_episodes = 40  # Episodes used to evaluate each validation checkpoint.
         self.validation_seed = 5000000  # First validation seed; keep validation and final evaluation seeds separate.
-        self.checkpoint_selection = "last"  # "best" selects the highest validation mean; "last" keeps final weights.
+        self.checkpoint_selection = "best"  # "best" selects the highest validation mean; "last" keeps final weights.
         # fmt: on
 
 
@@ -190,14 +193,6 @@ class Connect4:
         self.board = numpy.zeros((6, 7), dtype="int32")
         self.player = 1
 
-    def to_play(self):
-        return 0 if self.player == 1 else 1
-
-    def reset(self):
-        self.board = numpy.zeros((6, 7), dtype="int32")
-        self.player = 1
-        return self.get_observation()
-
     def step(self, action):
         for i in range(6):
             if self.board[i][action] == 0:
@@ -212,11 +207,8 @@ class Connect4:
 
         return self.get_observation(), reward, done
 
-    def get_observation(self):
-        board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
-        board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
-        board_to_play = numpy.full((6, 7), self.player, dtype="int32")
-        return numpy.array([board_player1, board_player2, board_to_play])
+    def to_play(self):
+        return 0 if self.player == 1 else 1
 
     def legal_actions(self):
         legal = []
@@ -224,6 +216,20 @@ class Connect4:
             if self.board[5][i] == 0:
                 legal.append(i)
         return legal
+
+    def reset(self):
+        self.board = numpy.zeros((6, 7), dtype="int32")
+        self.player = 1
+        return self.get_observation()
+
+    def render(self):
+        print(self.board[::-1])
+
+    def get_observation(self):
+        board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
+        board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
+        board_to_play = numpy.full((6, 7), self.player, dtype="int32")
+        return numpy.array([board_player1, board_player2, board_to_play])
 
     def have_winner(self):
         # Horizontal check
@@ -318,6 +324,3 @@ class Connect4:
                             return action
 
         return action
-
-    def render(self):
-        print(self.board[::-1])

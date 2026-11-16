@@ -3,9 +3,9 @@ import numpy
 import seaborn
 import torch
 
+import game_history
 import models
-from game_history import GameHistory
-from self_play import MCTS, Node, SelfPlay, next_player
+import self_play
 
 
 class DiagnoseModel:
@@ -47,25 +47,27 @@ class DiagnoseModel:
             TrajectoryInfo: Actions, rewards, and search diagnostics.
         """
         trajectory_info = TrajectoryInfo("Virtual trajectory", self.config)
-        history = GameHistory()
+        history = game_history.GameHistory()
         history.observation_history.append(observation)
         observation = history.get_stacked_observations(
             -1,
             self.config.stacked_observations,
             len(self.config.action_space),
-            getattr(self.config, "observation_scale", 1),
+            self.config.observation_scale,
         )
-        root, mcts_info = MCTS(self.config).run(
+        root, mcts_info = self_play.MCTS(self.config).run(
             self.model, observation, self.config.action_space, to_play, True
         )
         trajectory_info.store_info(root, mcts_info, None, numpy.nan)
 
         virtual_to_play = to_play
         for i in range(horizon):
-            action = SelfPlay.select_action(root, 0)
+            action = self_play.SelfPlay.select_action(root, 0)
 
             # Players play turn by turn.
-            virtual_to_play = next_player(virtual_to_play, self.config.players)
+            virtual_to_play = self_play.next_player(
+                virtual_to_play, self.config.players
+            )
 
             # Generate new root.
             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
@@ -74,7 +76,7 @@ class DiagnoseModel:
             )
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
-            root = Node(0)
+            root = self_play.Node(0)
             root.expand(
                 self.config.action_space,
                 virtual_to_play,
@@ -83,7 +85,7 @@ class DiagnoseModel:
                 hidden_state,
             )
 
-            root, mcts_info = MCTS(self.config).run(
+            root, mcts_info = self_play.MCTS(self.config).run(
                 self.model, None, self.config.action_space, virtual_to_play, True, root
             )
             trajectory_info.store_info(
@@ -120,19 +122,19 @@ class DiagnoseModel:
             first_obs, horizon, False
         )
         real_trajectory_info = TrajectoryInfo("Real trajectory", self.config)
-        history = GameHistory()
+        history = game_history.GameHistory()
         history.observation_history.append(first_obs)
         stacked_observation = history.get_stacked_observations(
             -1,
             self.config.stacked_observations,
             len(self.config.action_space),
-            getattr(self.config, "observation_scale", 1),
+            self.config.observation_scale,
         )
         trajectory_divergence_index = None
         real_trajectory_end_reason = "Reached horizon"
 
         # Illegal moves are masked at the root.
-        root, mcts_info = MCTS(self.config).run(
+        root, mcts_info = self_play.MCTS(self.config).run(
             self.model,
             stacked_observation,
             game.legal_actions(),
@@ -163,9 +165,9 @@ class DiagnoseModel:
                 -1,
                 self.config.stacked_observations,
                 len(self.config.action_space),
-                getattr(self.config, "observation_scale", 1),
+                self.config.observation_scale,
             )
-            root, mcts_info = MCTS(self.config).run(
+            root, mcts_info = self_play.MCTS(self.config).run(
                 self.model,
                 stacked_observation,
                 game.legal_actions(),
@@ -201,12 +203,12 @@ class DiagnoseModel:
             graphviz package is unavailable.
         """
         try:
-            from graphviz import Digraph
+            import graphviz
         except ModuleNotFoundError:
             print("Please install graphviz to get the MCTS plot.")
             return None
 
-        graph = Digraph(comment="MCTS", engine="neato")
+        graph = graphviz.Digraph(comment="MCTS", engine="neato")
         graph.attr("graph", rankdir="LR", splines="true", overlap="false")
         id = 0
 

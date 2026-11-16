@@ -17,8 +17,16 @@ To adapt it to a new environment, add a [game file](games) containing its config
 
 | [CartPole](games/cartpole.py) | [Lunar Lander](games/lunarlander.py) | [Breakout](games/breakout.py) |
 | :---: | :---: | :---: |
-| <img src="checkpoints/cartpole/episode.gif" height="200" alt="CartPole policy balancing for 500 steps"> | <img src="checkpoints/lunarlander/episode.gif" height="200" alt="Lunar Lander policy completing a successful landing with a score of 304.46"> | <img src="checkpoints/breakout/episode.gif" height="200" alt="Breakout policy scoring 303 points"> |
+| <img src="checkpoints/cartpole/episode.gif" height="200" alt="CartPole policy balancing for 500 steps"> | <img src="checkpoints/lunarlander/episode.gif" height="200" alt="Lunar Lander policy completing a successful landing with a score of 304.46"> | <img src="checkpoints/breakout/episode.gif" height="200" alt="Breakout policy scoring 428 points"> |
 | [Learning curve](checkpoints/cartpole/training.png) · [Checkpoint](checkpoints/cartpole/model.checkpoint) | [Learning curve](checkpoints/lunarlander/training.png) · [Checkpoint](checkpoints/lunarlander/model.checkpoint) | [Learning curve](checkpoints/breakout/training.png) · [Checkpoint](checkpoints/breakout/model.checkpoint) |
+| **[Tic-tac-toe](games/tictactoe.py)** | **[Tic-tac-toe (OpenSpiel)](games/openspiel.py)** | **[MiniGrid Empty-Random-5x5](games/gridworld.py)** |
+| <img src="checkpoints/tictactoe/episode.gif" height="200" alt="Tic-tac-toe policy drawing against an optimal opponent, first as X then as O"> | <img src="checkpoints/openspiel/episode.gif" height="200" alt="OpenSpiel tic-tac-toe policy drawing against an optimal opponent, first as X then as O"> | <img src="checkpoints/gridworld/episode.gif" height="200" alt="MiniGrid policy reaching the goal in 7 steps"> |
+| [Learning curve](checkpoints/tictactoe/training.png) · [Checkpoint](checkpoints/tictactoe/model.checkpoint) | [Learning curve](checkpoints/openspiel/training.png) · [Checkpoint](checkpoints/openspiel/model.checkpoint) | [Learning curve](checkpoints/gridworld/training.png) · [Checkpoint](checkpoints/gridworld/model.checkpoint) |
+| **[Inverted Pendulum (continuous branch)](https://github.com/werner-duvaud/muzero-general/tree/continuous)** | **[HalfCheetah (continuous branch)](https://github.com/werner-duvaud/muzero-general/tree/continuous)** | |
+| <img src="checkpoints/mujoco_IP/episode.gif" height="200" alt="Continuous Inverted Pendulum policy balancing for 1,000 steps"> | <img src="checkpoints/mujoco_halfcheetah/episode.gif" height="200" alt="HalfCheetah policy scoring 846.1"> | |
+| [Learning curve](checkpoints/mujoco_IP/training.png) · [Checkpoint](checkpoints/mujoco_IP/model.checkpoint) | [Learning curve](checkpoints/mujoco_halfcheetah/training.png) · [Checkpoint](checkpoints/mujoco_halfcheetah/model.checkpoint) | |
+
+Both tic-tac-toe checkpoints are certified non-losing from the starting board in either seat; each drew all 200 MCTS evaluation games against an optimal opponent.
 
 ## Quick start
 
@@ -44,16 +52,17 @@ Choose an environment:
 python muzero.py cartpole
 python muzero.py lunarlander
 python muzero.py breakout
+python muzero.py gridworld
 ```
 
-Each command starts a fresh model using that game's default config, runs the configured training budget, then evaluates the selected checkpoint. The defaults use CPU training for CartPole and Lunar Lander, and a GPU for Breakout when CUDA is available. Use `--cpu` to force CPU execution.
+Each command starts a fresh model using that game's default config, runs the configured training budget, then evaluates the selected checkpoint. Game defaults use one GPU when CUDA is available, otherwise CPU. Use `--cpu` to force CPU execution.
 
 From Python:
 
 ```python
-from muzero import MuZero
+import muzero
 
-agent = MuZero("cartpole")
+agent = muzero.MuZero("cartpole")
 agent.train()
 ```
 
@@ -63,9 +72,11 @@ agent.train()
 python muzero.py cartpole --evaluate
 python muzero.py lunarlander --evaluate
 python muzero.py breakout --evaluate
+python muzero.py tictactoe --evaluate
+python muzero.py openspiel --evaluate
 ```
 
-These commands load `checkpoints/<env>/model.checkpoint` and evaluate it on CPU, without training or rendering. The default is 100 episodes. Checkpoints contain their saved configuration; no JSON sidecar is needed.
+These commands load `checkpoints/<env>/model.checkpoint` and evaluate it on CPU, without training or rendering.
 
 ### Monitor and render
 
@@ -87,13 +98,9 @@ Run `python muzero.py --help` for all command-line options.
 
 Each [game file](games) contains a complete, commented `MuZeroConfig`. All games share the same parameter names; values are tuned per environment. Edit the Python config to change the default recipe. [config.py](config.py) provides shared validation and temperature-schedule helpers.
 
-You can also override fields for one run:
+`--seed` changes the training seed; evaluation seeds are configured separately.
 
-```bash
-python muzero.py cartpole --config '{"num_workers": 4}' --output results/cartpole/example
-```
-
-`--config` accepts a JSON object or a JSON file. `--seed` changes the training seed; evaluation seeds are configured separately.
+For your machine, tune `num_workers` and `num_threads` for CPU capacity; reduce `batch_size`, `selfplay_batch_size`, and `reanalyse_batch_size` to lower GPU memory use, or `replay_buffer_size` to lower RAM use.
 
 By default, runs are saved under `results/<env>/<timestamp>/`:
 
@@ -101,7 +108,7 @@ By default, runs are saved under `results/<env>/<timestamp>/`:
 | --- | --- |
 | `model.checkpoint` | Latest saved training state, including weights and optimizer state |
 | `model-best.checkpoint` | Best validation checkpoint, when validation is enabled |
-| `replay_buffer.pkl` | Collected games for resuming training |
+| `replay_buffer.pkl.gz` | Collected games for resuming training |
 | `config.json`, `run.json` | Effective configuration and runtime/source metadata |
 | `validation.json`, `evaluation.json` | Validation history and final evaluation results |
 
@@ -114,7 +121,7 @@ To evaluate your own run or resume interrupted training, replace `RUN` with its 
 ```bash
 python muzero.py cartpole --evaluate --checkpoint results/cartpole/RUN/model-best.checkpoint
 
-python muzero.py cartpole --checkpoint results/cartpole/RUN/model.checkpoint --replay-buffer results/cartpole/RUN/replay_buffer.pkl
+python muzero.py cartpole --checkpoint results/cartpole/RUN/model.checkpoint --replay-buffer results/cartpole/RUN/replay_buffer.pkl.gz
 ```
 
 Resume with both the checkpoint and replay buffer to retain collected experience. To train beyond the saved budget, increase `training_steps` through `--config`.
@@ -126,10 +133,8 @@ Additional adapters are available for:
 - [MiniGrid](games/gridworld.py) (`gridworld`) and [a simple grid world](games/simple_grid.py) (`simple_grid`).
 - [Tic-tac-toe](games/tictactoe.py), [Connect4](games/connect4.py) and [Gomoku](games/gomoku.py).
 - [Twenty-One](games/twentyone.py) (`twentyone`), a simplified card game.
-- [OpenSpiel](games/spiel.py) (`spiel`), configured for tic-tac-toe by default. The adapter supports deterministic games with one player or two alternating players and 1D–3D observation tensors. Chance-based games such as backgammon and simultaneous-action games are unsupported.
+- [OpenSpiel](games/openspiel.py) (`openspiel`), configured for tic-tac-toe by default. The adapter supports deterministic single-player or alternating two-player zero-sum games with 1D–3D observation tensors. Chance-based games such as backgammon and simultaneous-action games are unsupported.
 - [An Atari template](games/atari.py) (`atari`), configured for Breakout by default. Use `breakout` for the tuned recipe and packaged checkpoint shown above.
-
-Only CartPole, Lunar Lander and Breakout currently include packaged checkpoints.
 
 ## Add an environment
 

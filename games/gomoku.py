@@ -7,7 +7,7 @@ import torch
 
 from config import MuZeroConfig as BaseMuZeroConfig
 
-from .abstract_game import AbstractGame
+from games.abstract_game import AbstractGame
 
 
 class MuZeroConfig(BaseMuZeroConfig):
@@ -15,14 +15,14 @@ class MuZeroConfig(BaseMuZeroConfig):
         # fmt: off
         # Resources
         self.seed = 0  # Seed for NumPy, PyTorch and game resets.
-        self.max_num_gpus = None  # GPU limit; None uses all available GPUs.
+        self.max_num_gpus = 1  # Use at most one GPU when CUDA is available.
         self.num_threads = 1  # PyTorch CPU threads per worker.
 
         # Game
         self.observation_shape = (3, 11, 11)  # Observation shape: (channels, height, width).
         self.observation_scale = 1  # Divide observations by this value before network inference.
         self.reward_scale = 1  # Divide rewards during training; evaluation restores environment units.
-        self.action_space = list(range(11 * 11))  # Consecutive action IDs starting at zero; change the number of actions.
+        self.action_space = list(range(11 * 11))  # Consecutive discrete action IDs, or the number of continuous action dimensions.
         self.players = list(range(2))  # Consecutive player IDs; one player for a single-agent environment.
         self.stacked_observations = 0  # Previous observations and actions appended to the current observation.
         self.muzero_player = 0  # Player ID controlled by MuZero during multiplayer evaluation.
@@ -30,7 +30,8 @@ class MuZeroConfig(BaseMuZeroConfig):
 
         # Self-play and search
         self.num_workers = 2  # Parallel self-play workers; also limits random collection workers.
-        self.selfplay_on_gpu = False  # Run self-play network inference on GPU.
+        self.selfplay_batch_size = 1  # Independent games searched together per worker; 1 disables batching.
+        self.selfplay_on_gpu = torch.cuda.is_available()  # Run self-play network inference on GPU when True; otherwise CPU.
         self.max_moves = 121  # Maximum environment transitions per episode.
         self.num_simulations = 400  # MCTS simulations performed for each real action.
         self.discount = 1  # Reward discount factor per environment transition.
@@ -80,8 +81,9 @@ class MuZeroConfig(BaseMuZeroConfig):
         self.checkpoint_interval = 50  # Gradient updates between publishing weights to self-play workers.
         self.value_loss_weight = 1  # Value loss multiplier; paper recommends 0.25 (See paper appendix Reanalyze).
         self.policy_loss_weight = 1  # Multiplier on the policy prediction loss.
-        self.train_on_gpu = torch.cuda.is_available()  # Train the network on GPU rather than CPU.
+        self.train_on_gpu = torch.cuda.is_available()  # Use GPU for training when available; otherwise CPU.
         self.optimizer = "Adam"  # Optimizer: "Adam" or "SGD"; paper uses SGD.
+        self.max_grad_norm = None  # Clip the gradient norm before each update; None disables clipping.
         self.weight_decay = 0.0001  # L2 regularization strength.
         self.momentum = 0.9  # SGD momentum; unused with Adam.
         self.lr_init = 0.002  # Initial learning rate.
@@ -105,7 +107,7 @@ class MuZeroConfig(BaseMuZeroConfig):
         self.use_last_model_value = False  # Refresh replay value targets with the latest network (See paper appendix Reanalyze).
         self.reanalyse_policy = False  # Refresh replay policy targets with MCTS using the latest network.
         self.reanalyse_policy_ratio = 0.8  # Fraction of eligible samples that use refreshed policy targets.
-        self.reanalyse_on_gpu = False  # Run reanalysis network inference on GPU.
+        self.reanalyse_on_gpu = torch.cuda.is_available()  # Use GPU for reanalysis when available; otherwise CPU.
 
         # Synchronization
         self.self_play_delay = 0  # Seconds to pause after each self-play game; 0 disables the delay.
@@ -113,6 +115,7 @@ class MuZeroConfig(BaseMuZeroConfig):
         self.ratio = 1  # Target gradient updates per new self-play transition; None disables pacing.
 
         # Evaluation
+        self.evaluation_both_players = False  # Alternate player seats across seeded evaluation episodes.
         self.evaluation_episodes = 100  # Final evaluation episode count; 0 disables final evaluation.
         self.evaluation_seed = 1000000  # First seed of consecutive final evaluation episodes.
         self.evaluation_target = None  # Required mean environment reward; None disables the pass threshold.
@@ -195,14 +198,6 @@ class Gomoku:
             chr(x) for x in range(ord("A"), ord("A") + self.board_size)
         ]
 
-    def to_play(self):
-        return 0 if self.player == 1 else 1
-
-    def reset(self):
-        self.board = numpy.zeros((self.board_size, self.board_size), dtype="int32")
-        self.player = 1
-        return self.get_observation()
-
     def step(self, action):
         x = math.floor(action / self.board_size)
         y = action % self.board_size
@@ -216,11 +211,8 @@ class Gomoku:
 
         return self.get_observation(), reward, done
 
-    def get_observation(self):
-        board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
-        board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
-        board_to_play = numpy.full((11, 11), self.player, dtype="int32")
-        return numpy.array([board_player1, board_player2, board_to_play])
+    def to_play(self):
+        return 0 if self.player == 1 else 1
 
     def legal_actions(self):
         legal = []
@@ -229,6 +221,34 @@ class Gomoku:
                 if self.board[i][j] == 0:
                     legal.append(i * self.board_size + j)
         return legal
+
+    def reset(self):
+        self.board = numpy.zeros((self.board_size, self.board_size), dtype="int32")
+        self.player = 1
+        return self.get_observation()
+
+    def render(self):
+        marker = "  "
+        for i in range(self.board_size):
+            marker = marker + self.board_markers[i] + " "
+        print(marker)
+        for row in range(self.board_size):
+            print(chr(ord("A") + row), end=" ")
+            for col in range(self.board_size):
+                ch = self.board[row][col]
+                if ch == 0:
+                    print(".", end=" ")
+                elif ch == 1:
+                    print("X", end=" ")
+                elif ch == -1:
+                    print("O", end=" ")
+            print()
+
+    def get_observation(self):
+        board_player1 = numpy.where(self.board == 1, 1.0, 0.0)
+        board_player2 = numpy.where(self.board == -1, 1.0, 0.0)
+        board_to_play = numpy.full((11, 11), self.player, dtype="int32")
+        return numpy.array([board_player1, board_player2, board_to_play])
 
     def have_winner(self):
         directions = ((1, -1), (1, 0), (1, 1), (0, 1))
@@ -257,23 +277,6 @@ class Gomoku:
                         if count == 5:
                             return True
         return False
-
-    def render(self):
-        marker = "  "
-        for i in range(self.board_size):
-            marker = marker + self.board_markers[i] + " "
-        print(marker)
-        for row in range(self.board_size):
-            print(chr(ord("A") + row), end=" ")
-            for col in range(self.board_size):
-                ch = self.board[row][col]
-                if ch == 0:
-                    print(".", end=" ")
-                elif ch == 1:
-                    print("X", end=" ")
-                elif ch == -1:
-                    print("O", end=" ")
-            print()
 
     def human_input_to_action(self):
         human_input = input("Enter an action: ")

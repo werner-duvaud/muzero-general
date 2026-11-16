@@ -1,5 +1,6 @@
 import argparse
 import copy
+import gzip
 import importlib
 import json
 import math
@@ -11,23 +12,18 @@ import time
 import nevergrad
 import numpy
 import ray
+import ray.util.scheduling_strategies
 import torch
-from torch.utils.tensorboard import SummaryWriter
+import torch.utils.tensorboard
 
 import diagnose_model
+import evaluation
 import models
 import random_bootstrap
 import replay_buffer
 import self_play
 import shared_storage
 import trainer
-from evaluation import (
-    Validation,
-    file_sha256,
-    runtime_metadata,
-    summarize_evaluation,
-    write_json,
-)
 
 
 class MuZero:
@@ -145,6 +141,7 @@ class MuZero:
             "training_origin": {"type": "fresh_self_play"},
         }
         self.replay_buffer = {}
+        self.source_checkpoint = None
 
         cpu_actor = CPUActor.remote()
         cpu_weights = cpu_actor.get_initial_weights.remote(self.config)
@@ -178,23 +175,25 @@ class MuZero:
         self.checkpoint["config"] = self.config.to_dict()
         if log_in_tensorboard or self.config.save_model:
             self.config.results_path.mkdir(parents=True, exist_ok=True)
-            source_checkpoint = getattr(self, "source_checkpoint", None)
+            source_checkpoint = self.source_checkpoint
             if source_checkpoint:
                 self.checkpoint["training_origin"] = {
                     "type": "resumed_self_play",
                     "checkpoint": str(source_checkpoint),
-                    "checkpoint_sha256": file_sha256(source_checkpoint),
+                    "checkpoint_sha256": evaluation.file_sha256(source_checkpoint),
                     "parent": self.checkpoint.get(
                         "training_origin", {"type": "unknown"}
                     ),
                 }
                 self.source_checkpoint = None
-            write_json(self.config.results_path / "config.json", self.config.to_dict())
-            write_json(
+            evaluation.write_json(
+                self.config.results_path / "config.json", self.config.to_dict()
+            )
+            evaluation.write_json(
                 self.config.results_path / "run.json",
                 {
                     "game": self.game_name,
-                    "runtime": runtime_metadata(),
+                    "runtime": evaluation.runtime_metadata(),
                     "training_origin": self.checkpoint["training_origin"],
                 },
             )
@@ -224,21 +223,30 @@ class MuZero:
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(self.checkpoint, self.config)
 
-        self.shared_storage_worker = shared_storage.SharedStorage.remote(
+        # Save checkpoints on the driver's filesystem alongside logs and replay.
+        self.shared_storage_worker = shared_storage.SharedStorage.options(
+            num_cpus=0,
+            scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=ray.get_runtime_context().get_node_id(), soft=False
+            ),
+        ).remote(
             self.checkpoint,
             self.config,
         )
-        self.shared_storage_worker.set_info.remote("terminate", False)
+        ray.get(self.shared_storage_worker.set_info.remote("terminate", False))
 
+        has_initial_replay = bool(self.replay_buffer)
         self.replay_buffer_worker = replay_buffer.ReplayBuffer.remote(
             self.checkpoint, self.replay_buffer, self.config
         )
+        # The replay actor owns the data now; release the driver's startup copy.
+        self.replay_buffer = {}
 
         warmup_target = min(
             self.checkpoint.get("bootstrap_training_steps", 0),
             self.config.training_steps,
         )
-        if self.replay_buffer and self.checkpoint["training_step"] < warmup_target:
+        if has_initial_replay and self.checkpoint["training_step"] < warmup_target:
             try:
                 ray.get(
                     self.training_worker.warmup.remote(
@@ -256,6 +264,7 @@ class MuZero:
             self.replay_buffer = ray.get(self.replay_buffer_worker.get_buffer.remote())
             if self.config.save_model:
                 self.save_replay_buffer()
+            self.replay_buffer = {}
 
         if reanalyse_enabled:
             self.reanalyse_worker = replay_buffer.Reanalyse.options(
@@ -316,11 +325,7 @@ class MuZero:
         also be warmed up at step zero. Resumed checkpoints past step zero skip
         this initialization.
         """
-        warmup_steps = getattr(self.config, "random_bootstrap_training_steps", 0)
-        if not isinstance(warmup_steps, int) or warmup_steps < 0:
-            raise ValueError(
-                "random_bootstrap_training_steps must be a nonnegative integer"
-            )
+        warmup_steps = self.config.random_bootstrap_training_steps
         if self.checkpoint["training_step"] != 0:
             return
         if not self.replay_buffer:
@@ -346,10 +351,10 @@ class MuZero:
                 self.save_replay_buffer()
 
     def save_replay_buffer(self):
-        """Atomically save replay data and counters as replay_buffer.pkl."""
-        path = self.config.results_path / "replay_buffer.pkl"
+        """Atomically save compressed replay data and counters."""
+        path = self.config.results_path / "replay_buffer.pkl.gz"
         temporary_path = path.with_suffix(path.suffix + ".tmp")
-        with open(temporary_path, "wb") as replay_buffer_file:
+        with gzip.open(temporary_path, "wb", compresslevel=1) as replay_buffer_file:
             pickle.dump(
                 {
                     "buffer": self.replay_buffer,
@@ -383,7 +388,7 @@ class MuZero:
         worker_tasks = list(worker_tasks or []) + [test_task]
 
         # Write everything in TensorBoard.
-        writer = SummaryWriter(self.config.results_path)
+        writer = torch.utils.tensorboard.SummaryWriter(self.config.results_path)
 
         print(
             "\nTraining...\nRun tensorboard --logdir ./results and go to http://localhost:6006/ to see in real time the training performance.\n"
@@ -422,7 +427,7 @@ class MuZero:
         ]
         info = ray.get(self.shared_storage_worker.get_info.remote(keys))
         validation = (
-            Validation(self.Game, self.config)
+            evaluation.Validation(self.Game, self.config)
             if self.config.validation_interval
             else None
         )
@@ -461,9 +466,14 @@ class MuZero:
                         next_validation = (
                             info["training_step"] + self.config.validation_interval
                         )
+                test_reward = (
+                    info["total_reward"]
+                    if len(self.config.players) == 1
+                    else info["muzero_reward"]
+                )
                 writer.add_scalar(
                     "1.Total_reward/1.Total_reward",
-                    info["total_reward"],
+                    test_reward,
                     counter,
                 )
                 writer.add_scalar(
@@ -524,7 +534,7 @@ class MuZero:
                 writer.add_scalar("3.Loss/Reward_loss", info["reward_loss"], counter)
                 writer.add_scalar("3.Loss/Policy_loss", info["policy_loss"], counter)
                 print(
-                    f"Last test reward: {info['total_reward']:.2f}. Training step: {info['training_step']}/{self.config.training_steps}. Played games: {info['num_played_games']}. Loss: {info['total_loss']:.2f}",
+                    f"Last test reward: {test_reward:.2f}. Training step: {info['training_step']}/{self.config.training_steps}. Played games: {info['num_played_games']}. Loss: {info['total_loss']:.2f}",
                     end="\r",
                 )
                 counter += 1
@@ -570,7 +580,7 @@ class MuZero:
         if (
             validation
             and self.config.checkpoint_selection == "best"
-            and getattr(self, "source_checkpoint", None)
+            and self.source_checkpoint
         ):
             temporary = self.source_checkpoint.with_suffix(".checkpoint.tmp")
             torch.save(self.checkpoint, temporary)
@@ -692,7 +702,7 @@ class MuZero:
             raise ValueError("evaluation_episodes must be positive to evaluate")
         config = copy.deepcopy(self.config)
         config.selfplay_on_gpu = False
-        runtime = runtime_metadata()
+        runtime = evaluation.runtime_metadata()
         pool_size = min(config.num_workers, config.evaluation_episodes)
         checkpoint = ray.put(self.checkpoint)
         workers = []
@@ -734,8 +744,8 @@ class MuZero:
             for worker in workers:
                 ray.kill(worker)
         episodes.sort(key=lambda episode: episode["seed"])
-        report = summarize_evaluation(episodes, config.evaluation_target)
-        checkpoint_path = getattr(self, "source_checkpoint", None)
+        report = evaluation.summarize_evaluation(episodes, config.evaluation_target)
+        checkpoint_path = self.source_checkpoint
         if checkpoint_path is None and config.save_model:
             checkpoint_path = config.results_path / "model.checkpoint"
         report.update(
@@ -757,14 +767,14 @@ class MuZero:
                 "runtime": runtime,
                 "checkpoint": str(checkpoint_path) if checkpoint_path else None,
                 "checkpoint_sha256": (
-                    file_sha256(checkpoint_path)
+                    evaluation.file_sha256(checkpoint_path)
                     if checkpoint_path and pathlib.Path(checkpoint_path).is_file()
                     else None
                 ),
             }
         )
         output_path = output_path or config.results_path / "evaluation.json"
-        write_json(output_path, report)
+        evaluation.write_json(output_path, report)
         status = (
             "no target configured"
             if report["target_met"] is None
@@ -784,7 +794,7 @@ class MuZero:
 
         Args:
             checkpoint_path (str or Path, optional): Saved model.checkpoint file.
-            replay_buffer_path (str or Path, optional): Saved replay_buffer.pkl file.
+            replay_buffer_path (str or Path, optional): Saved replay pickle, optionally gzipped.
 
         Raises:
             ValueError: The checkpoint belongs to a different game.
@@ -816,7 +826,8 @@ class MuZero:
         # Load replay buffer.
         if replay_buffer_path:
             replay_buffer_path = pathlib.Path(replay_buffer_path)
-            with open(replay_buffer_path, "rb") as f:
+            opener = gzip.open if replay_buffer_path.suffix == ".gz" else open
+            with opener(replay_buffer_path, "rb") as f:
                 replay_buffer_infos = pickle.load(f)
             self.replay_buffer = replay_buffer_infos["buffer"]
             self.checkpoint["num_played_steps"] = replay_buffer_infos[
@@ -993,13 +1004,15 @@ def load_model_menu(muzero, game_name):
         while checkpoint_path and not pathlib.Path(checkpoint_path).is_file():
             checkpoint_path = input("Invalid checkpoint path. Try again: ")
         replay_buffer_path = input(
-            "Enter a path to the replay_buffer.pkl, or ENTER if none: "
+            "Enter a path to the replay pickle (.pkl or .pkl.gz), or ENTER if none: "
         )
         while replay_buffer_path and not pathlib.Path(replay_buffer_path).is_file():
             replay_buffer_path = input("Invalid replay buffer path. Try again: ")
     else:
         checkpoint_path = options[choice] / "model.checkpoint"
-        replay_buffer_path = options[choice] / "replay_buffer.pkl"
+        replay_buffer_path = options[choice] / "replay_buffer.pkl.gz"
+        if not replay_buffer_path.exists():
+            replay_buffer_path = options[choice] / "replay_buffer.pkl"
 
     muzero.load_model(
         checkpoint_path=checkpoint_path,

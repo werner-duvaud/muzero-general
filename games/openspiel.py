@@ -6,11 +6,12 @@ import torch
 
 from config import MuZeroConfig as BaseMuZeroConfig
 
-from .abstract_game import AbstractGame
+from games.abstract_game import AbstractGame
 
 # OpenSpiel adapter for deterministic games with one player or two alternating players.
 
 try:
+    import open_spiel.python.algorithms.minimax
     import pyspiel
 
 except ImportError as error:
@@ -47,6 +48,11 @@ def validate_game(spiel_game):
         )
     if spiel_game.num_players() not in (1, 2):
         raise ValueError("The OpenSpiel adapter supports only one or two players.")
+    if (
+        spiel_game.num_players() == 2
+        and game_type.utility != pyspiel.GameType.Utility.ZERO_SUM
+    ):
+        raise ValueError("Two-player OpenSpiel games must have zero-sum rewards.")
 
 
 class MuZeroConfig(BaseMuZeroConfig):
@@ -55,31 +61,32 @@ class MuZeroConfig(BaseMuZeroConfig):
         # fmt: off
         # Resources
         self.seed = 0  # Seed for NumPy, PyTorch and game resets.
-        self.max_num_gpus = None  # GPU limit; None uses all available GPUs.
+        self.max_num_gpus = 1  # Use at most one GPU when CUDA is available.
         self.num_threads = 1  # PyTorch CPU threads per worker.
 
         # Game
         self.observation_shape = get_observation_tensor_shape(game)  # Observation shape: (channels, height, width).
         self.observation_scale = 1  # Divide observations by this value before network inference.
         self.reward_scale = 1  # Divide rewards during training; evaluation restores environment units.
-        self.action_space = list(range(game.num_distinct_actions()))  # Consecutive action IDs starting at zero; change the number of actions.
+        self.action_space = list(range(game.num_distinct_actions()))  # Consecutive discrete action IDs, or the number of continuous action dimensions.
         self.players = list(range(game.num_players()))  # Consecutive player IDs; one player for a single-agent environment.
         self.stacked_observations = 0  # Previous observations and actions appended to the current observation.
         self.muzero_player = 0  # Player ID controlled by MuZero during multiplayer evaluation.
-        self.opponent = "self"  # Evaluation opponent: None, "random" or "expert"; does not affect training.
+        self.opponent = "expert" if game.get_type().short_name == "tic_tac_toe" else "random"  # Evaluation opponent: None, "random" or "expert"; does not affect training.
 
         # Self-play and search
-        self.num_workers = 1  # Parallel self-play workers; also limits random collection workers.
-        self.selfplay_on_gpu = False  # Run self-play network inference on GPU.
+        self.num_workers = 2  # Parallel self-play workers; also limits random collection workers.
+        self.selfplay_batch_size = 4  # Independent games searched together per worker; 1 disables batching.
+        self.selfplay_on_gpu = torch.cuda.is_available()  # Run self-play network inference on GPU when True; otherwise CPU.
         self.max_moves = game.max_game_length()  # Maximum environment transitions per episode.
-        self.num_simulations = 25  # MCTS simulations performed for each real action.
+        self.num_simulations = 100  # MCTS simulations performed for each real action.
         self.discount = 1  # Reward discount factor per environment transition.
         self.temperature_threshold = None  # Episode move count before greedy play; None uses the schedule throughout.
-        self.root_dirichlet_alpha = 0.1  # Dirichlet concentration for self-play root exploration noise.
-        self.root_exploration_fraction = 0.25  # Fraction of root priors replaced with Dirichlet noise during self-play.
+        self.root_dirichlet_alpha = 0.3  # Dirichlet concentration for self-play root exploration noise.
+        self.root_exploration_fraction = 0.5  # Fraction of root priors replaced with Dirichlet noise during self-play.
         self.pb_c_base = 19652  # Controls how MCTS prior exploration grows with node visits.
-        self.pb_c_init = 1.25  # Initial strength of MCTS prior exploration.
-        self.known_bounds = (-1, 1)  # Fixed search value bounds (min, max); None estimates them during search.
+        self.pb_c_init = 2.5  # Initial strength of MCTS prior exploration.
+        self.known_bounds = (-1, 1) if game.get_type().short_name == "tic_tac_toe" else None  # Fixed search value bounds (min, max); None estimates them during search.
 
         # Network
         self.network = "resnet"  # Network architecture: "resnet" or "fullyconnected".
@@ -88,7 +95,7 @@ class MuZeroConfig(BaseMuZeroConfig):
 
         # Residual network (used when network = "resnet")
         self.downsample = False  # Observation downsampling: False, "CNN" or "resnet" (See paper appendix Network Architecture).
-        self.blocks = 2  # Residual blocks in the representation, dynamics and prediction networks.
+        self.blocks = 1  # Residual blocks in the representation, dynamics and prediction networks.
         self.channels = 16  # Number of channels in the residual latent state.
         self.resnet_state_normalization = "global"  # Latent min/max normalization: "global" or per-"channel".
         self.reduced_channels_reward = 16  # Channels retained before the residual reward head.
@@ -114,25 +121,26 @@ class MuZeroConfig(BaseMuZeroConfig):
             / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S-%f")
         )
         self.save_model = True  # Save model/replay snapshots and run metadata under results_path.
-        self.training_steps = 1000000  # Total gradient updates, including random-buffer warmup.
+        self.training_steps = 1000000000  # Total gradient updates, including random-buffer warmup.
         self.temperature_schedule = [(0, 1.0)]  # Pairs of (gradient update, action-sampling temperature); zero is greedy.
-        self.batch_size = 64  # Replay positions sampled for each gradient update.
+        self.batch_size = 256  # Replay positions sampled for each gradient update.
         self.checkpoint_interval = 10  # Gradient updates between publishing weights to self-play workers.
         self.value_loss_weight = 0.25  # Value loss multiplier; paper recommends 0.25 (See paper appendix Reanalyze).
         self.policy_loss_weight = 1  # Multiplier on the policy prediction loss.
-        self.train_on_gpu = torch.cuda.is_available()  # Train the network on GPU rather than CPU.
+        self.train_on_gpu = torch.cuda.is_available()  # Use GPU for training when available; otherwise CPU.
         self.optimizer = "Adam"  # Optimizer: "Adam" or "SGD"; paper uses SGD.
+        self.max_grad_norm = 0.5  # Clip the gradient norm before each update; None disables clipping.
         self.weight_decay = 0.0001  # L2 regularization strength.
         self.momentum = 0.9  # SGD momentum; unused with Adam.
-        self.lr_init = 0.003  # Initial learning rate.
+        self.lr_init = 0.0003  # Initial learning rate.
         self.lr_decay_rate = 1  # Exponential decay factor; 1 keeps the learning rate constant.
         self.lr_decay_steps = 10000  # Gradient updates per learning rate decay factor.
 
         # Replay buffer
-        self.replay_buffer_size = 3000  # Maximum complete games retained in FIFO replay.
-        self.num_unroll_steps = 20  # Recurrent model steps trained after each sampled state.
-        self.td_steps = 20  # Reward horizon before value bootstrapping; episode end uses observed returns.
-        self.PER = True  # Prioritize replay games and positions by prediction error (See paper appendix Training).
+        self.replay_buffer_size = 5000  # Maximum complete games retained in FIFO replay.
+        self.num_unroll_steps = 3  # Recurrent model steps trained after each sampled state.
+        self.td_steps = game.max_game_length()  # Reward horizon before value bootstrapping; episode end uses observed returns.
+        self.PER = False  # Prioritize replay games and positions by prediction error (See paper appendix Training).
         self.PER_alpha = 0.5  # Priority exponent when PER is enabled; zero samples uniformly, paper suggests 1.
 
         # Initialization
@@ -142,24 +150,25 @@ class MuZeroConfig(BaseMuZeroConfig):
 
         # Reanalysis (See paper appendix Reanalyse)
         self.reanalyse_batch_size = 32  # Maximum positions refreshed per reanalysis iteration.
-        self.use_last_model_value = True  # Refresh replay value targets with the latest network (See paper appendix Reanalyze).
-        self.reanalyse_policy = True  # Refresh replay policy targets with MCTS using the latest network.
+        self.use_last_model_value = False  # Refresh replay value targets with the latest network (See paper appendix Reanalyze).
+        self.reanalyse_policy = False  # Refresh replay policy targets with MCTS using the latest network.
         self.reanalyse_policy_ratio = 0.8  # Fraction of eligible samples that use refreshed policy targets.
-        self.reanalyse_on_gpu = False  # Run reanalysis network inference on GPU.
+        self.reanalyse_on_gpu = torch.cuda.is_available()  # Use GPU for reanalysis when available; otherwise CPU.
 
         # Synchronization
         self.self_play_delay = 0  # Seconds to pause after each self-play game; 0 disables the delay.
         self.training_delay = 0  # Seconds to pause after each gradient update; 0 disables the delay.
-        self.ratio = None  # Target gradient updates per new self-play transition; None disables pacing.
+        self.ratio = 1.0  # Target gradient updates per new self-play transition; None disables pacing.
 
         # Evaluation
-        self.evaluation_episodes = 100  # Final evaluation episode count; 0 disables final evaluation.
+        self.evaluation_both_players = game.num_players() == 2  # Alternate player seats across seeded evaluation episodes.
+        self.evaluation_episodes = 200  # Final evaluation episode count; 0 disables final evaluation.
         self.evaluation_seed = 1000000  # First seed of consecutive final evaluation episodes.
-        self.evaluation_target = None  # Required mean environment reward; None disables the pass threshold.
-        self.validation_interval = 0  # Gradient updates between validation checkpoints; 0 disables validation.
-        self.validation_episodes = 20  # Episodes used to evaluate each validation checkpoint.
+        self.evaluation_target = 0 if game.get_type().short_name == "tic_tac_toe" else None  # Required mean environment reward; None disables the pass threshold.
+        self.validation_interval = 2000  # Gradient updates between validation checkpoints; 0 disables validation.
+        self.validation_episodes = 40  # Episodes used to evaluate each validation checkpoint.
         self.validation_seed = 5000000  # First validation seed; keep validation and final evaluation seeds separate.
-        self.checkpoint_selection = "last"  # "best" selects the highest validation mean; "last" keeps final weights.
+        self.checkpoint_selection = "best"  # "best" selects the highest validation mean; "last" keeps final weights.
         # fmt: on
 
 
@@ -167,7 +176,7 @@ class Game(AbstractGame):
     """Game wrapper."""
 
     def __init__(self, seed=None, render=False):
-        self.env = Spiel()
+        self.env = OpenSpiel()
 
     def step(self, action):
         """Apply a legal action and return the resulting transition.
@@ -203,10 +212,6 @@ class Game(AbstractGame):
         self.env.render()
         input("Press enter to take a step ")
 
-    def legal_actions_human(self):
-        """Return human-readable labels for the current legal actions."""
-        return self.env.human_legal_actions()
-
     def human_to_action(self):
         """Prompt for a legal move and return its action ID."""
         while True:
@@ -221,6 +226,29 @@ class Game(AbstractGame):
 
         return self.env.board.string_to_action(choice)
 
+    def expert_agent(self):
+        """Sample uniformly among optimal moves, suitable for small games."""
+        actions = self.legal_actions()
+        values = [
+            open_spiel.python.algorithms.minimax.alpha_beta_search(
+                self.env.game,
+                state=self.env.board.child(action),
+                maximum_depth=self.env.game.max_game_length(),
+                maximizing_player_id=self.to_play(),
+            )[0]
+            for action in actions
+        ]
+        best_value = max(values)
+        return int(
+            numpy.random.choice(
+                [
+                    action
+                    for action, value in zip(actions, values)
+                    if value == best_value
+                ]
+            )
+        )
+
     def action_to_string(self, action_number):
         """Return a human-readable label for an action ID.
 
@@ -230,12 +258,14 @@ class Game(AbstractGame):
         Returns:
             str: Description of the action.
         """
-        row = action_number // 3 + 1
-        col = action_number % 3 + 1
-        return f"Play row {row}, column {col}"
+        return self.env.board.action_to_string(self.to_play(), action_number)
+
+    def legal_actions_human(self):
+        """Return human-readable labels for the current legal actions."""
+        return self.env.human_legal_actions()
 
 
-class Spiel:
+class OpenSpiel:
     def __init__(self):
         self.game = game
         validate_game(self.game)
@@ -243,37 +273,39 @@ class Spiel:
         self.board = self.game.new_initial_state()
         self.player = self.board.current_player()
 
+    def step(self, action):
+        acting_player = self.player
+        board = self.board.child(action)
+        done = board.is_terminal()
+        next_player = (acting_player + 1) % self.game.num_players()
+        if not done and board.current_player() != next_player:
+            raise ValueError(
+                "The OpenSpiel adapter requires strictly alternating turns."
+            )
+        reward = board.rewards()[acting_player]
+        self.board = board
+        self.player = next_player
+        observation = self.get_observation()
+        return observation, reward, done
+
     def to_play(self):
         return self.player
+
+    def legal_actions(self):
+        return self.board.legal_actions()
 
     def reset(self):
         self.board = self.game.new_initial_state()
         self.player = self.board.current_player()
         return self.get_observation()
 
-    def step(self, action):
-        acting_player = self.player
-        self.board = self.board.child(action)
-        done = self.board.is_terminal()
-        reward = self.board.rewards()[acting_player]
-        self.player = (
-            (acting_player + 1) % self.game.num_players()
-            if done
-            else self.board.current_player()
-        )
-        observation = self.get_observation()
-        return observation, reward, done
+    def render(self):
+        print(self.board)
 
     def get_observation(self):
         return numpy.array(self.board.observation_tensor(self.player)).reshape(
             self.observation_shape
         )
 
-    def legal_actions(self):
-        return self.board.legal_actions()
-
     def human_legal_actions(self):
         return [self.board.action_to_string(x) for x in self.board.legal_actions()]
-
-    def render(self):
-        print(self.board)

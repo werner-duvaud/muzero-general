@@ -3,10 +3,11 @@ import pathlib
 
 import gymnasium as gym
 import numpy
+import torch
 
 from config import MuZeroConfig as BaseMuZeroConfig
 
-from .abstract_game import AbstractGame
+from games.abstract_game import AbstractGame
 
 
 class MuZeroConfig(BaseMuZeroConfig):
@@ -14,14 +15,14 @@ class MuZeroConfig(BaseMuZeroConfig):
         # fmt: off
         # Resources
         self.seed = 1  # Seed for NumPy, PyTorch and game resets.
-        self.max_num_gpus = 0  # GPU limit; None uses all available GPUs.
+        self.max_num_gpus = 1  # Use at most one GPU when CUDA is available.
         self.num_threads = 1  # PyTorch CPU threads per worker.
 
         # Game
-        self.observation_shape = (1, 1, 8)  # Vector observation wrapped as (1, 1, features).
+        self.observation_shape = (1, 1, 8)  # Observation shape: (channels, height, width).
         self.observation_scale = 1  # Divide observations by this value before network inference.
         self.reward_scale = 3  # Divide rewards during training; evaluation restores environment units.
-        self.action_space = list(range(4))  # Consecutive action IDs starting at zero; change the number of actions.
+        self.action_space = list(range(4))  # Consecutive discrete action IDs, or the number of continuous action dimensions.
         self.players = list(range(1))  # Consecutive player IDs; one player for a single-agent environment.
         self.stacked_observations = 0  # Previous observations and actions appended to the current observation.
         self.muzero_player = 0  # Player ID controlled by MuZero during multiplayer evaluation.
@@ -29,7 +30,8 @@ class MuZeroConfig(BaseMuZeroConfig):
 
         # Self-play and search
         self.num_workers = 16  # Parallel self-play workers; also limits random collection workers.
-        self.selfplay_on_gpu = False  # Run self-play network inference on GPU.
+        self.selfplay_batch_size = 1  # Independent games searched together per worker; 1 disables batching.
+        self.selfplay_on_gpu = torch.cuda.is_available()  # Run self-play network inference on GPU when True; otherwise CPU.
         self.max_moves = 1000  # Maximum environment transitions per episode.
         self.num_simulations = 50  # MCTS simulations performed for each real action.
         self.discount = 0.999  # Reward discount factor per environment transition.
@@ -79,8 +81,9 @@ class MuZeroConfig(BaseMuZeroConfig):
         self.checkpoint_interval = 10  # Gradient updates between publishing weights to self-play workers.
         self.value_loss_weight = 0.25  # Value loss multiplier; paper recommends 0.25 (See paper appendix Reanalyze).
         self.policy_loss_weight = 1  # Multiplier on the policy prediction loss.
-        self.train_on_gpu = False  # Train the network on GPU rather than CPU.
+        self.train_on_gpu = torch.cuda.is_available()  # Use GPU for training when available; otherwise CPU.
         self.optimizer = "Adam"  # Optimizer: "Adam" or "SGD"; paper uses SGD.
+        self.max_grad_norm = None  # Clip the gradient norm before each update; None disables clipping.
         self.weight_decay = 0.0001  # L2 regularization strength.
         self.momentum = 0.9  # SGD momentum; unused with Adam.
         self.lr_init = 0.001  # Initial learning rate.
@@ -104,7 +107,7 @@ class MuZeroConfig(BaseMuZeroConfig):
         self.use_last_model_value = False  # Refresh replay value targets with the latest network (See paper appendix Reanalyze).
         self.reanalyse_policy = False  # Refresh replay policy targets with MCTS using the latest network.
         self.reanalyse_policy_ratio = 0.8  # Fraction of eligible samples that use refreshed policy targets.
-        self.reanalyse_on_gpu = False  # Run reanalysis network inference on GPU.
+        self.reanalyse_on_gpu = torch.cuda.is_available()  # Use GPU for reanalysis when available; otherwise CPU.
 
         # Synchronization
         self.self_play_delay = 0  # Seconds to pause after each self-play game; 0 disables the delay.
@@ -112,6 +115,7 @@ class MuZeroConfig(BaseMuZeroConfig):
         self.ratio = 0.1  # Target gradient updates per new self-play transition; None disables pacing.
 
         # Evaluation
+        self.evaluation_both_players = False  # Alternate player seats across seeded evaluation episodes.
         self.evaluation_episodes = 100  # Final evaluation episode count; 0 disables final evaluation.
         self.evaluation_seed = 1000000  # First seed of consecutive final evaluation episodes.
         self.evaluation_target = 200  # Required mean environment reward; None disables the pass threshold.
