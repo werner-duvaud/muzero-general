@@ -3,6 +3,22 @@ from abc import ABC, abstractmethod
 
 import torch
 
+_SUPPORTS = {}
+
+
+class DataParallel(torch.nn.DataParallel):
+    """Keep CPU workers usable on hosts with multiple visible GPUs."""
+
+    def forward(self, *inputs, **kwargs):
+        if next(self.module.parameters()).device.type == "cpu":
+            return self.module(*inputs, **kwargs)
+        return super().forward(*inputs, **kwargs)
+
+
+def parallelize(module):
+    """Wrap a module in CPU-compatible DataParallel when multiple GPUs are visible."""
+    return DataParallel(module) if torch.cuda.device_count() > 1 else module
+
 
 class MuZeroNetwork:
     def __new__(cls, config):
@@ -11,15 +27,15 @@ class MuZeroNetwork:
                 config.observation_shape,
                 config.stacked_observations,
                 config.action_space,
-                config.log_std_clamp,
                 config.encoding_size,
                 config.fc_reward_layers,
                 config.fc_value_layers,
-                config.fc_mu_policy_layers,
-                config.fc_log_std_policy_layers,
+                config.fc_policy_layers,
                 config.fc_representation_layers,
                 config.fc_dynamics_layers,
                 config.support_size,
+                config.train_reward,
+                config.log_std_clamp,
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(
@@ -36,6 +52,9 @@ class MuZeroNetwork:
                 config.resnet_fc_policy_layers,
                 config.support_size,
                 config.downsample,
+                config.train_reward,
+                config.resnet_state_normalization,
+                config.log_std_clamp,
             )
         else:
             raise NotImplementedError(
@@ -44,6 +63,10 @@ class MuZeroNetwork:
 
 
 def dict_to_cpu(dictionary):
+    """Copy a dictionary, moving tensor values and tensors in nested dicts to CPU.
+
+    Other value types, including lists and tuples, are left unchanged.
+    """
     cpu_dict = {}
     for key, value in dictionary.items():
         if isinstance(value, torch.Tensor):
@@ -55,24 +78,51 @@ def dict_to_cpu(dictionary):
     return cpu_dict
 
 
+def scale_gradient(tensor, scale):
+    """Return the same tensor value while multiplying its backward gradient."""
+    return tensor * scale + tensor.detach() * (1 - scale)
+
+
+def zero_support_logits(batch_size, full_support_size, device):
+    """Return logits concentrated on the central, zero-valued support category."""
+    logits = torch.full((batch_size, full_support_size), -1e9, device=device)
+    logits[:, full_support_size // 2] = 0.0
+    return logits
+
+
 class AbstractNetwork(ABC, torch.nn.Module):
+    """Base class for MuZero networks.
+
+    Inference returns value logits, reward logits, Gaussian policy parameters, and latent
+    state. Initial inference encodes a zero reward.
+    """
+
     def __init__(self):
         super().__init__()
         pass
 
     @abstractmethod
     def initial_inference(self, observation):
+        """Return value, zero reward, Gaussian policy parameters, and state for observations."""
         pass
 
     @abstractmethod
     def recurrent_inference(self, encoded_state, action):
+        """Return value, reward, Gaussian policy parameters, and next state after actions."""
         pass
 
     def get_weights(self):
-        return dict_to_cpu(self.state_dict())
+        """Return CPU state-dict tensors with DataParallel prefixes removed."""
+        return {
+            key.replace(".module.", "."): value.cpu()
+            for key, value in self.state_dict().items()
+        }
 
     def set_weights(self, weights):
-        self.load_state_dict(weights)
+        """Load canonical weights into wrapped or unwrapped network modules."""
+        self.load_state_dict(
+            {key: weights[key.replace(".module.", ".")] for key in self.state_dict()}
+        )
 
 
 ##################################
@@ -85,126 +135,122 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         observation_shape,
         stacked_observations,
         action_space_size,
-        log_std_clamp,
         encoding_size,
         fc_reward_layers,
         fc_value_layers,
-        fc_mu_policy_layers,
-        fc_log_std_policy_layers,
+        fc_policy_layers,
         fc_representation_layers,
         fc_dynamics_layers,
         support_size,
+        train_reward,
+        log_std_clamp,
     ):
         super().__init__()
-        self.action_space_size = action_space_size
         self.log_std_clamp = log_std_clamp
+        self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
+        self.train_reward = train_reward
 
-        self.representation_network = torch.nn.DataParallel(
+        self.representation_network = parallelize(
             mlp(
                 observation_shape[0]
                 * observation_shape[1]
                 * observation_shape[2]
                 * (stacked_observations + 1)
-                + stacked_observations * observation_shape[1] * observation_shape[2],
+                + stacked_observations
+                * action_space_size
+                * observation_shape[1]
+                * observation_shape[2],
                 fc_representation_layers,
                 encoding_size,
             )
         )
 
-        self.dynamics_encoded_state_network = torch.nn.DataParallel(
+        self.dynamics_encoded_state_network = parallelize(
             mlp(
                 encoding_size + self.action_space_size,
                 fc_dynamics_layers,
                 encoding_size,
             )
         )
-        self.dynamics_reward_network = torch.nn.DataParallel(
-            mlp(encoding_size, fc_reward_layers, self.full_support_size)
-        )
-
-        self.prediction_policy_mu_network = torch.nn.DataParallel(
-            mlp(
-                encoding_size,
-                fc_mu_policy_layers,
-                self.action_space_size,
-                # output_activation=torch.nn.Tanh,
+        if train_reward:
+            self.dynamics_reward_network = parallelize(
+                mlp(encoding_size, fc_reward_layers, self.full_support_size)
             )
+
+        self.prediction_policy_network = parallelize(
+            mlp(encoding_size, fc_policy_layers, 2 * self.action_space_size)
         )
-        self.prediction_policy_logstd_network = torch.nn.DataParallel(
-            mlp(encoding_size, fc_log_std_policy_layers, self.action_space_size)
-        )
-        self.prediction_value_network = torch.nn.DataParallel(
+        self.prediction_value_network = parallelize(
             mlp(encoding_size, fc_value_layers, self.full_support_size)
         )
 
     def prediction(self, encoded_state):
-        mu = self.prediction_policy_mu_network(encoded_state)
-        log_std = self.prediction_policy_logstd_network(encoded_state)
-        log_std = torch.clamp(log_std, *self.log_std_clamp)
+        """Return Gaussian policy parameters and value logits for a batch of latent states."""
+        policy_parameters = self.prediction_policy_network(encoded_state)
         value = self.prediction_value_network(encoded_state)
-        return mu, log_std, value
+        return clamp_policy(policy_parameters, self.log_std_clamp), value
 
     def representation(self, observation):
+        """Encode stacked observations and normalize their latent states."""
         encoded_state = self.representation_network(
             observation.view(observation.shape[0], -1)
         )
-        # Scale encoded state between [-1, 1]
+        # Scale encoded state between [0, 1] (See appendix paper Training).
         min_encoded_state = encoded_state.min(1, keepdim=True)[0]
         max_encoded_state = encoded_state.max(1, keepdim=True)[0]
-        mean_encoded_state = (max_encoded_state + min_encoded_state) / 2
-        scale_encoded_state = (max_encoded_state - min_encoded_state) / 2
+        scale_encoded_state = max_encoded_state - min_encoded_state
         scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
         encoded_state_normalized = (
-            encoded_state - mean_encoded_state
+            encoded_state - min_encoded_state
         ) / scale_encoded_state
         return encoded_state_normalized
 
     def dynamics(self, encoded_state, action):
-        # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
-        x = torch.cat((encoded_state, action), dim=1)
+        """Return normalized next states and reward logits for the supplied actions."""
+        # Replay stores pre-tanh Gaussian actions; dynamics sees normalized controls.
+        x = torch.cat((encoded_state, action.float().tanh()), dim=1)
 
         next_encoded_state = self.dynamics_encoded_state_network(x)
 
-        reward = self.dynamics_reward_network(next_encoded_state)
+        reward = (
+            self.dynamics_reward_network(next_encoded_state)
+            if self.train_reward
+            else zero_support_logits(len(action), self.full_support_size, action.device)
+        )
 
-        # Scale encoded state between [0, 1] (See paper appendix Training)
+        # Scale encoded state between [0, 1] (See paper appendix Training).
         min_next_encoded_state = next_encoded_state.min(1, keepdim=True)[0]
         max_next_encoded_state = next_encoded_state.max(1, keepdim=True)[0]
-        mean_next_encoded_state = (max_next_encoded_state + min_next_encoded_state) / 2
-        scale_next_encoded_state = (max_next_encoded_state - min_next_encoded_state) / 2
+        scale_next_encoded_state = max_next_encoded_state - min_next_encoded_state
         scale_next_encoded_state[scale_next_encoded_state < 1e-5] += 1e-5
         next_encoded_state_normalized = (
-            next_encoded_state - mean_next_encoded_state
+            next_encoded_state - min_next_encoded_state
         ) / scale_next_encoded_state
 
         return next_encoded_state_normalized, reward
 
     def initial_inference(self, observation):
+        """Return value, zero reward, Gaussian policy parameters, and state for observations."""
         encoded_state = self.representation(observation)
-        mu, log_std, value = self.prediction(encoded_state)
-        # reward equal to 0 for consistency
-        reward = torch.log(
-            (
-                torch.zeros(1, self.full_support_size)
-                .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
-                .repeat(len(observation), 1)
-                .to(observation.device)
-            )
+        policy_parameters, value = self.prediction(encoded_state)
+        # reward equal to 0 for consistency.
+        reward = zero_support_logits(
+            len(observation), self.full_support_size, observation.device
         )
 
         return (
             value,
             reward,
-            mu,
-            log_std,
+            policy_parameters,
             encoded_state,
         )
 
     def recurrent_inference(self, encoded_state, action):
+        """Return value, reward, Gaussian policy parameters, and next state after actions."""
         next_encoded_state, reward = self.dynamics(encoded_state, action)
-        mu, log_std, value = self.prediction(next_encoded_state)
-        return value, reward, mu, log_std, next_encoded_state
+        policy_parameters, value = self.prediction(next_encoded_state)
+        return value, reward, policy_parameters, next_encoded_state
 
 
 ###### End Fully Connected #######
@@ -216,6 +262,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
 
 
 def conv3x3(in_channels, out_channels, stride=1):
+    """Construct a bias-free 3-by-3 convolution with one-cell padding."""
     return torch.nn.Conv2d(
         in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
     )
@@ -241,7 +288,7 @@ class ResidualBlock(torch.nn.Module):
         return out
 
 
-# Downsample observations before representation network (See paper appendix Network Architecture)
+# Downsample observations before representation network (See paper appendix Network Architecture).
 class DownSample(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -317,6 +364,7 @@ class RepresentationNetwork(torch.nn.Module):
         num_blocks,
         num_channels,
         downsample,
+        action_space_size,
     ):
         super().__init__()
         self.downsample = downsample
@@ -324,13 +372,13 @@ class RepresentationNetwork(torch.nn.Module):
             if self.downsample == "resnet":
                 self.downsample_net = DownSample(
                     observation_shape[0] * (stacked_observations + 1)
-                    + stacked_observations,
+                    + stacked_observations * action_space_size,
                     num_channels,
                 )
             elif self.downsample == "CNN":
                 self.downsample_net = DownsampleCNN(
                     observation_shape[0] * (stacked_observations + 1)
-                    + stacked_observations,
+                    + stacked_observations * action_space_size,
                     num_channels,
                     (
                         math.ceil(observation_shape[1] / 16),
@@ -340,7 +388,8 @@ class RepresentationNetwork(torch.nn.Module):
             else:
                 raise NotImplementedError('downsample should be "resnet" or "CNN".')
         self.conv = conv3x3(
-            observation_shape[0] * (stacked_observations + 1) + stacked_observations,
+            observation_shape[0] * (stacked_observations + 1)
+            + stacked_observations * action_space_size,
             num_channels,
         )
         self.bn = torch.nn.BatchNorm2d(num_channels)
@@ -366,28 +415,32 @@ class DynamicsNetwork(torch.nn.Module):
         self,
         num_blocks,
         num_channels,
+        action_space_size,
         reduced_channels_reward,
         fc_reward_layers,
         full_support_size,
         block_output_size_reward,
-        action_dim,
+        train_reward,
     ):
         super().__init__()
-        self.conv = conv3x3(num_channels, num_channels - action_dim)
-        self.bn = torch.nn.BatchNorm2d(num_channels - action_dim)
+        self.conv = conv3x3(num_channels + action_space_size, num_channels)
+        self.bn = torch.nn.BatchNorm2d(num_channels)
         self.resblocks = torch.nn.ModuleList(
-            [ResidualBlock(num_channels - action_dim) for _ in range(num_blocks)]
+            [ResidualBlock(num_channels) for _ in range(num_blocks)]
         )
 
-        self.conv1x1_reward = torch.nn.Conv2d(
-            num_channels - action_dim, reduced_channels_reward, 1
-        )
-        self.block_output_size_reward = block_output_size_reward
-        self.fc = mlp(
-            self.block_output_size_reward,
-            fc_reward_layers,
-            full_support_size,
-        )
+        self.full_support_size = full_support_size
+        self.train_reward = train_reward
+        if train_reward:
+            self.conv1x1_reward = torch.nn.Conv2d(
+                num_channels, reduced_channels_reward, 1
+            )
+            self.block_output_size_reward = block_output_size_reward
+            self.fc = mlp(
+                self.block_output_size_reward,
+                fc_reward_layers,
+                full_support_size,
+            )
 
     def forward(self, x):
         x = self.conv(x)
@@ -396,9 +449,12 @@ class DynamicsNetwork(torch.nn.Module):
         for block in self.resblocks:
             x = block(x)
         state = x
-        x = self.conv1x1_reward(x)
-        x = x.view(-1, self.block_output_size_reward)
-        reward = self.fc(x)
+        if self.train_reward:
+            x = self.conv1x1_reward(x)
+            x = x.view(-1, self.block_output_size_reward)
+            reward = self.fc(x)
+        else:
+            reward = zero_support_logits(len(x), self.full_support_size, x.device)
         return state, reward
 
 
@@ -428,15 +484,10 @@ class PredictionNetwork(torch.nn.Module):
         self.fc_value = mlp(
             self.block_output_size_value, fc_value_layers, full_support_size
         )
-        self.mu_fc_policy = mlp(
+        self.fc_policy = mlp(
             self.block_output_size_policy,
             fc_policy_layers,
-            action_space_size,
-        )
-        self.log_std_fc_policy = mlp(
-            self.block_output_size_policy,
-            [],
-            action_space_size,
+            2 * action_space_size,
         )
 
     def forward(self, x):
@@ -447,9 +498,8 @@ class PredictionNetwork(torch.nn.Module):
         value = value.view(-1, self.block_output_size_value)
         policy = policy.view(-1, self.block_output_size_policy)
         value = self.fc_value(value)
-        mu = self.mu_fc_policy(policy)
-        log_std = self.log_std_fc_policy(policy)
-        return mu, log_std, value
+        policy = self.fc_policy(policy)
+        return policy, value
 
 
 class MuZeroResidualNetwork(AbstractNetwork):
@@ -468,8 +518,13 @@ class MuZeroResidualNetwork(AbstractNetwork):
         fc_policy_layers,
         support_size,
         downsample,
+        train_reward,
+        state_normalization="channel",
+        log_std_clamp=(-5, 2),
     ):
         super().__init__()
+        self.log_std_clamp = log_std_clamp
+        self.state_normalization = state_normalization
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
         block_output_size_reward = (
@@ -502,29 +557,31 @@ class MuZeroResidualNetwork(AbstractNetwork):
             else (reduced_channels_policy * observation_shape[1] * observation_shape[2])
         )
 
-        self.representation_network = torch.nn.DataParallel(
+        self.representation_network = parallelize(
             RepresentationNetwork(
                 observation_shape,
                 stacked_observations,
                 num_blocks,
                 num_channels,
                 downsample,
+                action_space_size,
             )
         )
 
-        self.dynamics_network = torch.nn.DataParallel(
+        self.dynamics_network = parallelize(
             DynamicsNetwork(
                 num_blocks,
-                num_channels + self.action_space_size,
+                num_channels,
+                action_space_size,
                 reduced_channels_reward,
                 fc_reward_layers,
                 self.full_support_size,
                 block_output_size_reward,
-                self.action_space_size,
+                train_reward,
             )
         )
 
-        self.prediction_network = torch.nn.DataParallel(
+        self.prediction_network = parallelize(
             PredictionNetwork(
                 action_space_size,
                 num_blocks,
@@ -540,106 +597,66 @@ class MuZeroResidualNetwork(AbstractNetwork):
         )
 
     def prediction(self, encoded_state):
-        mu, log_std, value = self.prediction_network(encoded_state)
-        return mu, log_std, value
+        """Return Gaussian policy parameters and value logits for a batch of latent states."""
+        policy, value = self.prediction_network(encoded_state)
+        return clamp_policy(policy, self.log_std_clamp), value
 
     def representation(self, observation):
+        """Encode stacked observations and normalize their latent states."""
         encoded_state = self.representation_network(observation)
 
-        # Scale encoded state between [0, 1] (See appendix paper Training)
-        min_encoded_state = (
-            encoded_state.view(
-                -1,
-                encoded_state.shape[1],
-                encoded_state.shape[2] * encoded_state.shape[3],
-            )
-            .min(2, keepdim=True)[0]
-            .unsqueeze(-1)
-        )
-        max_encoded_state = (
-            encoded_state.view(
-                -1,
-                encoded_state.shape[1],
-                encoded_state.shape[2] * encoded_state.shape[3],
-            )
-            .max(2, keepdim=True)[0]
-            .unsqueeze(-1)
-        )
-        scale_encoded_state = max_encoded_state - min_encoded_state
-        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
-        encoded_state_normalized = (
-            encoded_state - min_encoded_state
-        ) / scale_encoded_state
-        return encoded_state_normalized
+        return self.normalize_state(encoded_state)
 
     def dynamics(self, encoded_state, action):
-        # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
-        action_one_hot = (
-            torch.ones(
-                (
-                    encoded_state.shape[0],
-                    action.shape[1],
-                    encoded_state.shape[2],
-                    encoded_state.shape[3],
-                )
-            )
-            .to(action.device)
-            .float()
+        """Return normalized next states and reward logits for the supplied actions."""
+        action_planes = (
+            action.float()
+            .tanh()[:, :, None, None]
+            .expand(-1, -1, encoded_state.shape[2], encoded_state.shape[3])
         )
-        action_one_hot = action[:, :, None, None] * action_one_hot
-        x = torch.cat((encoded_state, action_one_hot), dim=1)
+        x = torch.cat((encoded_state, action_planes), dim=1)
         next_encoded_state, reward = self.dynamics_network(x)
 
-        # Scale encoded state between [0, 1] (See paper appendix Training)
-        min_next_encoded_state = (
-            next_encoded_state.view(
-                -1,
-                next_encoded_state.shape[1],
-                next_encoded_state.shape[2] * next_encoded_state.shape[3],
-            )
-            .min(2, keepdim=True)[0]
-            .unsqueeze(-1)
-        )
-        max_next_encoded_state = (
-            next_encoded_state.view(
-                -1,
-                next_encoded_state.shape[1],
-                next_encoded_state.shape[2] * next_encoded_state.shape[3],
-            )
-            .max(2, keepdim=True)[0]
-            .unsqueeze(-1)
-        )
-        scale_next_encoded_state = max_next_encoded_state - min_next_encoded_state
-        scale_next_encoded_state[scale_next_encoded_state < 1e-5] += 1e-5
-        next_encoded_state_normalized = (
-            next_encoded_state - min_next_encoded_state
-        ) / scale_next_encoded_state
-        return next_encoded_state_normalized, reward
+        return self.normalize_state(next_encoded_state), reward
+
+    def normalize_state(self, state):
+        """Min-max normalize latent states using global or per-channel bounds.
+
+        Global bounds span all features of each sample; channel bounds span each
+        channel's spatial positions. Stabilize ranges smaller than 1e-5.
+        """
+        # Scale encoded state between [0, 1] (See paper appendix Training).
+        # The channel mode preserves inference for checkpoints trained before this option.
+        dimensions = 2 if self.state_normalization == "channel" else 1
+        flattened = state.flatten(dimensions)
+        minimum = flattened.min(-1, keepdim=True)[0]
+        maximum = flattened.max(-1, keepdim=True)[0]
+        shape = (*state.shape[:dimensions], *((1,) * (state.ndim - dimensions)))
+        minimum, maximum = minimum.reshape(shape), maximum.reshape(shape)
+        scale = maximum - minimum
+        scale[scale < 1e-5] += 1e-5
+        return (state - minimum) / scale
 
     def initial_inference(self, observation):
+        """Return value, zero reward, Gaussian policy parameters, and state for observations."""
         encoded_state = self.representation(observation)
-        mu, log_std, value = self.prediction(encoded_state)
-        # reward equal to 0 for consistency
-        reward = torch.log(
-            (
-                torch.zeros(1, self.full_support_size)
-                .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
-                .repeat(len(observation), 1)
-                .to(observation.device)
-            )
+        policy_parameters, value = self.prediction(encoded_state)
+        # reward equal to 0 for consistency.
+        reward = zero_support_logits(
+            len(observation), self.full_support_size, observation.device
         )
         return (
             value,
             reward,
-            mu,
-            log_std,
+            policy_parameters,
             encoded_state,
         )
 
     def recurrent_inference(self, encoded_state, action):
+        """Return value, reward, Gaussian policy parameters, and next state after actions."""
         next_encoded_state, reward = self.dynamics(encoded_state, action)
-        mu, log_std, value = self.prediction(next_encoded_state)
-        return value, reward, mu, log_std, next_encoded_state
+        policy_parameters, value = self.prediction(next_encoded_state)
+        return value, reward, policy_parameters, next_encoded_state
 
 
 ########### End ResNet ###########
@@ -653,6 +670,7 @@ def mlp(
     output_activation=torch.nn.Identity,
     activation=torch.nn.ELU,
 ):
+    """Build linear layers with configurable hidden and output activations."""
     sizes = [input_size] + layer_sizes + [output_size]
     layers = []
     for i in range(len(sizes) - 1):
@@ -662,21 +680,33 @@ def mlp(
 
 
 def support_to_scalar(logits, support_size):
+    """Decode categorical logits and invert MuZero's signed square-root transform.
+
+    See paper appendix Network Architecture.
+
+    Args:
+        logits (torch.Tensor): Shape (batch, 2 * support_size + 1).
+        support_size (int): Radius of the integer support centered at zero.
+
+    Returns:
+        torch.Tensor: Decoded scalars with shape (batch, 1).
     """
-    Transform a categorical representation to a scalar
-    See paper appendix Network Architecture
-    """
-    # Decode to a scalar
+    # Decode to a scalar.
     probabilities = torch.softmax(logits, dim=1)
-    support = (
-        torch.tensor([x for x in range(-support_size, support_size + 1)])
-        .expand(probabilities.shape)
-        .float()
-        .to(device=probabilities.device)
-    )
+    key = (support_size, probabilities.device, probabilities.dtype)
+    support = _SUPPORTS.get(key)
+    if support is None:
+        with torch.inference_mode(False):
+            support = torch.arange(
+                -support_size,
+                support_size + 1,
+                device=probabilities.device,
+                dtype=probabilities.dtype,
+            )
+        _SUPPORTS[key] = support
     x = torch.sum(support * probabilities, dim=1, keepdim=True)
 
-    # Invert the scaling (defined in https://arxiv.org/abs/1805.11593)
+    # Invert the scaling (defined in https://arxiv.org/abs/1805.11593).
     x = torch.sign(x) * (
         ((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))
         ** 2
@@ -686,18 +716,28 @@ def support_to_scalar(logits, support_size):
 
 
 def scalar_to_support(x, support_size):
+    """Transform scalars and interpolate onto MuZero's categorical support.
+
+    Apply the signed square-root transform with a linear term, clip to the
+    support, and assign probability to adjacent integer bins.
+    See paper appendix Network Architecture.
+
+    Args:
+        x (torch.Tensor): Scalars with shape (batch, prediction_steps).
+        support_size (int): Radius of the integer support centered at zero.
+
+    Returns:
+        torch.Tensor: Probabilities with shape
+        (batch, prediction_steps, 2 * support_size + 1).
     """
-    Transform a scalar to a categorical representation with (2 * support_size + 1) categories
-    See paper appendix Network Architecture
-    """
-    # Reduce the scale (defined in https://arxiv.org/abs/1805.11593)
+    # Reduce the scale (defined in https://arxiv.org/abs/1805.11593).
     x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + 0.001 * x
 
-    # Encode on a vector
+    # Encode on a vector.
     x = torch.clamp(x, -support_size, support_size)
     floor = x.floor()
     prob = x - floor
-    logits = torch.zeros(x.shape[0], x.shape[1], 2 * support_size + 1).to(x.device)
+    logits = x.new_zeros(x.shape[0], x.shape[1], 2 * support_size + 1)
     logits.scatter_(
         2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1)
     )
@@ -706,3 +746,35 @@ def scalar_to_support(x, support_size):
     indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
     return logits
+
+
+def clamp_policy(parameters, bounds):
+    """Keep Gaussian scales finite while leaving means unconstrained."""
+    mean, log_std = parameters.chunk(2, dim=-1)
+    return torch.cat((mean, log_std.clamp(*bounds)), dim=-1)
+
+
+def policy_distribution(parameters):
+    """Diagonal Gaussian in pre-tanh action coordinates."""
+    mean, log_std = parameters.chunk(2, dim=-1)
+    return torch.distributions.Normal(mean, log_std.exp())
+
+
+def continuous_policy_loss(parameters, target, entropy_weight=0.0):
+    """Visit-weighted negative log likelihood, with squashed-policy entropy.
+
+    Target rows contain [pre-tanh action coordinates, normalized visit weight].
+    Zero-weight padding contributes nothing. The tanh Jacobian is constant with
+    respect to parameters for these fixed targets, so NLL uses Gaussian coordinates.
+    Entropy uses a reparameterized sample and the stable tanh Jacobian.
+    """
+    distribution = policy_distribution(parameters)
+    actions, weights = target[..., :-1], target[..., -1]
+    log_prob = distribution.log_prob(actions.transpose(0, 1)).sum(-1).transpose(0, 1)
+    loss = -(weights * log_prob).sum(-1)
+    if entropy_weight:
+        z = distribution.rsample()
+        log_jacobian = 2 * (math.log(2) - z - torch.nn.functional.softplus(-2 * z))
+        entropy = distribution.entropy().sum(-1) + log_jacobian.sum(-1)
+        loss = loss - entropy_weight * entropy
+    return loss

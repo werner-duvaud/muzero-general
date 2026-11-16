@@ -1,178 +1,137 @@
 import datetime
 import pathlib
 
-import gym
-import numpy
 import torch
 
-from .abstract_game import AbstractGame
+from config import MuZeroConfig as BaseMuZeroConfig
+
+from games.continuous_game import ContinuousGame
 
 
-class MuZeroConfig:
+class MuZeroConfig(BaseMuZeroConfig):
     def __init__(self):
         # fmt: off
-        self.seed = 0  # Seed for numpy, torch and the game
-        self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
+        # Resources
+        self.seed = 0  # Seed for NumPy, PyTorch and game resets.
+        self.max_num_gpus = 1  # Use at most one GPU when CUDA is available.
+        self.num_threads = 1  # PyTorch CPU threads per worker.
 
+        # Game
+        self.observation_shape = (1, 1, 4)  # Observation shape: (channels, height, width).
+        self.observation_scale = 1  # Divide observations by this value before network inference.
+        self.reward_scale = 1  # Divide rewards during training; evaluation restores environment units.
+        self.action_space = 1  # Number of continuous action dimensions.
+        self.players = list(range(1))  # Consecutive player IDs; one player for a single-agent environment.
+        self.stacked_observations = 0  # Previous observations and actions appended to the current observation.
+        self.muzero_player = 0  # Player ID controlled by MuZero during multiplayer evaluation.
+        self.opponent = None  # Evaluation opponent: None, "random" or "expert"; does not affect training.
 
+        # Self-play and search
+        self.num_workers = 1  # Parallel self-play workers; also limits random collection workers.
+        self.selfplay_batch_size = 4  # Independent games searched together per worker; 1 disables batching.
+        self.selfplay_on_gpu = torch.cuda.is_available()  # Run self-play network inference on GPU when True; otherwise CPU.
+        self.max_moves = 1000  # Maximum environment transitions per episode.
+        self.num_simulations = 50  # MCTS simulations performed for each real action.
+        self.discount = 0.997  # Reward discount factor per environment transition.
+        self.temperature_threshold = None  # Episode move count before greedy play; None uses the schedule throughout.
+        self.root_dirichlet_alpha = 0.25  # Dirichlet concentration for self-play root exploration noise.
+        self.root_exploration_fraction = 0.25  # Fraction of root priors replaced with Dirichlet noise during self-play.
+        self.pb_c_base = 19652  # Controls how MCTS prior exploration grows with node visits.
+        self.pb_c_init = 1.25  # Initial strength of MCTS prior exploration.
+        self.known_bounds = None  # Fixed search value bounds (min, max); None estimates them during search.
 
-        ### Game
-        self.observation_shape = (1, 1, 4)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
-        self.action_space = 1  # Number of dimensions in the action space
-        self.players = [i for i in range(1)]  # List of players. You should only edit the length
-        self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
+        # Continuous search and policy
+        self.num_sampled_actions = 8  # Initial candidates at every node.
+        self.pw_alpha = 0.49  # Progressive widening exponent; 0 keeps a fixed candidate count.
+        self.node_prior = "uniform"  # "density" is an optional latent-density heuristic.
+        self.log_std_clamp = (-5, 2)  # Bound Gaussian log standard deviations.
+        self.entropy_loss_weight = 0.001  # Encourage entropy of the normalized tanh policy.
 
-        # Evaluate
-        self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
-        self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
+        # Network
+        self.network = "fullyconnected"  # Network architecture: "resnet" or "fullyconnected".
+        self.support_size = 20  # Transformed value/reward support: [-support_size, support_size].
+        self.train_reward = True  # Include reward prediction in the training loss.
 
+        # Residual network (used when network = "resnet")
+        self.downsample = False  # Observation downsampling: False, "CNN" or "resnet" (See paper appendix Network Architecture).
+        self.blocks = 1  # Residual blocks in the representation, dynamics and prediction networks.
+        self.channels = 2  # Number of channels in the residual latent state.
+        self.resnet_state_normalization = "global"  # Latent min/max normalization: "global" or per-"channel".
+        self.reduced_channels_reward = 2  # Channels retained before the residual reward head.
+        self.reduced_channels_value = 2  # Channels retained before the residual value head.
+        self.reduced_channels_policy = 2  # Channels retained before the residual policy head.
+        self.resnet_fc_reward_layers = []  # Hidden layer widths of the residual reward head.
+        self.resnet_fc_value_layers = []  # Hidden layer widths of the residual value head.
+        self.resnet_fc_policy_layers = []  # Hidden layer widths of the residual policy head.
 
+        # Fully connected network (used when network = "fullyconnected")
+        self.encoding_size = 64  # Number of features in the fully connected latent state.
+        self.fc_representation_layers = [64, 64]  # Hidden layer widths of the fully connected representation network.
+        self.fc_dynamics_layers = [64]  # Hidden layer widths of the fully connected dynamics network.
+        self.fc_reward_layers = [64]  # Hidden layer widths of the fully connected reward head.
+        self.fc_value_layers = [64]  # Hidden layer widths of the fully connected value head.
+        self.fc_policy_layers = [64]  # Hidden layer widths of the fully connected policy head.
 
-        ### Self-Play
-        self.num_workers = 3  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.selfplay_on_gpu = False
-        self.max_moves = 1000  # Maximum number of moves if game is not finished before
-        self.num_simulations = 50  # Number of future moves self-simulated
-        self.discount = 0.997  # Chronological discount of the reward
-        self.temperature_threshold = None  # Number of moves before dropping temperature to 0 (ie playing according to the max)
-        self.node_prior = 'uniform'  # 'uniform' or 'density'
+        # Training
+        self.results_path = (  # Output directory for checkpoints, logs and evaluation reports.
+            pathlib.Path(__file__).resolve().parents[1]
+            / "results"
+            / pathlib.Path(__file__).stem
+            / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S-%f")
+        )
+        self.save_model = True  # Save model/replay snapshots and run metadata under results_path.
+        self.training_steps = 200000  # Total gradient updates, including random-buffer warmup.
+        self.temperature_schedule = [(0, 1.0), (50000, 0.5), (150000, 0.25)]  # Pairs of (gradient update, action-sampling temperature); zero is greedy.
+        self.batch_size = 128  # Replay positions sampled for each gradient update.
+        self.checkpoint_interval = 10  # Gradient updates between publishing weights to self-play workers.
+        self.value_loss_weight = 0.25  # Value loss multiplier; paper recommends 0.25 (See paper appendix Reanalyze).
+        self.policy_loss_weight = 1  # Multiplier on the policy prediction loss.
+        self.train_on_gpu = torch.cuda.is_available()  # Use GPU for training when available; otherwise CPU.
+        self.optimizer = "Adam"  # Optimizer: "Adam" or "SGD"; paper uses SGD.
+        self.max_grad_norm = 10.0  # Clip the gradient norm before each update; None disables clipping.
+        self.weight_decay = 0.0001  # L2 regularization strength.
+        self.momentum = 0.9  # SGD momentum; unused with Adam.
+        self.lr_init = 0.0003  # Initial learning rate.
+        self.lr_decay_rate = 1  # Exponential decay factor; 1 keeps the learning rate constant.
+        self.lr_decay_steps = 200000  # Gradient updates per learning rate decay factor.
 
-        # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25
-        self.root_exploration_fraction = 0.25
+        # Replay buffer
+        self.replay_buffer_size = 500  # Maximum complete games retained in FIFO replay.
+        self.num_unroll_steps = 10  # Recurrent model steps trained after each sampled state.
+        self.td_steps = 50  # Reward horizon before value bootstrapping; episode end uses observed returns.
+        self.PER = True  # Prioritize replay games and positions by prediction error (See paper appendix Training).
+        self.PER_alpha = 0.5  # Priority exponent when PER is enabled; zero samples uniformly, paper suggests 1.
 
-        # UCB formula
-        self.pb_c_base = 19652
-        self.pb_c_init = 1.25
+        # Initialization
+        self.random_bootstrap_episodes = 0  # Uniform random episodes collected before fresh training; 0 disables it.
+        self.random_bootstrap_keep_best = 3  # Highest-return random episodes retained, capped by replay_buffer_size.
+        self.random_bootstrap_training_steps = 0  # Joint MuZero updates on retained random data before self-play starts.
 
-        # Progressive widening parameter
-        self.pw_alpha = 0.49
+        # Reanalysis (See paper appendix Reanalyse)
+        self.reanalyse_batch_size = 32  # Maximum positions refreshed per reanalysis iteration.
+        self.use_last_model_value = True  # Refresh replay value targets with the latest network (See paper appendix Reanalyze).
+        self.reanalyse_policy = False  # Refresh replay policy targets with MCTS using the latest network.
+        self.reanalyse_policy_ratio = 0.8  # Fraction of eligible samples that use refreshed policy targets.
+        self.reanalyse_on_gpu = torch.cuda.is_available()  # Use GPU for reanalysis when available; otherwise CPU.
 
-        ### Network
-        self.network = "fullyconnected"  # "resnet" / "fullyconnected"
-        self.support_size = 21  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size
-        
-        # Residual Network
-        self.downsample = False  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
-        self.blocks = 1  # Number of blocks in the ResNet
-        self.channels = 2  # Number of channels in the ResNet
-        self.reduced_channels_reward = 2  # Number of channels in reward head
-        self.reduced_channels_value = 2  # Number of channels in value head
-        self.reduced_channels_policy = 2  # Number of channels in policy head
-        self.resnet_fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
-        self.resnet_fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
-        self.resnet_fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
+        # Synchronization
+        self.self_play_delay = 0  # Seconds to pause after each self-play game; 0 disables the delay.
+        self.training_delay = 0  # Seconds to pause after each gradient update; 0 disables the delay.
+        self.ratio = 0.2  # Target gradient updates per new self-play transition; None disables pacing.
 
-        # Fully Connected Network
-        self.encoding_size = 15
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [64]  # Define the hidden layers in the dynamics network
-        self.fc_reward_layers = [64]  # Define the hidden layers in the reward network
-        self.fc_value_layers = [64]  # Define the hidden layers in the value network
-        self.fc_mu_policy_layers = [64]  # Define the hidden layers in the policy network
-        self.fc_log_std_policy_layers = []  # Define the hidden layers in the policy network
-
-
-
-        ### Training
-        self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / pathlib.Path(__file__).stem / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")  # Path to store the model weights and TensorBoard logs
-        self.save_model = True  # Save the checkpoint in results_path as model.checkpoint
-        self.training_steps = 20000000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128  # Number of parts of games to train on at each training step
-        self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
-        self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
-        self.entropy_loss_weight = 0  # Scale the entropy loss
-        self.log_std_clamp = (-20, 2)  # Clamp the standard deviation
-        self.train_on_gpu = torch.cuda.is_available()  # Train on GPU if available
-
-        self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
-        self.weight_decay = 1e-4  # L2 weights regularization
-        self.momentum = 0.9  # Used only if optimizer is SGD
-
-        # Exponential learning rate schedule
-        self.lr_init = 0.003  # Initial learning rate
-        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
-        self.lr_decay_steps = 5000
-
-
-
-        ### Replay Buffer
-        self.replay_buffer_size = 700  # Number of self-play games to keep in the replay buffer
-        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
-        self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
-        self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
-        self.PER_alpha = 0.1  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
-
-        # Reanalyze (See paper appendix Reanalyse)
-        self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
-        self.reanalyse_on_gpu = False
-
-
-
-        ### Adjust the self play / training ratio to avoid over/underfitting
-        self.self_play_delay = 0  # Number of seconds to wait after each played game
-        self.training_delay = 0  # Number of seconds to wait after each training step
-        self.ratio = 1/5  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
+        # Evaluation
+        self.evaluation_both_players = False  # Alternate player seats across seeded evaluation episodes.
+        self.evaluation_episodes = 20  # Final evaluation episode count; 0 disables final evaluation.
+        self.evaluation_seed = 1000000  # First seed of consecutive final evaluation episodes.
+        self.evaluation_target = 950  # Required mean environment reward; None disables the pass threshold.
+        self.validation_interval = 2500  # Gradient updates between validation checkpoints; 0 disables validation.
+        self.validation_episodes = 10  # Episodes used to evaluate each validation checkpoint.
+        self.validation_seed = 5000000  # First validation seed; keep validation and final evaluation seeds separate.
+        self.checkpoint_selection = "best"  # "best" selects the highest validation mean; "last" keeps final weights.
         # fmt: on
 
-    def visit_softmax_temperature_fn(self, trained_steps):
-        """
-        Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
-        The smaller it is, the more likely the best action (ie with the highest visit count) is chosen.
 
-        Returns:
-            Positive float.
-        """
-        if trained_steps < 600:
-            return 1.5
-        elif trained_steps < 0.75 * self.training_steps:
-            return 0.5
-        else:
-            return 0.01
+class Game(ContinuousGame):
+    """InvertedPendulum-v5 with normalized continuous controls."""
 
-
-class Game(AbstractGame):
-    """
-    Game wrapper.
-    """
-
-    def __init__(self, seed=None):
-        self.env = gym.make("InvertedPendulum-v2")
-        if seed is not None:
-            self.env.seed(seed)
-
-    def step(self, action):
-        """
-        Apply action to the game.
-
-        Args:
-            action : action of the action_space to take.
-
-        Returns:
-            The new observation, the reward and a boolean if the game has ended.
-        """
-        action = numpy.tanh(action)
-        observation, reward, done, _ = self.env.step(action)
-        return numpy.array([[observation]]), reward / 20, done
-
-    def reset(self):
-        """
-        Reset the game for a new game.
-
-        Returns:
-            Initial observation of the game.
-        """
-        return numpy.array([[self.env.reset()]])
-
-    def close(self):
-        """
-        Properly close the game.
-        """
-        self.env.close()
-
-    def render(self):
-        """
-        Display the game observation.
-        """
-        self.env.render()
-        input("Press enter to take a step ")
+    env_id = "InvertedPendulum-v5"

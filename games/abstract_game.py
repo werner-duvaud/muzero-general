@@ -2,88 +2,81 @@ from abc import ABC, abstractmethod
 
 
 class AbstractGame(ABC):
-    """
-    Inherit this class for muzero to play
+    """Inherit this class for MuZero to play your game.
+
+    Observations must match config.observation_shape: (channels, height, width).
+    Vectors use the same 3D layout, e.g. (1, 1, 4) for inverted pendulum.
     """
 
     @abstractmethod
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, render=False):
+        """Initialize a game, optionally using a seed and enabling visual rendering.
+
+        Args:
+            seed (int, optional): Seed for environments with stochastic behavior.
+            render (bool): Enable visual rendering where supported.
+        """
         pass
 
     @abstractmethod
     def step(self, action):
-        """
-        Apply action to the game.
+        """Apply a legal action and return the resulting transition.
 
         Args:
-            action : action of the action_space to take.
+            action (array-like): Finite pre-tanh continuous action vector.
 
         Returns:
-            The new observation, the reward and a boolean if the game has ended.
+            tuple: Observation in (channels, height, width) order, reward before
+            config.reward_scale is applied, and an episode-ended boolean.
         """
         pass
 
     def to_play(self):
-        """
-        Return the current player.
-
-        Returns:
-            The current player, it should be an element of the players list in the config.
-        """
+        """Return the current player ID; the single-player default is zero."""
         return 0
 
     @abstractmethod
+    def legal_actions(self):
+        """Return None for unrestricted continuous actions."""
+        pass
+
+    @abstractmethod
     def reset(self):
-        """
-        Reset the game for a new game.
+        """Start a new episode and return its initial observation.
 
         Returns:
-            Initial observation of the game.
+            array-like: Observation in (channels, height, width) order.
         """
         pass
 
     def close(self):
-        """
-        Properly close the game.
-        """
+        """Release environment resources; the default implementation does nothing."""
         pass
 
     @abstractmethod
     def render(self):
-        """
-        Display the game observation.
-        """
+        """Display the game state using the adapter's rendering interface."""
         pass
 
     def human_to_action(self):
-        """
-        For multiplayer games, ask the user for a legal action
-        and return the corresponding action number.
-
-        Returns:
-            An integer from the action space.
-        """
-        choice = input(f"Enter the action to play for the player {self.to_play()}: ")
-        return [float(value) for value in choice.split(",")]
+        """Read a continuous action vector; implemented by the game adapter."""
+        raise NotImplementedError
 
     def expert_agent(self):
-        """
-        Hard coded agent that MuZero faces to assess his progress in multiplayer games.
-        It doesn't influence training
+        """Return a heuristic opponent action for multiplayer evaluation.
 
-        Returns:
-            Action as an integer to take in the current game state
+        Raises:
+            NotImplementedError: The adapter does not provide an expert opponent.
         """
         raise NotImplementedError
 
     def action_to_string(self, action_number):
-        """
-        Convert an action number to a string representing the action.
+        """Return a human-readable label for an action ID.
 
         Args:
-            action_number: an integer from the action space.
+            action_number (int): Action ID from the configured action space.
 
         Returns:
-            String representing the action.
+            str: Description of the action.
         """
         return str(action_number)
